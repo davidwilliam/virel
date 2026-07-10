@@ -1,0 +1,570 @@
+"""Symbolic expression layer.
+
+Reactive values (``ui.state``, ``ui.derived``) are traced symbolically while a
+page function runs. Operations on them build an expression tree instead of
+computing a value. The compiler then emits each tree twice:
+
+- as JavaScript, for fine-grained browser updates (``Expr.js()``)
+- as Python, to evaluate the initial value for server/static rendering
+  (``Expr.evaluate(env)``)
+
+Only a documented subset of Python operations is supported. Unsupported
+constructs raise ``VirelCompileError`` at build time — they never silently
+fall back to server execution (SPEC 8.4).
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any, Callable
+
+SENTINEL = "\x00"
+
+
+class VirelCompileError(Exception):
+    """A construct cannot be compiled for the browser.
+
+    The message must say what is wrong and name the nearest valid
+    replacement (SPEC 6.10).
+    """
+
+
+# --------------------------------------------------------------------------
+# Trace context
+# --------------------------------------------------------------------------
+
+_current: "TraceContext | None" = None
+
+
+class TraceContext:
+    """Collects states, derived values and expressions while a page renders."""
+
+    def __init__(self) -> None:
+        self.states: dict[str, "State"] = {}
+        self.derived: dict[str, "Derived"] = {}
+        self.expr_registry: dict[int, "Expr"] = {}
+        self._counter = 0
+
+    def next_id(self, prefix: str) -> str:
+        self._counter += 1
+        return f"{prefix}{self._counter}"
+
+    def register_expr(self, expr: "Expr") -> str:
+        eid = len(self.expr_registry)
+        self.expr_registry[eid] = expr
+        return f"{SENTINEL}{eid}{SENTINEL}"
+
+    def __enter__(self) -> "TraceContext":
+        global _current
+        self._previous = _current
+        _current = self
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        global _current
+        _current = self._previous
+
+
+def current_context() -> TraceContext:
+    if _current is None:
+        raise VirelCompileError(
+            "Reactive values can only be created while a @ui.page or "
+            "@ui.component function is being compiled. Move this ui.state()/"
+            "ui.derived() call inside a page or component function."
+        )
+    return _current
+
+
+def in_trace() -> bool:
+    return _current is not None
+
+
+# --------------------------------------------------------------------------
+# Expression nodes
+# --------------------------------------------------------------------------
+
+_JS_METHODS: dict[str, str] = {
+    # python method -> JS equivalent (same arity)
+    "strip": "trim",
+    "lstrip": "trimStart",
+    "rstrip": "trimEnd",
+    "lower": "toLowerCase",
+    "upper": "toUpperCase",
+    "startswith": "startsWith",
+    "endswith": "endsWith",
+    "replace": "replaceAll",
+    "split": "split",
+}
+
+_JS_COMPARE = {"==": "===", "!=": "!==", "<": "<", "<=": "<=", ">": ">", ">=": ">="}
+
+
+def lift(value: Any) -> "Expr":
+    """Wrap a plain Python value or pass through an existing expression."""
+    if isinstance(value, Expr):
+        return value
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return Lit(value)
+    if isinstance(value, (list, tuple)):
+        return Lit(list(value))
+    if isinstance(value, dict):
+        return Lit(value)
+    raise VirelCompileError(
+        f"Value of type {type(value).__name__!r} cannot be used in a reactive "
+        "expression. Use plain JSON-compatible values (str, int, float, bool, "
+        "None, list, dict) or another reactive value."
+    )
+
+
+class Expr:
+    """Base class for symbolic expressions. Supports a typed operator subset."""
+
+    def js(self) -> str:
+        raise NotImplementedError
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        raise NotImplementedError
+
+    def to_ir(self) -> dict[str, Any]:
+        return {"kind": self.__class__.__name__, "js": self.js()}
+
+    # -- arithmetic ---------------------------------------------------------
+    def __add__(self, other: Any) -> "Expr":
+        return BinOp("+", self, lift(other))
+
+    def __radd__(self, other: Any) -> "Expr":
+        return BinOp("+", lift(other), self)
+
+    def __sub__(self, other: Any) -> "Expr":
+        return BinOp("-", self, lift(other))
+
+    def __rsub__(self, other: Any) -> "Expr":
+        return BinOp("-", lift(other), self)
+
+    def __mul__(self, other: Any) -> "Expr":
+        return BinOp("*", self, lift(other))
+
+    def __rmul__(self, other: Any) -> "Expr":
+        return BinOp("*", lift(other), self)
+
+    def __truediv__(self, other: Any) -> "Expr":
+        return BinOp("/", self, lift(other))
+
+    def __mod__(self, other: Any) -> "Expr":
+        return BinOp("%", self, lift(other))
+
+    # -- comparisons --------------------------------------------------------
+    def __eq__(self, other: Any) -> "Expr":  # type: ignore[override]
+        return Compare("==", self, lift(other))
+
+    def __ne__(self, other: Any) -> "Expr":  # type: ignore[override]
+        return Compare("!=", self, lift(other))
+
+    def __lt__(self, other: Any) -> "Expr":
+        return Compare("<", self, lift(other))
+
+    def __le__(self, other: Any) -> "Expr":
+        return Compare("<=", self, lift(other))
+
+    def __gt__(self, other: Any) -> "Expr":
+        return Compare(">", self, lift(other))
+
+    def __ge__(self, other: Any) -> "Expr":
+        return Compare(">=", self, lift(other))
+
+    __hash__ = None  # type: ignore[assignment]
+
+    # -- unsupported constructs must fail loudly ----------------------------
+    def __bool__(self) -> bool:
+        raise VirelCompileError(
+            "A reactive value cannot be used in a Python `if`/`and`/`or`/`not` "
+            "at compile time because its value only exists in the browser. "
+            "Use ui.When(condition, then=[...], otherwise=[...]) for reactive "
+            "rendering, or ui.cond(condition, a, b) for a reactive expression."
+        )
+
+    def __iter__(self):
+        raise VirelCompileError(
+            "A reactive value cannot be iterated at compile time. Reactive "
+            "list rendering is not part of the Phase 0 subset."
+        )
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        if name in _JS_METHODS:
+            def method(*args: Any) -> "Expr":
+                return MethodCall(self, name, [lift(a) for a in args])
+            return method
+        raise VirelCompileError(
+            f"Method or attribute {name!r} is not in the supported reactive "
+            f"subset. Supported string methods: {', '.join(sorted(_JS_METHODS))}."
+        )
+
+    # -- f-string / str() integration ---------------------------------------
+    def __format__(self, spec: str) -> str:
+        if spec:
+            raise VirelCompileError(
+                f"Format spec {spec!r} is not supported on reactive values in "
+                "the Phase 0 subset. Format the value inside the expression "
+                "instead."
+            )
+        return current_context().register_expr(self)
+
+    def __str__(self) -> str:
+        if in_trace():
+            return current_context().register_expr(self)
+        return f"<{self.__class__.__name__} {self.js()}>"
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} {self.js()}>"
+
+
+class Lit(Expr):
+    def __init__(self, value: Any) -> None:
+        self.value = value
+
+    def js(self) -> str:
+        return json.dumps(self.value)
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return self.value
+
+
+class StateRead(Expr):
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def js(self) -> str:
+        return f"S.{self.name}.get()"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return env[self.name]
+
+
+class BinOp(Expr):
+    _PY = {
+        "+": lambda a, b: a + b,
+        "-": lambda a, b: a - b,
+        "*": lambda a, b: a * b,
+        "/": lambda a, b: a / b,
+        "%": lambda a, b: a % b,
+    }
+
+    def __init__(self, op: str, left: Expr, right: Expr) -> None:
+        self.op, self.left, self.right = op, left, right
+
+    def js(self) -> str:
+        return f"({self.left.js()} {self.op} {self.right.js()})"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return self._PY[self.op](self.left.evaluate(env), self.right.evaluate(env))
+
+
+class Compare(Expr):
+    _PY = {
+        "==": lambda a, b: a == b,
+        "!=": lambda a, b: a != b,
+        "<": lambda a, b: a < b,
+        "<=": lambda a, b: a <= b,
+        ">": lambda a, b: a > b,
+        ">=": lambda a, b: a >= b,
+    }
+
+    def __init__(self, op: str, left: Expr, right: Expr) -> None:
+        self.op, self.left, self.right = op, left, right
+
+    def js(self) -> str:
+        return f"({self.left.js()} {_JS_COMPARE[self.op]} {self.right.js()})"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return self._PY[self.op](self.left.evaluate(env), self.right.evaluate(env))
+
+
+class Not(Expr):
+    def __init__(self, operand: Expr) -> None:
+        self.operand = operand
+
+    def js(self) -> str:
+        return f"(!{self.operand.js()})"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return not self.operand.evaluate(env)
+
+
+class Ternary(Expr):
+    def __init__(self, condition: Expr, then: Expr, otherwise: Expr) -> None:
+        self.condition, self.then, self.otherwise = condition, then, otherwise
+
+    def js(self) -> str:
+        return f"({self.condition.js()} ? {self.then.js()} : {self.otherwise.js()})"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        if self.condition.evaluate(env):
+            return self.then.evaluate(env)
+        return self.otherwise.evaluate(env)
+
+
+class Length(Expr):
+    def __init__(self, operand: Expr) -> None:
+        self.operand = operand
+
+    def js(self) -> str:
+        return f"{self.operand.js()}.length"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return len(self.operand.evaluate(env))
+
+
+class MethodCall(Expr):
+    def __init__(self, obj: Expr, method: str, args: list[Expr]) -> None:
+        self.obj, self.method, self.args = obj, method, args
+
+    def js(self) -> str:
+        js_args = ", ".join(a.js() for a in self.args)
+        return f"{self.obj.js()}.{_JS_METHODS[self.method]}({js_args})"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        value = self.obj.evaluate(env)
+        args = [a.evaluate(env) for a in self.args]
+        return getattr(value, self.method)(*args)
+
+
+class FormatString(Expr):
+    """Alternating static strings and expressions, from f-string sentinels."""
+
+    def __init__(self, parts: list[str | Expr]) -> None:
+        self.parts = parts
+
+    def js(self) -> str:
+        chunks = []
+        for part in self.parts:
+            if isinstance(part, Expr):
+                chunks.append("${" + part.js() + "}")
+            else:
+                chunks.append(part.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$"))
+        return "`" + "".join(chunks) + "`"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        out = []
+        for part in self.parts:
+            if isinstance(part, Expr):
+                value = part.evaluate(env)
+                out.append(_js_like_str(value))
+            else:
+                out.append(part)
+        return "".join(out)
+
+
+def _js_like_str(value: Any) -> str:
+    """Stringify the way the emitted JS template literal will."""
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if value is None:
+        return "null"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def parse_sentinels(text: str) -> "Expr | str":
+    """Turn a string containing f-string sentinels back into an expression."""
+    if SENTINEL not in text:
+        return text
+    ctx = current_context()
+    parts: list[str | Expr] = []
+    pieces = text.split(SENTINEL)
+    # pieces alternate: static, expr-id, static, expr-id, ...
+    for index, piece in enumerate(pieces):
+        if index % 2 == 0:
+            if piece:
+                parts.append(piece)
+        else:
+            parts.append(ctx.expr_registry[int(piece)])
+    if len(parts) == 1 and isinstance(parts[0], Expr):
+        return parts[0]
+    return FormatString(parts)
+
+
+# --------------------------------------------------------------------------
+# Reactive values
+# --------------------------------------------------------------------------
+
+class State(StateRead):
+    """Browser-local reactive state (``ui.state``)."""
+
+    def __init__(self, initial: Any, name: str | None = None) -> None:
+        ctx = current_context()
+        lift(initial)  # validate serializability
+        super().__init__(name or ctx.next_id("s"))
+        self.initial = initial
+        ctx.states[self.name] = self
+
+    def set(self, value: Any) -> None:
+        recorder = current_recorder()
+        recorder.ops.append(SetOp(self.name, lift(value)))
+
+    def update(self, fn: Callable[[Expr], Any]) -> None:
+        recorder = current_recorder()
+        recorder.ops.append(SetOp(self.name, lift(fn(StateRead(self.name)))))
+
+    def to_ir(self) -> dict[str, Any]:
+        return {"kind": "state", "name": self.name, "initial": self.initial}
+
+
+class Derived(StateRead):
+    """Computed reactive value (``ui.derived``)."""
+
+    def __init__(self, fn: Callable[[], Any], name: str | None = None) -> None:
+        ctx = current_context()
+        super().__init__(name or ctx.next_id("d"))
+        self.expr = lift(fn())
+        ctx.derived[self.name] = self
+
+    def to_ir(self) -> dict[str, Any]:
+        return {"kind": "derived", "name": self.name, "js": self.expr.js()}
+
+
+# --------------------------------------------------------------------------
+# Event handlers: recorded imperative ops
+# --------------------------------------------------------------------------
+
+class SetOp:
+    def __init__(self, state: str, value: Expr) -> None:
+        self.state, self.value = state, value
+
+    def js(self) -> str:
+        return f"S.{self.state}.set({self.value.js()});"
+
+    def to_ir(self) -> dict[str, Any]:
+        return {"op": "set", "state": self.state, "value": self.value.js()}
+
+
+class SetFromEventOp:
+    """Two-way binding: write an event property into a state."""
+
+    def __init__(self, state: str, event_path: str = "target.value") -> None:
+        self.state, self.event_path = state, event_path
+
+    def js(self) -> str:
+        return f"S.{self.state}.set(ev.{self.event_path});"
+
+    def to_ir(self) -> dict[str, Any]:
+        return {"op": "set_from_event", "state": self.state, "path": self.event_path}
+
+
+class CallOp:
+    """Invoke a server action over HTTP."""
+
+    def __init__(self, action: str, args: dict[str, Expr], into: State | None,
+                 error_into: State | None) -> None:
+        self.action, self.args, self.into, self.error_into = action, args, into, error_into
+
+    def js(self) -> str:
+        js_args = "{" + ", ".join(f"{k}: {v.js()}" for k, v in self.args.items()) + "}"
+        then = f".then((r) => S.{self.into.name}.set(r))" if self.into is not None else ""
+        if self.error_into is not None:
+            catch = f".catch((e) => S.{self.error_into.name}.set(String(e.message || e)))"
+        else:
+            catch = ".catch((e) => console.error(e))"
+        return f'$.action("{self.action}", {js_args}){then}{catch};'
+
+    def to_ir(self) -> dict[str, Any]:
+        return {
+            "op": "call",
+            "action": self.action,
+            "args": {k: v.js() for k, v in self.args.items()},
+            "into": self.into.name if self.into is not None else None,
+        }
+
+
+class StreamOp:
+    """Invoke a streaming server action, appending chunks into a state."""
+
+    def __init__(self, action: str, args: dict[str, Expr], into: State,
+                 done_set: tuple[State, Expr] | None) -> None:
+        self.action, self.args, self.into, self.done_set = action, args, into, done_set
+
+    def js(self) -> str:
+        js_args = "{" + ", ".join(f"{k}: {v.js()}" for k, v in self.args.items()) + "}"
+        on_chunk = f"(c) => S.{self.into.name}.set(S.{self.into.name}.get() + c)"
+        if self.done_set:
+            state, value = self.done_set
+            on_done = f"() => S.{state.name}.set({value.js()})"
+        else:
+            on_done = "null"
+        return f'$.stream("{self.action}", {js_args}, {on_chunk}, {on_done});'
+
+    def to_ir(self) -> dict[str, Any]:
+        return {
+            "op": "stream",
+            "action": self.action,
+            "args": {k: v.js() for k, v in self.args.items()},
+            "into": self.into.name,
+        }
+
+
+class HandlerRecorder:
+    def __init__(self) -> None:
+        self.ops: list[Any] = []
+
+
+_recorder: HandlerRecorder | None = None
+
+
+def current_recorder() -> HandlerRecorder:
+    if _recorder is None:
+        raise VirelCompileError(
+            "State mutations (.set/.update) and server-action calls are only "
+            "valid inside an event handler such as on_click=lambda: ... . "
+            "During rendering, read reactive values instead of mutating them."
+        )
+    return _recorder
+
+
+def record_handler(fn: Callable[[], None]) -> "Handler":
+    """Run an event-handler lambda symbolically and capture its operations."""
+    global _recorder
+    previous = _recorder
+    _recorder = HandlerRecorder()
+    try:
+        fn()
+        if not _recorder.ops:
+            raise VirelCompileError(
+                "This event handler produced no state changes or server "
+                "calls. Handlers must call state.set()/state.update() or "
+                "a server action."
+            )
+        return Handler(_recorder.ops)
+    finally:
+        _recorder = previous
+
+
+class Handler:
+    def __init__(self, ops: list[Any]) -> None:
+        self.ops = ops
+
+    def js(self) -> str:
+        body = " ".join(op.js() for op in self.ops)
+        return f"(ev) => {{ {body} }}"
+
+    def to_ir(self) -> list[dict[str, Any]]:
+        return [op.to_ir() for op in self.ops]
+
+
+# --------------------------------------------------------------------------
+# Expression helpers exposed on ui.*
+# --------------------------------------------------------------------------
+
+def cond(condition: Any, then: Any, otherwise: Any) -> Expr:
+    return Ternary(lift(condition), lift(then), lift(otherwise))
+
+
+def not_(value: Any) -> Expr:
+    return Not(lift(value))
+
+
+def length(value: Any) -> Expr:
+    return Length(lift(value))
