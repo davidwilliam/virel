@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# The project's check suite. CI runs exactly this script, so a local pass
+# means CI will pass.
+#
+# Usage:
+#   scripts/ci             run inside an activated virtualenv (or CI)
+#   scripts/ci 3.11        create a throwaway venv with python3.11 and run
+#
+# The optional version argument needs the matching python3.X on PATH.
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if [[ $# -ge 1 ]]; then
+    version="$1"
+    workdir="$(mktemp -d)"
+    trap 'rm -rf "$workdir"' EXIT
+    echo "==> Creating throwaway venv with python$version"
+    "python$version" -m venv "$workdir/venv"
+    # shellcheck disable=SC1091
+    source "$workdir/venv/bin/activate"
+fi
+
+echo "==> Python: $(python --version)"
+
+echo "==> Installing package"
+python -m pip install --quiet --upgrade pip
+python -m pip install --quiet -e ".[dev]"
+
+echo "==> Running the test suite"
+python -m pytest -q
+
+echo "==> Compiling and building the demo application"
+(cd examples/demo \
+    && virel check \
+    && virel build --target asgi > /dev/null)
+
+echo "==> Scaffolding a fresh application and building it statically"
+scaffold="$(mktemp -d)"
+(cd "$scaffold" \
+    && virel new sample_app > /dev/null \
+    && cd sample_app \
+    && virel check \
+    && virel build --target static > /dev/null)
+rm -rf "$scaffold"
+
+echo "==> All checks passed"

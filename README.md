@@ -1,5 +1,7 @@
 # Virel
 
+[![CI](https://github.com/davidwilliam/virel/actions/workflows/ci.yml/badge.svg)](https://github.com/davidwilliam/virel/actions/workflows/ci.yml)
+
 Professional interfaces, written in Python.
 
 Virel is a compiler-first frontend framework. You write typed, declarative
@@ -254,11 +256,22 @@ def test_invitation_flow():
 Hidden elements cannot be interacted with, disabled buttons refuse clicks,
 and streaming actions are drained synchronously, so tests stay deterministic.
 
-Run the framework's own suite with:
+## Development
+
+The whole check suite lives in one script, and CI runs exactly that script,
+so a local pass means CI will pass:
 
 ```bash
-python -m pytest
+source .venv/bin/activate
+./scripts/ci            # tests, demo build, scaffold build
+
+./scripts/ci 3.11       # same, in a throwaway venv on another Python
 ```
+
+Continuous integration runs the script on Python 3.11 through 3.14 for every
+push to main and every pull request. Day-to-day work goes directly to main;
+breaking or risky changes are developed on a branch and merged only after
+the checks pass.
 
 ## Inspector
 
