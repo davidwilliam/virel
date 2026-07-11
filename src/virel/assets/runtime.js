@@ -369,6 +369,22 @@ export function resource(id, spec) {
     attempt(spec.retry ?? 0);
   };
 
+  // Stream-mode SSR: the data arrived as an inline JSON block after the
+  // shell; read it at mount instead of fetching.
+  if (spec.ssr === "streamed") {
+    const block = document.querySelector(
+      `script[type="application/json"][data-virel-stream="${id}"]`);
+    if (block) {
+      try {
+        const payload = JSON.parse(block.textContent);
+        if (payload.error) spec.error.set(payload.error);
+        else spec.value.set(payload.value);
+        spec.loading.set(false);
+        hydrated = true;
+      } catch {}
+    }
+  }
+
   const currentArgs = () => (spec.params ? spec.params() : {});
   // Seed the cache from server-rendered data outside the effect: reads
   // here must not subscribe, or setting the value would retrigger the

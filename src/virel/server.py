@@ -448,9 +448,43 @@ class VirelASGIApp:
         headers = [(b"content-security-policy", csp.encode("latin-1"))]
         if locale is not None:
             headers.append((b"vary", b"accept-language"))
+        if result.streamed_resources:
+            await self._serve_streamed_page(result, headers, send)
+            return
         await self._send_text(send, 200, result.html,
                               content_type="text/html; charset=utf-8",
                               extra=headers)
+
+    async def _serve_streamed_page(self, result: Any,
+                                   headers: list, send: Send) -> None:
+        """Progressive rendering (SPEC 9.6 stream mode): flush the shell
+        immediately, then stream each server-rendered resource's data as an
+        inline JSON data block the runtime reads at mount."""
+        from .compiler import _js_json
+        from .registry import to_jsonable
+        prefix, _, _closing = result.html.rpartition("</body>")
+        await send({"type": "http.response.start", "status": 200,
+                    "headers": _headers("text/html; charset=utf-8",
+                                        extra=headers)})
+        await send({"type": "http.response.body",
+                    "body": prefix.encode("utf-8"), "more_body": True})
+        for entry in result.streamed_resources:
+            action = self.registry.actions[entry["action"]]
+            try:
+                kwargs = action.prepare(dict(entry["args"]))
+                value = action.fn(**kwargs)
+                if inspect.isawaitable(value):
+                    value = await value
+                payload = {"value": to_jsonable(value)}
+            except Exception as error:
+                payload = {"error": _safe_message(error, self.dev)}
+            block = (f'<script type="application/json" '
+                     f'data-virel-stream="{entry["id"]}">'
+                     f"{_js_json(payload)}</script>")
+            await send({"type": "http.response.body",
+                        "body": block.encode("utf-8"), "more_body": True})
+        await send({"type": "http.response.body",
+                    "body": b"</body>\n</html>\n", "more_body": False})
 
     def _asset_cache_headers(self) -> list[tuple[bytes, bytes]]:
         if self.dev:

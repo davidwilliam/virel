@@ -37,6 +37,8 @@ class CompiledPage:
     # Filename of the external page module (locale-suffixed when the app
     # registers message catalogs).
     js_module: str = ""
+    # render="stream" pages: resources whose data flushes after the shell.
+    streamed_resources: list = field(default_factory=list)
 
 
 def compile_page(page: Page, params: dict[str, Any] | None = None,
@@ -46,6 +48,7 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
     elements._reset_page_modules()
     with TraceContext() as ctx:
         ctx.locale = locale
+        ctx.stream_ssr = page.render == "stream"
         kwargs = dict(params or {})
         try:
             root = page.fn(**kwargs)
@@ -109,11 +112,11 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
         needs_request_render = (
             any(r.server_render for r in ctx.resources.values())
             or ctx.uses_request_context
-            # hybrid: server-rendered on every request, selectively hydrated.
-            or page.render == "hybrid"
+            # hybrid/stream: server-rendered on every request.
+            or page.render in ("hybrid", "stream")
         )
         render_mode = _resolve_render_mode(page, js, actions_used)
-        if needs_request_render and render_mode != "hybrid":
+        if needs_request_render and render_mode not in ("hybrid", "stream"):
             render_mode = "server"
 
         from .registry import active_registry as _registry
@@ -144,6 +147,10 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
             needs_request_render=needs_request_render,
             inline_scripts=inline_scripts,
             js_module=js_module,
+            streamed_resources=[
+                {"id": r.id, "action": r.action.name, "args": r.stream_args}
+                for r in ctx.resources.values() if r.streamed_ssr
+            ],
         )
 
 

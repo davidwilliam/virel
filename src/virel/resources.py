@@ -115,13 +115,26 @@ class Resource:
 
         initial_value: Any = None
         initial_error: Any = None
-        if server_render:
+        # On a render="stream" page, server-rendered resources do not block
+        # the response: the shell flushes first and the data streams in as
+        # inline data blocks the runtime picks up (SPEC 9.6).
+        self.streamed_ssr = bool(server_render
+                                 and getattr(ctx, "stream_ssr", False))
+        loaded = False
+        if server_render and not self.streamed_ssr:
             env = {name: state.initial for name, state in ctx.states.items()}
             for name, derived in ctx.derived.items():
                 env[name] = derived.expr.evaluate(env)
             initial_value, initial_error = self._run_action(env)
+            loaded = True
+        if self.streamed_ssr:
+            env = {name: state.initial for name, state in ctx.states.items()}
+            for name, derived in ctx.derived.items():
+                env[name] = derived.expr.evaluate(env)
+            self.stream_args = {k: v.evaluate(env)
+                                for k, v in self.params.items()}
         self.value_state = State(initial_value)
-        self.loading = State(not server_render)
+        self.loading = State(not loaded)
         self.error = State(initial_error)
         ctx.resources[self.id] = self
 
@@ -179,6 +192,8 @@ class Resource:
             parts.append(f"retry: {self.retry}")
         if self.streaming:
             parts.append("stream: true")
+        if self.streamed_ssr:
+            parts.append('ssr: "streamed"')
         if self.params:
             parts.append(f"params: () => ({DictExpr(self.params).js()})")
         return f'$.resource("{self.id}", {{ {", ".join(parts)} }});'

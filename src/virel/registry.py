@@ -416,10 +416,11 @@ def page(path: str, render: str = "auto",
          guard: Callable[..., Any] | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     if not path.startswith("/"):
         raise VirelCompileError(f"Route path {path!r} must start with '/'.")
-    if render not in ("auto", "static", "server", "client", "hybrid"):
+    if render not in ("auto", "static", "server", "client", "hybrid",
+                      "stream"):
         raise VirelCompileError(
-            f"render={render!r} is not a rendering mode. "
-            "Use 'auto', 'static', 'server', 'client', or 'hybrid'."
+            f"render={render!r} is not a rendering mode. Use 'auto', "
+            "'static', 'server', 'client', 'hybrid', or 'stream'."
         )
 
     def decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
