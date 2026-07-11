@@ -223,8 +223,8 @@ class VirelASGIApp:
             if "/" in name or name not in ("InterVariable.woff2",):
                 await self._send_text(send, 404, "not found")
                 return
-            data = _resources.files("virel.assets").joinpath(
-                "fonts", name).read_bytes()
+            # Single-segment joins only: multi-segment joinpath needs 3.12.
+            data = (_resources.files("virel.assets") / "fonts" / name).read_bytes()
             await self._send_bytes(send, 200, data, "font/woff2",
                                    extra=[(b"cache-control",
                                            b"public, max-age=31536000, immutable")])

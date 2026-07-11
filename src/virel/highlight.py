@@ -85,7 +85,9 @@ def _python(code: str) -> list[TokenSpan]:
 def _classify(kind: int, text: str, previous: str | None) -> str:
     if kind == tokenize.COMMENT:
         return "com"
-    if kind in (tokenize.STRING, tokenize.FSTRING_START,
+    # f-string part tokens exist only on Python 3.12+.
+    if kind in (tokenize.STRING,
+                getattr(tokenize, "FSTRING_START", -1),
                 getattr(tokenize, "FSTRING_MIDDLE", -1),
                 getattr(tokenize, "FSTRING_END", -1)):
         return "str"
