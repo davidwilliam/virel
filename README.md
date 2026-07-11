@@ -470,8 +470,17 @@ builtins (`len`, `str`, `int`, `float`, `bool`, `abs`, `min`, `max`,
 `@ui.client` functions and server actions. Anything outside it is a build
 error that names the nearest replacement.
 
-Not implemented yet: right-to-left layout support and locale-aware
-collation.
+The programming model from the specification's section 8 is now complete:
+components, reactive state with persistence and URL adapters, effects,
+control flow, execution zones (client, server, build, shared), context,
+resources with caching, retry, invalidation, and streaming, server actions
+with optimistic mutation, idempotency, uploads, and downloads, model-driven
+forms, routing with layouts, guards, and typed parameters, error
+boundaries, and structured streaming.
+
+Not implemented yet: right-to-left layout support, locale-aware collation,
+the data grid and visualization adapters, the AI component package, and
+observability.
 
 ## License
 
