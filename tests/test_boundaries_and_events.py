@@ -130,3 +130,19 @@ def test_server_encodes_dict_chunks_as_json_lines():
     lines = [json.loads(line) for line in response.text.strip().splitlines()]
     assert lines == [{"kind": "progress", "value": 40},
                      {"kind": "progress", "value": 100}]
+
+
+def test_boundary_isolates_server_rendering_failures():
+    @ui.page("/")
+    def page():
+        broken = ui.state(None)
+        return ui.Page(
+            ui.Text("page intact"),
+            ui.ErrorBoundary(ui.Text(ui.length(broken))),
+        )
+
+    result = compile_page(active_registry().pages["/"])
+    # The page renders; the broken subtree shows its fallback instead.
+    assert "page intact" in result.html
+    assert 'class="v-boundary-fallback" style="display:contents"' in result.html
+    assert "Something went wrong" in result.html

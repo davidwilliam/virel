@@ -8,7 +8,8 @@ _TABS = ["overview", "runs", "settings"]
 
 
 @ui.page("/projects/{project_id}")
-def project_page(project_id: str, tab: str = "overview") -> ui.Node:
+def project_page(project_id: str, tab: str = "overview",
+                 limit: int = 3) -> ui.Node:
     if tab not in _TABS:
         tab = "overview"
     return ui.Page(
@@ -28,9 +29,10 @@ def project_page(project_id: str, tab: str = "overview") -> ui.Node:
                 ),
                 ui.Card(
                     ui.Text(f"This page was server-rendered for project "
-                            f"'{project_id}' with the '{tab}' tab selected. "
-                            "Path and query parameters map to typed Python "
-                            "function arguments."),
+                            f"'{project_id}' with the '{tab}' tab selected "
+                            f"showing {limit} runs. Path and query "
+                            "parameters map to typed Python function "
+                            "arguments; try ?limit=5."),
                 ),
             ),
         ),

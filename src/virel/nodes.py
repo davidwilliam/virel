@@ -442,10 +442,28 @@ class Emitter:
             vid = self.assign_id()
             outer = self.bindings
             self.bindings = []
-            content_html = self.emit_children(node.content)
-            captured = self.bindings
+            # A boundary isolates server-side rendering failures too: the
+            # fallback renders in place of the broken content and no client
+            # bindings are emitted for the failed subtree.
+            try:
+                content_html = self.emit_children(node.content)
+                captured = self.bindings
+                failed = False
+            except Exception:
+                content_html = ""
+                captured = []
+                failed = True
             self.bindings = outer
             fallback_html = self.emit_children(node.fallback)
+            if failed:
+                return (
+                    f'<div data-v="{vid}" class="v-boundary" '
+                    f'style="display:contents">'
+                    f'<div class="v-boundary-content" style="display:none">'
+                    f"</div>"
+                    f'<div class="v-boundary-fallback" '
+                    f'style="display:contents">{fallback_html}</div></div>'
+                )
             body = " ".join(captured)
             self.bindings.append(
                 f'$.boundary("{vid}", () => {{ {body} }});')

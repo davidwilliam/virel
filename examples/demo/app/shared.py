@@ -16,6 +16,7 @@ def app_nav() -> ui.Node:
         ui.Link("Invite", to="/invite"),
         ui.Link("Components", to="/components"),
         ui.Link("Runs", to="/runs"),
+        ui.Link("Files", to="/files"),
         ui.Link("Stream", to="/stream"),
         ui.Link("Widgets", to="/widgets"),
         ui.Link("Settings", to="/settings"),

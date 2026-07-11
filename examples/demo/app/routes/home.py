@@ -4,6 +4,12 @@ from virel import ui
 
 from ..shared import shell
 
+
+@ui.build
+def library_size() -> int:
+    """Runs once per build in CPython (SPEC 8.4)."""
+    return sum(1 for name in ui.__all__ if name[0].isupper())
+
 _SNIPPET = '''@ui.page("/")
 def home() -> ui.Node:
     count = ui.state(0)
@@ -31,7 +37,7 @@ def home() -> ui.Node:
         shell(
             ui.Stack(
                 ui.Hero(
-                    eyebrow=ui.Badge("Developer preview", intent="primary"),
+                    eyebrow=ui.Badge(f"Developer preview - {library_size()} components", intent="primary"),
                     title="Professional interfaces, written in Python",
                     subtitle="Typed, declarative Python in; fast, accessible, "
                              "browser-native HTML, CSS, and JavaScript out. "
@@ -76,4 +82,5 @@ def home() -> ui.Node:
         ),
         title="Virel Demo",
         meta={"description": "Virel demonstration application."},
+        canonical="https://github.com/davidwilliam/virel",
     )

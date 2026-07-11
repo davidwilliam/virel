@@ -69,16 +69,17 @@ virel dev
 
 | Route | What it shows |
 |---|---|
-| `/` | Static landing page with a highlighted code sample |
-| `/counter` | Local state, derived values, conditional rendering |
-| `/search` | Two-way input binding, `ui.derived`, `ui.When` |
-| `/invite` | Model-driven form with server revalidation and field errors |
-| `/components` | Gallery: tabs, dialog, switches, tables, icons, and more |
-| `/runs` | Resource-backed list: loading states, filtering, refresh |
-| `/stream` | Streaming server action rendered incrementally |
+| `/` | Static landing, highlighted code, canonical URL, build-time data |
+| `/counter` | Local state persisted across reloads, derived values |
+| `/search` | URL-synchronized state, effects, a shared function |
+| `/invite` | Model-driven form, server revalidation, idempotent action |
+| `/components` | Full component gallery, islands, error boundaries |
+| `/runs` | Streamed server rendering, cached resource, optimistic actions |
+| `/files` | Multipart upload with progress, file download |
+| `/stream` | Text streams, structured events, SSE, a WebSocket channel |
 | `/widgets` | Web component bound via a generated typed binding |
-| `/settings` | Sidebar shell, request context from a guard |
-| `/projects/{id}` | Server-rendered dynamic route with query parameters |
+| `/settings` | Nested layout, sidebar shell, request context from a guard |
+| `/projects/{id}` | Dynamic route with typed query parameters |
 
 The invite button stays disabled until you type an email address. That check
 runs in the browser; the server revalidates on submit. The stream page reads
@@ -469,6 +470,13 @@ builtins (`len`, `str`, `int`, `float`, `bool`, `abs`, `min`, `max`,
 `round`), assignments, `if`/`elif`/`else`, `for` over lists, and calls to
 `@ui.client` functions and server actions. Anything outside it is a build
 error that names the nearest replacement.
+
+The rendering architecture from the specification's section 9 is complete:
+the compiler pipeline with hashed assets, the versioned IR, the signals
+runtime, the ASGI server with mounting and middleware, HTTP, SSE, and
+WebSocket transports, all six rendering modes including progressive
+streaming, hydration islands with five load strategies, and precise static
+build failures.
 
 The programming model from the specification's section 8 is now complete:
 components, reactive state with persistence and URL adapters, effects,

@@ -7,7 +7,8 @@ from ..shared import shell
 
 @ui.page("/counter")
 def counter() -> ui.Node:
-    count = ui.state(0)
+    # persist="counter" keeps the value across reloads.
+    count = ui.state(0, persist="counter")
     doubled = ui.derived(lambda: count * 2)
 
     return ui.Page(

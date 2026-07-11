@@ -36,11 +36,15 @@ async def archive_run(name: str, query: str = "") -> list[dict]:
     return await list_runs(query)
 
 
-@ui.page("/runs")
+@ui.page("/runs", render="stream")
 def runs_page() -> ui.Node:
     query = ui.state("")
     selected = ui.state("")
-    runs = ui.resource(list_runs, params={"query": query})
+    # Streamed server rendering: the shell flushes immediately and the
+    # first data set arrives as an inline block, then filtering refetches
+    # client-side with a 30 second stale-while-revalidate cache and retry.
+    runs = ui.resource(list_runs, params={"query": query},
+                       server_render=True, stale_for=30, retry=2)
 
     def run_row(run) -> ui.Node:
         return ui.Card(
@@ -58,7 +62,8 @@ def runs_page() -> ui.Node:
                           emphasis="ghost",
                           on_click=lambda: archive_run.call(
                               {"name": run.name, "query": query},
-                              into=runs.value)),
+                              into=runs.value,
+                              optimistic=(selected, ""))),
                 gap=4,
             ),
             gap=0,
@@ -70,7 +75,8 @@ def runs_page() -> ui.Node:
                 ui.Row(
                     ui.Heading("Evaluation runs", level=1),
                     ui.Spacer(),
-                    ui.Button("Refresh", on_click=lambda: runs.refresh()),
+                    ui.Button("Refresh",
+                              on_click=lambda: ui.invalidate(list_runs)),
                     gap=4,
                 ),
                 ui.TextField(query, label="Filter",

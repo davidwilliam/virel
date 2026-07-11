@@ -16,6 +16,20 @@ def load_session(request: ui.Request) -> None:
 _TABS = ("profile", "workspace", "billing")
 
 
+@ui.layout("/settings")
+def settings_layout(content: ui.Node) -> ui.Node:
+    """Nested layout (SPEC 8.10): every /settings page renders inside the
+    sidebar shell without repeating it."""
+    sidebar = ui.Nav(
+        ui.Link("Profile", to="/settings"),
+        ui.Link("Workspace", to="/settings?tab=workspace"),
+        ui.Link("Billing", to="/settings?tab=billing"),
+        ui.Link("Members", to="/invite"),
+        label="Settings",
+    )
+    return shell(content, sidebar=sidebar)
+
+
 @ui.page("/settings", guard=load_session)
 def settings(tab: str = "profile") -> ui.Node:
     if tab not in _TABS:
@@ -24,16 +38,7 @@ def settings(tab: str = "profile") -> ui.Node:
     display_name = ui.state(user["name"])
     saved = ui.state("")
 
-    sidebar = ui.Nav(
-        ui.Link("Profile", to="/settings"),
-        ui.Link("Workspace", to="/settings?tab=workspace"),
-        ui.Link("Billing", to="/settings?tab=billing"),
-        ui.Link("Members", to="/invite"),
-        label="Settings",
-    )
-
     return ui.Page(
-        shell(
             ui.Section(
                 ui.Heading(tab.title(), level=1),
                 ui.Text(f"Signed in as {user['name']} ({user['email']}). "
@@ -53,7 +58,5 @@ def settings(tab: str = "profile") -> ui.Node:
                     gap=4,
                 ),
             ),
-            sidebar=sidebar,
-        ),
         title="Settings — Virel Demo",
     )

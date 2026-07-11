@@ -18,7 +18,7 @@ class InviteInput:
 _members: list[InviteInput] = []  # demo store; a real app uses a database
 
 
-@ui.server
+@ui.server(idempotent=True)
 async def invite_member(data: InviteInput) -> str:
     # The framework has already validated the payload against InviteInput;
     # only domain rules remain.

@@ -174,6 +174,20 @@ def _patterns_tab() -> ui.Node:
                 "In the browser. The server holds no per-user objects."),
         }),
         ui.Card(
+            ui.Heading("Error boundary", level=3),
+            ui.Text("The left panel renders cleanly; the right panel's "
+                    "content fails, so its fallback renders instead of a "
+                    "broken region.", muted=True),
+            ui.Grid(
+                ui.ErrorBoundary(ui.Alert("This subtree bound cleanly.",
+                                          intent="success")),
+                ui.ErrorBoundary(_broken_panel()),
+                columns={"base": 1, "md": 2},
+                gap=4,
+            ),
+            gap=3,
+        ),
+        ui.Card(
             ui.Heading("Hydration island", level=3),
             ui.Text("This block server-renders like everything else, but its "
                     "JavaScript activates only when it scrolls into view.",
@@ -190,6 +204,12 @@ def _patterns_tab() -> ui.Node:
         ),
         gap=6,
     )
+
+
+def _broken_panel() -> ui.Node:
+    # length of null throws in the browser at bind time, on purpose.
+    broken = ui.state(None)
+    return ui.Text(ui.length(broken))
 
 
 def _icons_tab() -> ui.Node:
