@@ -77,7 +77,7 @@ from .nodes import Node, When
 from .registry import (Request, build, client, component, deny, layout,
                        page,
                        redirect, server, shared, use_guard,
-                       web_component)
+                       use_middleware, web_component)
 from .theme import FontFace, GoogleFont, Theme
 from . import testing as test
 
@@ -106,7 +106,8 @@ __all__ = [
     # programming model
     "page", "layout", "component", "server", "client", "shared", "build",
     "web_component",
-    "use_guard", "redirect", "deny", "Request", "context", "Context",
+    "use_guard", "use_middleware", "redirect", "deny", "Request",
+    "context", "Context",
     "state", "derived", "effect", "cond", "not_", "length", "set_from_event",
     "use_theme", "Theme", "FontFace", "GoogleFont", "Node", "VirelCompileError", "test",
     "messages", "t",

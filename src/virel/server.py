@@ -898,10 +898,18 @@ def create_asgi_app(registry: AppRegistry | None = None, *, dev: bool = False,
                     public_dir: Path | None = None,
                     watch_dirs: list[Path] | None = None,
                     allowed_origins: list[str] | None = None,
-                    max_body_bytes: int = 1_000_000) -> VirelASGIApp:
-    return VirelASGIApp(registry, dev=dev, public_dir=public_dir,
-                        watch_dirs=watch_dirs, allowed_origins=allowed_origins,
-                        max_body_bytes=max_body_bytes)
+                    max_body_bytes: int = 1_000_000,
+                    middleware: list | None = None):
+    app: Any = VirelASGIApp(registry, dev=dev, public_dir=public_dir,
+                            watch_dirs=watch_dirs,
+                            allowed_origins=allowed_origins,
+                            max_body_bytes=max_body_bytes)
+    # Registry middleware first (outermost), then call-site middleware.
+    wrappers = list((registry or active_registry()).middleware)
+    wrappers.extend(middleware or [])
+    for wrapper in reversed(wrappers):
+        app = wrapper(app)
+    return app
 
 
 # ---------------------------------------------------------------------------

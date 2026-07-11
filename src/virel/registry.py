@@ -379,6 +379,8 @@ class AppRegistry:
         self.build_functions: dict[str, Any] = {}
         # Nested layouts by path prefix (@ui.layout).
         self.layouts: dict[str, Callable[..., Any]] = {}
+        # ASGI middleware wrappers (app -> app), outermost first.
+        self.middleware: list[Callable[[Any], Any]] = []
 
     def match_page(self, path: str) -> tuple[Page, dict[str, str]] | None:
         page = self.pages.get(path)
@@ -460,6 +462,16 @@ def layout(prefix: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         return fn
 
     return decorate
+
+
+def use_middleware(wrapper: Callable[[Any], Any]) -> None:
+    """Register ASGI middleware (SPEC 9.4): a callable taking an ASGI app
+    and returning a wrapped ASGI app. Wrappers registered first sit
+    outermost. Any standard ASGI middleware composes:
+
+        ui.use_middleware(lambda app: SomeASGIMiddleware(app, option=1))
+    """
+    active_registry().middleware.append(wrapper)
 
 
 def use_guard(fn: Callable[..., Any]) -> None:
