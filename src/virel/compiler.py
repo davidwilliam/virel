@@ -172,11 +172,20 @@ def _emit_page_js(ctx: TraceContext, emitter: Emitter, dev: bool = False) -> str
     body = ["const S = {};"]
     for name, state in ctx.states.items():
         body.append(f"S.{name} = $.signal({_js_json(state.initial)});")
+        if state.persist:
+            body.append(f'$.persist(S.{name}, {json.dumps(state.persist)});')
+        if state.url:
+            body.append(f'$.urlSync(S.{name}, {json.dumps(state.url)});')
     for name, derived in ctx.derived.items():
         body.append(f"S.{name} = $.computed(() => {derived.expr.js()});")
     for res in ctx.resources.values():
         body.append(res.binding_js())
     body.extend(emitter.bindings)
+    for eff in ctx.effects:
+        deps = ", ".join(f"() => {d.js()}" for d in eff.dependencies)
+        immediate = "true" if eff.run_on_mount else "false"
+        body.append(f"$.watch([{deps}], () => {{ {eff.handler.js_body()} }}, "
+                    f"{immediate});")
     if active_registry().client_nav:
         body.append("$.router();")
     if dev:

@@ -51,6 +51,60 @@ export function disposeMount() {
   for (const key in resourceRegistry) delete resourceRegistry[key];
 }
 
+// Run a callback when any dependency changes. Dependencies are read
+// tracked; the body runs untracked so its own reads and writes never
+// re-subscribe the watcher.
+export function watch(deps, run, immediate) {
+  let first = true;
+  effect(() => {
+    for (const dep of deps) dep();
+    if (first) {
+      first = false;
+      if (!immediate) return;
+    }
+    const previous = activeEffect;
+    activeEffect = null;
+    try {
+      run();
+    } finally {
+      activeEffect = previous;
+    }
+  });
+}
+
+// Persist a signal to localStorage under a namespaced key.
+export function persist(sig, key) {
+  const storageKey = "virel:" + key;
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored !== null) sig.set(JSON.parse(stored));
+  } catch {}
+  watch([() => sig.get()], () => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(sig.get()));
+    } catch {}
+  }, false);
+}
+
+// Keep a signal synchronized with a URL query parameter.
+export function urlSync(sig, param) {
+  const initial = sig.get();
+  const params = new URLSearchParams(location.search);
+  if (params.has(param)) {
+    const raw = params.get(param);
+    sig.set(typeof initial === "number" ? Number(raw) : raw);
+  }
+  watch([() => sig.get()], () => {
+    const value = sig.get();
+    const next = new URLSearchParams(location.search);
+    if (value === initial || value === "" || value == null) next.delete(param);
+    else next.set(param, String(value));
+    const query = next.toString();
+    history.replaceState(history.state, "",
+                         location.pathname + (query ? "?" + query : ""));
+  }, false);
+}
+
 export function computed(fn) {
   const inner = signal(undefined);
   effect(() => inner.set(fn()));

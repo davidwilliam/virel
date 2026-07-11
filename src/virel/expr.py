@@ -47,6 +47,7 @@ class TraceContext:
         self.resources: dict[str, Any] = {}   # id -> Resource
         self.locale: str | None = None         # active locale for ui.t
         self.uses_request_context = False      # page read a per-request value
+        self.effects: list[Any] = []           # ui.effect registrations
         self._counter = 0
 
     def next_id(self, prefix: str) -> str:
@@ -595,11 +596,16 @@ def parse_sentinels(text: str) -> "Expr | str":
 class State(StateRead):
     """Browser-local reactive state (``ui.state``)."""
 
-    def __init__(self, initial: Any, name: str | None = None) -> None:
+    def __init__(self, initial: Any, name: str | None = None,
+                 persist: str | None = None, url: str | None = None) -> None:
         ctx = current_context()
         lift(initial)  # validate serializability
         super().__init__(name or ctx.next_id("s"))
         self.initial = initial
+        # Optional adapters: persist to localStorage under a key, or keep
+        # the value synchronized with a URL query parameter.
+        self.persist = persist
+        self.url = url
         ctx.states[self.name] = self
 
     def set(self, value: Any) -> None:

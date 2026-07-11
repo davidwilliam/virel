@@ -262,6 +262,36 @@ def unsafe_html(markup: str, *, reason: str) -> RawHTML:
     return RawHTML(markup, reason)
 
 
+class EffectDef:
+    def __init__(self, handler: Any, dependencies: list[Expr],
+                 run_on_mount: bool) -> None:
+        self.handler = handler
+        self.dependencies = dependencies
+        self.run_on_mount = run_on_mount
+
+
+def effect(fn: Callable[[], None], *, dependencies: list[Any],
+           run_on_mount: bool = False) -> None:
+    """Run a handler in the browser whenever a dependency changes
+    (SPEC 8.5). Effects never run during server rendering. Dependencies
+    are explicit: a list of states or derived values."""
+    from .expr import current_context
+    if not dependencies:
+        raise VirelCompileError(
+            "ui.effect requires dependencies=[...] naming at least one "
+            "state or derived value."
+        )
+    deps = [lift(d) for d in dependencies]
+    for dep in deps:
+        if not hasattr(dep, "name"):
+            raise VirelCompileError(
+                "ui.effect dependencies must be ui.state or ui.derived "
+                "values."
+            )
+    current_context().effects.append(
+        EffectDef(_handler(fn), deps, run_on_mount))
+
+
 def set_from_event(state: State, path: str = "target.value") -> Handler:
     """An event handler that writes an event property into a state.
 

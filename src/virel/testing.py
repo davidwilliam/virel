@@ -73,6 +73,7 @@ class TestView:
                 self.states = dict(ctx.states)
                 self.derived = dict(ctx.derived)
                 self.resources = dict(ctx.resources)
+                self.effects = list(ctx.effects)
             self.env: dict[str, Any] = {
                 name: state.initial for name, state in self.states.items()
             }
@@ -98,10 +99,29 @@ class TestView:
 
     def _run_handler(self, handler: Any, ev: Any = None,
                      scope: dict[str, Any] | None = None) -> None:
+        before = {
+            id(eff): [dep.evaluate(self.eval_env()) for dep in eff.dependencies]
+            for eff in self.effects
+        }
         working = self.eval_env() | (scope or {})
         handler.execute(working, ev)
         for name in self.states:
             self.env[name] = working[name]
+        # Effects fire when their dependencies changed, like the browser.
+        for _ in range(5):
+            fired = False
+            for eff in self.effects:
+                now = [dep.evaluate(self.eval_env())
+                       for dep in eff.dependencies]
+                if now != before[id(eff)]:
+                    before[id(eff)] = now
+                    inner = self.eval_env() | (scope or {})
+                    eff.handler.execute(inner, None)
+                    for name in self.states:
+                        self.env[name] = inner[name]
+                    fired = True
+            if not fired:
+                break
 
     # -- queries -----------------------------------------------------------------
 

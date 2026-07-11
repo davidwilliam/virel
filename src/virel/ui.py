@@ -61,7 +61,7 @@ from .elements import (
     unsafe_html,
 )
 from .context import Context, context
-from .elements import Each, Island, Suspense
+from .elements import Each, Island, Suspense, effect
 from .formatting import (format_currency, format_date, format_number,
                          format_percent)
 from .forms import Form, FormActions, SubmitButton, form
@@ -75,10 +75,13 @@ from .theme import FontFace, GoogleFont, Theme
 from . import testing as test
 
 
-def state(initial: Any) -> State:
+def state(initial: Any, *, persist: str | None = None,
+          url: str | None = None) -> State:
     """Browser-local reactive state (SPEC 8.2). Lives in the browser only;
-    the server never holds it."""
-    return State(initial)
+    the server never holds it. With ``persist="key"`` the value survives
+    reloads in localStorage; with ``url="q"`` it stays synchronized with a
+    URL query parameter."""
+    return State(initial, persist=persist, url=url)
 
 
 def derived(fn: Callable[[], Any]) -> Derived:
@@ -96,7 +99,7 @@ __all__ = [
     # programming model
     "page", "component", "server", "client", "web_component",
     "use_guard", "redirect", "deny", "Request", "context", "Context",
-    "state", "derived", "cond", "not_", "length", "set_from_event",
+    "state", "derived", "effect", "cond", "not_", "length", "set_from_event",
     "use_theme", "Theme", "FontFace", "GoogleFont", "Node", "VirelCompileError", "test",
     "messages", "t",
     "format_number", "format_currency", "format_percent", "format_date",
