@@ -281,13 +281,37 @@ const resourceRegistry = {};
 const resourceCache = new Map();
 
 export function resource(id, spec) {
-  const state = { key: null, inflight: false };
+  const state = { key: null, inflight: false, controller: null };
   let hydrated = spec.initial;
   const cacheKey = (key) => spec.action + "|" + key;
 
+  const runStream = (args) => {
+    state.controller?.abort();
+    const controller = new AbortController();
+    state.controller = controller;
+    spec.value.set("");
+    spec.loading.set(true);
+    spec.error.set(null);
+    stream(spec.action, args,
+           (chunk) => spec.value.set((spec.value.get() || "") + chunk),
+           () => spec.loading.set(false),
+           { signal: controller.signal })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          spec.error.set(String(err.message || err));
+          spec.loading.set(false);
+        }
+      });
+  };
+
   const run = (args, force) => {
+    if (spec.stream) return runStream(args);
     const key = JSON.stringify(args);
     if (!force && state.inflight && state.key === key) return;
+    // Cancel the superseded request instead of letting it race.
+    state.controller?.abort();
+    const controller = new AbortController();
+    state.controller = controller;
     state.key = key;
 
     let background = false;
@@ -306,23 +330,32 @@ export function resource(id, spec) {
       spec.loading.set(true);
       spec.error.set(null);
     }
-    action(spec.action, args)
-      .then((result) => {
-        resourceCache.set(cacheKey(key), { value: result, time: Date.now() });
-        if (state.key === key) {
-          spec.value.set(result);
-          spec.error.set(null);
-        }
-      })
-      .catch((err) => {
-        if (state.key === key) spec.error.set(String(err.message || err));
-      })
-      .finally(() => {
-        if (state.key === key) {
-          state.inflight = false;
-          spec.loading.set(false);
-        }
-      });
+    const attempt = (remaining) => {
+      action(spec.action, args, { signal: controller.signal })
+        .then((result) => {
+          resourceCache.set(cacheKey(key), { value: result, time: Date.now() });
+          if (state.key === key) {
+            spec.value.set(result);
+            spec.error.set(null);
+            state.inflight = false;
+            spec.loading.set(false);
+          }
+        })
+        .catch((err) => {
+          if (err.name === "AbortError") return;
+          if (remaining > 0) {
+            setTimeout(() => attempt(remaining - 1),
+                       300 * ((spec.retry ?? 0) - remaining + 1));
+            return;
+          }
+          if (state.key === key) {
+            spec.error.set(String(err.message || err));
+            state.inflight = false;
+            spec.loading.set(false);
+          }
+        });
+    };
+    attempt(spec.retry ?? 0);
   };
 
   const currentArgs = () => (spec.params ? spec.params() : {});
@@ -347,13 +380,29 @@ export function resource(id, spec) {
     run(args, false);
   });
 
-  resourceRegistry[id] = () => run(currentArgs(), true);
+  resourceRegistry[id] = {
+    action: spec.action,
+    refresh: () => run(currentArgs(), true),
+  };
 }
 
 export function refreshResource(id) {
-  const refresh = resourceRegistry[id];
-  if (refresh) refresh();
+  const entry = resourceRegistry[id];
+  if (entry) entry.refresh();
   else console.warn(`virel: unknown resource ${id}`);
+}
+
+// Drop every cached value for an action and refetch the live resources
+// bound to it.
+export function invalidate(actionName) {
+  for (const key of [...resourceCache.keys()]) {
+    if (key.startsWith(actionName + "|")) resourceCache.delete(key);
+  }
+  for (const id in resourceRegistry) {
+    if (resourceRegistry[id].action === actionName) {
+      resourceRegistry[id].refresh();
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -736,11 +785,23 @@ export function themeToggle(id) {
  * Server actions: typed HTTP RPC (SPEC 8.8). JSON in, JSON out.
  * ------------------------------------------------------------------ */
 
-export async function action(name, args) {
-  const response = await fetch(`/_virel/action/${name}`, {
+let transport = (url, options) => fetch(url, options);
+
+// Replace the HTTP transport (testing, custom auth headers, tunnels).
+export function setTransport(fn) {
+  transport = fn;
+}
+
+export async function action(name, args, options) {
+  const headers = { "Content-Type": "application/json" };
+  if (options?.idempotencyKey) {
+    headers["Idempotency-Key"] = options.idempotencyKey;
+  }
+  const response = await transport(`/_virel/action/${name}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(args || {}),
+    signal: options?.signal,
   });
   const payload = await response.json();
   if (!response.ok) {
@@ -751,11 +812,12 @@ export async function action(name, args) {
   return payload.result;
 }
 
-export async function stream(name, args, onChunk, onDone) {
-  const response = await fetch(`/_virel/action/${name}`, {
+export async function stream(name, args, onChunk, onDone, options) {
+  const response = await transport(`/_virel/action/${name}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(args || {}),
+    signal: options?.signal,
   });
   if (!response.ok) {
     let message = `stream ${name} failed (${response.status})`;

@@ -297,9 +297,16 @@ class FnCompiler:
             raise self.error(node, "Expression statements must be calls "
                                    "(state.set, action.call, ...).")
         call = node
+        if isinstance(call.func, ast.Name):
+            resolved = self._resolve(call.func.id)
+            if getattr(resolved, "__virel_op__", None) == "invalidate":
+                return OpStmt(self._compile_invalidate(call))
         if isinstance(call.func, ast.Attribute):
             target = self._try_resolve_node(call.func.value)
             attr = call.func.attr
+            if getattr(getattr(target, attr, None), "__virel_op__", None) \
+                    == "invalidate":
+                return OpStmt(self._compile_invalidate(call))
             from .registry import ServerAction
             from .resources import RefreshOp, Resource
             if _is_reactive(target) and attr in ("set", "update"):
@@ -319,6 +326,16 @@ class FnCompiler:
             "calls (action.call/action.stream), and resource.refresh() may "
             "be used as statements.",
         )
+
+    def _compile_invalidate(self, call: ast.Call) -> Any:
+        from .registry import ServerAction
+        from .resources import InvalidateOp
+        if len(call.args) != 1 or call.keywords:
+            raise self.error(call, "ui.invalidate takes a single server action.")
+        target = self._try_resolve_node(call.args[0])
+        if not isinstance(target, ServerAction):
+            raise self.error(call, "ui.invalidate takes a @ui.server action.")
+        return InvalidateOp(target.name)
 
     def _compile_state_mutation(self, call: ast.Call, state: Any, attr: str) -> SetOp:
         if attr == "set":

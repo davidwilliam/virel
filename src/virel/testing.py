@@ -105,6 +105,10 @@ class TestView:
         }
         working = self.eval_env() | (scope or {})
         handler.execute(working, ev)
+        for action_name in working.pop("__invalidated__", []):
+            for res in self.resources.values():
+                if res.action.name == action_name:
+                    res.fetch_into(working)
         for name in self.states:
             self.env[name] = working[name]
         # Effects fire when their dependencies changed, like the browser.

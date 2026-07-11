@@ -521,6 +521,20 @@ class VirelASGIApp:
             await self._stream_action(action, kwargs, send)
             return
 
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1")
+                   for k, v in scope.get("headers", [])}
+        idempotency_key = headers.get("idempotency-key")
+        if action.idempotent and idempotency_key:
+            replay = _idempotency_lookup(action.name, idempotency_key)
+            if replay is not None:
+                await self._send_text(send, 200, replay,
+                                      content_type="application/json; charset=utf-8",
+                                      extra=_action_headers(0.0, replayed=True))
+                return
+
+        import time
+        import uuid
+        started = time.perf_counter()
         try:
             result = action.fn(**kwargs)
             if inspect.isawaitable(result):
@@ -529,8 +543,12 @@ class VirelASGIApp:
         except Exception as error:
             await self._send_json(send, 500, {"error": _safe_message(error, self.dev)})
             return
+        duration = time.perf_counter() - started
+        if action.idempotent and idempotency_key:
+            _idempotency_store(action.name, idempotency_key, payload)
         await self._send_text(send, 200, payload,
-                              content_type="application/json; charset=utf-8")
+                              content_type="application/json; charset=utf-8",
+                              extra=_action_headers(duration))
 
     async def _stream_action(self, action: Any, args: dict[str, Any], send: Send) -> None:
         await send({
@@ -624,6 +642,36 @@ async def _iterate_chunks(result: Any) -> AsyncIterator[Any]:
             await asyncio.sleep(0)
     else:
         raise TypeError("streaming action must return a generator")
+
+
+# Idempotency replay: bounded per-process store. Multi-process
+# deployments should back this with a shared cache; the contract is the
+# HTTP header, not this store.
+_IDEMPOTENCY_MAX = 512
+_idempotency_cache: "dict[tuple[str, str], str]" = {}
+
+
+def _idempotency_lookup(action: str, key: str) -> str | None:
+    return _idempotency_cache.get((action, key))
+
+
+def _idempotency_store(action: str, key: str, payload: str) -> None:
+    if len(_idempotency_cache) >= _IDEMPOTENCY_MAX:
+        _idempotency_cache.pop(next(iter(_idempotency_cache)))
+    _idempotency_cache[(action, key)] = payload
+
+
+def _action_headers(duration: float,
+                    replayed: bool = False) -> list[tuple[bytes, bytes]]:
+    import uuid
+    headers = [
+        (b"x-request-id", uuid.uuid4().hex.encode("latin-1")),
+        (b"server-timing",
+         f"action;dur={duration * 1000:.1f}".encode("latin-1")),
+    ]
+    if replayed:
+        headers.append((b"idempotency-replayed", b"true"))
+    return headers
 
 
 class _BodyTooLarge(Exception):

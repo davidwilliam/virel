@@ -49,20 +49,52 @@ class RefreshOp:
         return {"op": "refresh", "resource": self.resource.id}
 
 
+class InvalidateOp:
+    """Handler op: drop cached data for an action and refetch the
+    resources bound to it."""
+
+    def __init__(self, action_name: str) -> None:
+        self.action_name = action_name
+
+    def js(self) -> str:
+        return f'$.invalidate("{self.action_name}");'
+
+    def execute(self, env: dict[str, Any], ev: Any = None) -> None:
+        env.setdefault("__invalidated__", []).append(self.action_name)
+
+    def to_ir(self) -> dict[str, Any]:
+        return {"op": "invalidate", "action": self.action_name}
+
+
+def invalidate(action: Any) -> None:
+    """Inside a handler: clear the cache for a server action and refetch
+    every resource bound to it (SPEC 8.7 invalidation)."""
+    from .registry import ServerAction
+    if not isinstance(action, ServerAction):
+        raise VirelCompileError(
+            "ui.invalidate takes a @ui.server action."
+        )
+    current_recorder().ops.append(InvalidateOp(action.name))
+
+
+invalidate.__virel_op__ = "invalidate"
+
+
 class Resource:
     def __init__(self, action: Any, *, params: dict[str, Any] | None = None,
                  server_render: bool = False,
-                 stale_for: float | None = None) -> None:
+                 stale_for: float | None = None,
+                 retry: int = 0) -> None:
         from .registry import ServerAction
         if not isinstance(action, ServerAction):
             raise VirelCompileError(
                 "ui.resource requires a @ui.server action as its first "
                 "argument."
             )
-        if action.stream_response:
+        if action.stream_response and server_render:
             raise VirelCompileError(
-                f"Server action {action.name!r} streams; bind it with "
-                ".stream(into=...) from a handler instead of ui.resource."
+                "A streaming resource cannot be server-rendered; drop "
+                "server_render=True."
             )
         ctx = current_context()
         self.action = action
@@ -76,6 +108,10 @@ class Resource:
             raise VirelCompileError("stale_for must be a non-negative number "
                                     "of seconds.")
         self.stale_for = stale_for
+        if retry < 0:
+            raise VirelCompileError("retry must be a non-negative attempt count.")
+        self.retry = retry
+        self.streaming = action.stream_response
 
         initial_value: Any = None
         initial_error: Any = None
@@ -106,10 +142,14 @@ class Resource:
     # -- execution (server rendering and tests) -----------------------------------
 
     def _run_action(self, env: dict[str, Any]) -> tuple[Any, Any]:
+        from .expr import _collect_stream
         from .registry import to_jsonable
         args = {k: v.evaluate(env) for k, v in self.params.items()}
         try:
             kwargs = self.action.prepare(args)
+            if self.streaming:
+                chunks = _collect_stream(self.action.fn(**kwargs))
+                return "".join(str(c) for c in chunks), None
             result = self.action.fn(**kwargs)
             if inspect_isawaitable(result):
                 result = _run_coroutine(result)
@@ -135,6 +175,10 @@ class Resource:
         ]
         if self.stale_for is not None:
             parts.append(f"staleFor: {self.stale_for}")
+        if self.retry:
+            parts.append(f"retry: {self.retry}")
+        if self.streaming:
+            parts.append("stream: true")
         if self.params:
             parts.append(f"params: () => ({DictExpr(self.params).js()})")
         return f'$.resource("{self.id}", {{ {", ".join(parts)} }});'
@@ -151,6 +195,7 @@ class Resource:
 
 def resource(action: Any, *, params: dict[str, Any] | None = None,
              server_render: bool = False,
-             stale_for: float | None = None) -> Resource:
+             stale_for: float | None = None,
+             retry: int = 0) -> Resource:
     return Resource(action, params=params, server_render=server_render,
-                    stale_for=stale_for)
+                    stale_for=stale_for, retry=retry)

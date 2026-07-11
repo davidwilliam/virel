@@ -67,7 +67,7 @@ from .formatting import (format_currency, format_date, format_number,
 from .forms import Form, FormActions, SubmitButton, form
 from .i18n import messages, t
 from .icons import Icon, icon_names
-from .resources import Resource, resource
+from .resources import Resource, invalidate, resource
 from .nodes import Node, When
 from .registry import (Request, build, client, component, deny, page,
                        redirect, server, shared, use_guard,
@@ -112,7 +112,7 @@ __all__ = [
     "Heading", "Text", "Code", "Link", "LinkButton", "Image", "List", "Nav",
     "unsafe_html", "When",
     # data loading
-    "resource", "Resource", "Each", "Suspense", "Island",
+    "resource", "Resource", "invalidate", "Each", "Suspense", "Island",
     # forms
     "form", "Form", "FormActions", "SubmitButton",
     # form controls

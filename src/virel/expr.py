@@ -683,24 +683,29 @@ class CallOp:
 
     def __init__(self, action: str, args: dict[str, Expr], into: State | None,
                  error_into: State | None,
-                 optimistic: "tuple[State, Expr] | None" = None) -> None:
+                 optimistic: "tuple[State, Expr] | None" = None,
+                 idempotent: bool = False) -> None:
         self.action, self.args, self.into, self.error_into = action, args, into, error_into
         self.optimistic = optimistic
+        self.idempotent = idempotent
 
     def js(self) -> str:
         js_args = "{" + ", ".join(f"{k}: {v.js()}" for k, v in self.args.items()) + "}"
+        options = (", { idempotencyKey: crypto.randomUUID() }"
+                   if self.idempotent else "")
         then = f".then((r) => S.{self.into.name}.set(r))" if self.into is not None else ""
         if self.error_into is not None:
             on_error = f"S.{self.error_into.name}.set(String(e.message || e));"
         else:
             on_error = "console.error(e);"
         if self.optimistic is None:
-            return f'$.action("{self.action}", {js_args}){then}.catch((e) => {{ {on_error} }});'
+            return (f'$.action("{self.action}", {js_args}{options}){then}'
+                    f".catch((e) => {{ {on_error} }});")
         state, value = self.optimistic
         return (
             f"{{ const __prev = S.{state.name}.get(); "
             f"S.{state.name}.set({value.js()}); "
-            f'$.action("{self.action}", {js_args}){then}'
+            f'$.action("{self.action}", {js_args}{options}){then}'
             f".catch((e) => {{ S.{state.name}.set(__prev); {on_error} }}); }}"
         )
 

@@ -120,11 +120,15 @@ class ServerAction:
     """
 
     def __init__(self, fn: Callable[..., Any], stream: bool,
-                 guard: Callable[..., Any] | None = None) -> None:
+                 guard: Callable[..., Any] | None = None,
+                 idempotent: bool = False) -> None:
         self.fn = fn
         self.name = fn.__name__
         self.stream_response = stream
         self.guard = guard
+        # Idempotent actions replay the stored response when a request
+        # carries an already-seen Idempotency-Key (safe retries).
+        self.idempotent = idempotent
         self.signature = inspect.signature(fn)
         self.is_async = inspect.iscoroutinefunction(fn)
         self.is_async_gen = inspect.isasyncgenfunction(fn)
@@ -192,7 +196,8 @@ class ServerAction:
                 )
             lifted_optimistic = (state, lift(value))
         recorder.ops.append(CallOp(self.name, lifted, into, error_into,
-                                   optimistic=lifted_optimistic))
+                                   optimistic=lifted_optimistic,
+                                   idempotent=self.idempotent))
 
     def stream(self, args: dict[str, Any] | None = None, *, into: State,
                done_set: tuple[State, Any] | None = None) -> None:
@@ -397,9 +402,11 @@ def page(path: str, render: str = "auto",
 
 
 def server(fn: Callable[..., Any] | None = None, *, stream: bool = False,
-           guard: Callable[..., Any] | None = None):
+           guard: Callable[..., Any] | None = None,
+           idempotent: bool = False):
     def decorate(inner: Callable[..., Any]) -> ServerAction:
-        action = ServerAction(inner, stream=stream, guard=guard)
+        action = ServerAction(inner, stream=stream, guard=guard,
+                              idempotent=idempotent)
         active_registry().actions[action.name] = action
         return action
 
