@@ -877,12 +877,14 @@ def ErrorBoundary(*children: Any, fallback: Any = None) -> Node:
     return ErrorBoundaryNode(normalize_children(children), fallback_nodes)
 
 
-def Island(*children: Any, load: str = "visible") -> Node:
+def Island(*children: Any, load: str = "visible",
+           media: str | None = None) -> Node:
     """Defer hydration of a subtree. The content is server-rendered and
     visible immediately; its interactivity activates per the load strategy:
-    immediate, idle, visible, or interaction."""
+    immediate, idle, visible, interaction, or media (with media="(query)",
+    binding when the query matches)."""
     from .nodes import IslandNode
-    return IslandNode(normalize_children(children), load)
+    return IslandNode(normalize_children(children), load, media=media)
 
 
 def ThemeToggle() -> Element:

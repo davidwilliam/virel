@@ -675,12 +675,27 @@ export function boundary(id, bind) {
  * according to the load strategy.
  * ------------------------------------------------------------------ */
 
-export function island(id, strategy, bind) {
+export function island(id, strategy, bind, media) {
   const node = el(id);
   if (!node) return;
   // The island wrapper uses display:contents and has no box of its own;
   // intersection and interaction need a real element.
   const target = node.firstElementChild || node;
+  if (strategy === "media") {
+    const query = window.matchMedia(media);
+    if (query.matches) {
+      bind();
+      return;
+    }
+    const listener = (ev) => {
+      if (ev.matches) {
+        query.removeEventListener("change", listener);
+        bind();
+      }
+    };
+    query.addEventListener("change", listener);
+    return;
+  }
   if (strategy === "idle") {
     const schedule = window.requestIdleCallback || ((fn) => setTimeout(fn, 1));
     schedule(bind);

@@ -109,9 +109,11 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
         needs_request_render = (
             any(r.server_render for r in ctx.resources.values())
             or ctx.uses_request_context
+            # hybrid: server-rendered on every request, selectively hydrated.
+            or page.render == "hybrid"
         )
         render_mode = _resolve_render_mode(page, js, actions_used)
-        if needs_request_render:
+        if needs_request_render and render_mode != "hybrid":
             render_mode = "server"
 
         from .registry import active_registry as _registry

@@ -70,3 +70,31 @@ def test_island_appears_in_ir():
     tree = str(result.ir["tree"])
     assert "'kind': 'island'" in tree
     assert "'load': 'interaction'" in tree
+
+
+def test_hybrid_render_mode_forces_per_request_rendering():
+    @ui.page("/dash", render="hybrid")
+    def dash():
+        count = ui.state(0)
+        return ui.Page(ui.Text(f"{count}"),
+                       ui.Button("Add", on_click=lambda: count.set(1)))
+
+    result = compile_page(active_registry().pages["/dash"])
+    assert result.render_mode == "hybrid"
+    assert result.needs_request_render
+
+
+def test_media_island_strategy():
+    @ui.page("/")
+    def page():
+        n = ui.state(0)
+        return ui.Page(ui.Island(
+            ui.Button("Touch", on_click=lambda: n.set(1)),
+            load="media", media="(max-width: 640px)",
+        ))
+
+    result = compile_page(active_registry().pages["/"])
+    assert '"media", () => {' in result.js
+    assert '"(max-width: 640px)"' in result.js
+    with pytest.raises(VirelCompileError, match="media="):
+        ui.Island(ui.Text("x"), load="media")

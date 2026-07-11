@@ -329,27 +329,35 @@ class ErrorBoundaryNode(Node):
         }
 
 
-_ISLAND_STRATEGIES = ("immediate", "idle", "visible", "interaction")
+_ISLAND_STRATEGIES = ("immediate", "idle", "visible", "interaction", "media")
 
 
 class IslandNode(Node):
     """A hydration boundary (SPEC 9.7). The subtree server-renders like
     everything else, but its bindings activate lazily by strategy: on idle,
-    when scrolled into view, or on first interaction."""
+    when scrolled into view, on first interaction, or when a media query
+    matches."""
 
-    def __init__(self, children: list[Node], load: str) -> None:
+    def __init__(self, children: list[Node], load: str,
+                 media: str | None = None) -> None:
         if load not in _ISLAND_STRATEGIES:
             raise VirelCompileError(
                 f"Island load={load!r} is not a strategy. Use one of: "
                 f"{', '.join(_ISLAND_STRATEGIES)}."
             )
+        if load == "media" and not media:
+            raise VirelCompileError(
+                'Island load="media" requires media="(query)".'
+            )
         self.children = children
         self.load = load
+        self.media = media
 
     def to_ir(self) -> dict[str, Any]:
         return {
             "kind": "island",
             "load": self.load,
+            "media": self.media,
             "children": [c.to_ir() for c in self.children],
         }
 
@@ -459,8 +467,12 @@ class Emitter:
             captured = self.bindings
             self.bindings = outer
             body = " ".join(captured)
+            import json as _json
+            media = (_json.dumps(node.media) if node.load == "media"
+                     else "null")
             self.bindings.append(
-                f'$.island("{vid}", "{node.load}", () => {{ {body} }});')
+                f'$.island("{vid}", "{node.load}", () => {{ {body} }}, '
+                f"{media});")
             return (f'<div data-v="{vid}" class="v-island" '
                     f'style="display:contents">{inner_html}</div>')
 
