@@ -150,3 +150,65 @@ def test_security_headers_present():
     response = asgi_request(_app(), "GET", "/")
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
+
+
+def test_public_assets_never_cache_in_dev(tmp_path):
+    public = tmp_path / "public"
+    public.mkdir()
+    (public / "widget.js").write_text("export const x = 1;")
+
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("x"))
+
+    app = create_asgi_app(dev=True, public_dir=public)
+    response = asgi_request(app, "GET", "/public/widget.js")
+    assert response.status == 200
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_public_assets_revalidate_with_etag_in_production(tmp_path):
+    public = tmp_path / "public"
+    public.mkdir()
+    (public / "widget.js").write_text("export const x = 1;")
+
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("x"))
+
+    app = create_asgi_app(dev=False, public_dir=public)
+    first = asgi_request(app, "GET", "/public/widget.js")
+    assert first.status == 200
+    assert first.headers["cache-control"] == "no-cache"
+    etag = first.headers["etag"]
+
+    cached = asgi_request(app, "GET", "/public/widget.js",
+                          headers=[(b"if-none-match", etag.encode())])
+    assert cached.status == 304
+    assert cached.body == b""
+
+    (public / "widget.js").write_text("export const x = 2;")
+    changed = asgi_request(app, "GET", "/public/widget.js",
+                           headers=[(b"if-none-match", etag.encode())])
+    assert changed.status == 200
+    assert "x = 2" in changed.text
+
+
+def test_watch_token_tracks_public_assets(tmp_path):
+    import os
+
+    public = tmp_path / "public"
+    public.mkdir()
+    asset = public / "widget.js"
+    asset.write_text("export const x = 1;")
+
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("x"))
+
+    app = create_asgi_app(dev=True, public_dir=public)
+    before = asgi_request(app, "GET", "/_virel/reload-token").json["token"]
+    stamp = asset.stat().st_mtime + 10
+    os.utime(asset, (stamp, stamp))
+    after = asgi_request(app, "GET", "/_virel/reload-token").json["token"]
+    assert after != before

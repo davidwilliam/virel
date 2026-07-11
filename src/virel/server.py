@@ -299,7 +299,7 @@ class VirelASGIApp:
                                      scope, receive, send)
             return
         if self.public_dir and path.startswith("/public/"):
-            await self._serve_public(path.removeprefix("/public/"), send)
+            await self._serve_public(path.removeprefix("/public/"), scope, send)
             return
         if method not in ("GET", "HEAD"):
             await self._send_text(send, 405, "method not allowed")
@@ -881,14 +881,31 @@ class VirelASGIApp:
 
     # -- static assets ------------------------------------------------------------
 
-    async def _serve_public(self, relative: str, send: Send) -> None:
+    async def _serve_public(self, relative: str, scope: Scope,
+                            send: Send) -> None:
         base = self.public_dir.resolve()
         target = (base / relative).resolve()
         if not str(target).startswith(str(base)) or not target.is_file():
             await self._send_text(send, 404, "not found")
             return
         content_type = _guess_type(target.name)
-        await self._send_bytes(send, 200, target.read_bytes(), content_type)
+        # Public files are not content-versioned, so browsers must never hold
+        # a stale copy: dev disables caching outright, production forces a
+        # revalidation round-trip answered by the ETag.
+        stat = target.stat()
+        etag = f'"{stat.st_mtime_ns:x}-{stat.st_size:x}"'
+        if self.dev:
+            extra = [(b"cache-control", b"no-store")]
+        else:
+            extra = [(b"cache-control", b"no-cache"), (b"etag", etag.encode())]
+            for name, value in scope.get("headers", []):
+                if name == b"if-none-match" and value.decode("latin-1") == etag:
+                    await send({"type": "http.response.start", "status": 304,
+                                "headers": extra})
+                    await send({"type": "http.response.body", "body": b""})
+                    return
+        await self._send_bytes(send, 200, target.read_bytes(), content_type,
+                               extra=extra)
 
     # -- helpers ---------------------------------------------------------------
 
@@ -896,6 +913,14 @@ class VirelASGIApp:
         latest = 0.0
         for directory in self.watch_dirs:
             for path in directory.rglob("*.py"):
+                try:
+                    latest = max(latest, path.stat().st_mtime)
+                except OSError:
+                    continue
+        # Static assets are part of the page too; a new or edited public file
+        # must trigger the same dev reload as a code change.
+        if self.public_dir and self.public_dir.is_dir():
+            for path in self.public_dir.rglob("*"):
                 try:
                     latest = max(latest, path.stat().st_mtime)
                 except OSError:
