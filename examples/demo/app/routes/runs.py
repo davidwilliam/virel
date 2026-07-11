@@ -29,24 +29,36 @@ async def list_runs(query: str = "") -> list[dict]:
     ]
 
 
-@ui.component
-def run_row(run) -> ui.Node:
-    return ui.Card(
-        ui.Row(
-            ui.Text(run.name),
-            ui.Spacer(),
-            ui.Text(f"score {run.score}", muted=True, size="sm"),
-            ui.Badge(run.status),
-            gap=3,
-        ),
-        gap=2,
-    )
+@ui.server
+async def archive_run(name: str, query: str = "") -> list[dict]:
+    global _RUNS
+    _RUNS = [run for run in _RUNS if run["name"] != name]
+    return await list_runs(query)
 
 
 @ui.page("/runs")
 def runs_page() -> ui.Node:
     query = ui.state("")
+    selected = ui.state("")
     runs = ui.resource(list_runs, params={"query": query})
+
+    def run_row(run) -> ui.Node:
+        return ui.Card(
+            ui.Row(
+                ui.Text(run.name),
+                ui.Spacer(),
+                ui.Text(f"score {run.score}", muted=True, size="sm"),
+                ui.Badge(run.status),
+                ui.Button("Inspect", size="sm",
+                          on_click=lambda: selected.set(run.name)),
+                ui.Button("Archive", size="sm", intent="danger",
+                          on_click=lambda: archive_run.call(
+                              {"name": run.name, "query": query},
+                              into=runs.value)),
+                gap=3,
+            ),
+            gap=2,
+        )
 
     return ui.Page(
         shell(
@@ -62,9 +74,13 @@ def runs_page() -> ui.Node:
                              description="Changing the filter refetches from "
                                          "the server; identical in-flight "
                                          "requests are deduplicated."),
+                ui.When(selected != "",
+                        then=ui.Alert(f"Inspecting: {selected}",
+                                      intent="primary")),
                 ui.Suspense(
                     runs,
-                    content=ui.Each(runs.value, render=run_row),
+                    content=ui.Each(runs.value, render=run_row,
+                                    key=lambda run: run.name),
                     fallback=ui.Skeleton(lines=4),
                 ),
             ),

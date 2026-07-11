@@ -609,12 +609,13 @@ def Breadcrumbs(items: list[tuple[str, str | None]]) -> Element:
 
 
 def Each(items: Any, *, render: Callable[[Any], Any], tag: str = "div",
-         gap: int | None = 3) -> Node:
+         gap: int | None = 3, key: Callable[[Any], Any] | None = None) -> Node:
     """Reactive list rendering. ``render`` receives a symbolic item and is
-    traced once into a template; the browser re-renders the list when the
-    data changes."""
+    traced once into a template. Items may carry event handlers (delegated
+    from the container). With ``key``, unchanged items keep their DOM nodes
+    across re-renders."""
     from .nodes import EachNode
-    return EachNode(items, render, tag=tag, gap=gap)
+    return EachNode(items, render, tag=tag, gap=gap, key=key)
 
 
 def Suspense(resource: Any, *, content: Any, fallback: Any = None,

@@ -106,12 +106,72 @@ export function esc(value) {
   })[c]);
 }
 
-export function bindList(id, items, renderItem) {
+export function bindList(id, items, renderItem, keyFn, handlers) {
   const node = el(id);
   if (!node) return;
+  let current = [];
+
+  // Item events are delegated from the list container, so handlers
+  // survive re-renders and cost one listener per event type.
+  if (handlers) {
+    const eventNames = new Set();
+    for (const hid in handlers) {
+      for (const eventName in handlers[hid]) eventNames.add(eventName);
+    }
+    for (const eventName of eventNames) {
+      node.addEventListener(eventName, (ev) => {
+        const target = ev.target.closest("[data-vh]");
+        if (!target || !node.contains(target)) return;
+        const wrap = target.closest("[data-vi]");
+        if (!wrap) return;
+        const item = current[Number(wrap.dataset.vi)];
+        const group = handlers[target.dataset.vh];
+        const fn = group && group[ev.type];
+        if (fn && item !== undefined) fn(ev, item);
+      });
+    }
+  }
+
+  // Keyed reconciliation: unchanged items keep their DOM nodes (and
+  // therefore focus and selection); changed items re-render in place.
+  const keyed = new Map();
   effect(() => {
     const list = items() || [];
-    node.innerHTML = list.map(renderItem).join("");
+    current = list;
+    const liveKeys = new Set();
+    const ordered = [];
+    list.forEach((item, index) => {
+      let key = keyFn ? String(keyFn(item)) : String(index);
+      while (liveKeys.has(key)) key += ":" + index;
+      liveKeys.add(key);
+      const html = renderItem(item);
+      let entry = keyed.get(key);
+      if (!entry) {
+        const wrap = document.createElement("div");
+        wrap.className = "v-each-item";
+        wrap.style.display = "contents";
+        entry = { el: wrap, html: null };
+        keyed.set(key, entry);
+      }
+      if (entry.html !== html) {
+        entry.el.innerHTML = html;
+        entry.html = html;
+      }
+      entry.el.dataset.vi = String(index);
+      ordered.push(entry.el);
+    });
+    for (const [key, entry] of keyed) {
+      if (!liveKeys.has(key)) {
+        keyed.delete(key);
+        entry.el.remove();
+      }
+    }
+    ordered.forEach((child, index) => {
+      if (node.children[index] !== child) {
+        node.insertBefore(child, node.children[index] || null);
+      }
+    });
+    while (node.children.length > ordered.length) node.lastChild.remove();
   });
 }
 

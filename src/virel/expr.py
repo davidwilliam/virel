@@ -805,10 +805,13 @@ class Handler:
         self.ops = ops
         self.prevent_default = prevent_default
 
-    def js(self) -> str:
+    def js_body(self) -> str:
         body = " ".join(op.js() for op in self.ops)
         prefix = "ev.preventDefault(); " if self.prevent_default else ""
-        return f"(ev) => {{ {prefix}{body} }}"
+        return prefix + body
+
+    def js(self) -> str:
+        return f"(ev) => {{ {self.js_body()} }}"
 
     def execute(self, env: dict[str, Any], ev: Any = None) -> None:
         """Run the handler against a Python state environment (tests)."""

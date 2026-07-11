@@ -153,49 +153,72 @@ class When(Node):
 
 
 class EachNode(Node):
-    """Reactive list rendering. The render function is traced once with a
-    symbolic item to produce a template; the browser re-renders the list
-    container when the underlying data changes.
+    """Reactive list rendering with per-item event handlers.
 
-    Templates are data-only for now: elements inside an Each item cannot
-    carry event handlers or two-way bindings.
+    The render function is traced once with a symbolic item to produce a
+    template. In the browser, items are keyed and reconciled (unchanged
+    items keep their DOM nodes), and item events are delegated from the
+    list container, so handlers survive re-renders.
     """
 
     def __init__(self, items: Any, render: Any, tag: str = "div",
-                 gap: int | None = None) -> None:
+                 gap: int | None = None, key: Any = None) -> None:
         from .expr import ItemRef, LocalRef, lift
         self.items = lift(items)
         self.tag = tag
         self.gap = gap
-        template = render(ItemRef(LocalRef("item")))
+        item = ItemRef(LocalRef("item"))
+        template = render(item)
+        self.key = lift(key(item)) if key is not None else None
         self.template = normalize_children((template,))
+        self.handlers: dict[str, dict[str, Any]] = {}
+        counter = 0
         for node in self.template:
-            _check_template(node)
+            counter = self._prepare_template(node, counter)
+
+    def _prepare_template(self, node: Node, counter: int) -> int:
+        if isinstance(node, Element):
+            if node.bound_props or node.runtime_binding:
+                raise VirelCompileError(
+                    "Two-way bindings are not supported inside a ui.Each "
+                    "item yet. Use per-item event handlers instead."
+                )
+            if node.events:
+                hid = f"h{counter}"
+                counter += 1
+                node.template_hid = hid
+                self.handlers[hid] = node.events
+            for child in node.children:
+                counter = self._prepare_template(child, counter)
+        elif isinstance(node, (When, EachNode)):
+            raise VirelCompileError(
+                "ui.When and nested ui.Each are not supported inside a "
+                "ui.Each item yet. Use ui.cond(...) for conditional values."
+            )
+        return counter
+
+    def handlers_js(self) -> str:
+        groups = []
+        for hid, events in self.handlers.items():
+            fns = ", ".join(
+                f'"{event}": (ev, item) => {{ {handler.js_body()} }}'
+                for event, handler in events.items()
+            )
+            groups.append(f'"{hid}": {{ {fns} }}')
+        return "{" + ", ".join(groups) + "}"
 
     def to_ir(self) -> dict[str, Any]:
         return {
             "kind": "each",
             "items": self.items.js(),
             "tag": self.tag,
+            "key": self.key.js() if self.key is not None else None,
+            "handlers": {
+                hid: {event: h.to_ir() for event, h in events.items()}
+                for hid, events in self.handlers.items()
+            },
             "template": [t.to_ir() for t in self.template],
         }
-
-
-def _check_template(node: Node) -> None:
-    if isinstance(node, Element):
-        if node.events or node.bound_props or node.runtime_binding:
-            raise VirelCompileError(
-                "Elements inside a ui.Each item cannot have event handlers "
-                "or two-way bindings yet. Render data only, and put controls "
-                "outside the list."
-            )
-        for child in node.children:
-            _check_template(child)
-    elif isinstance(node, (When, EachNode)):
-        raise VirelCompileError(
-            "ui.When and nested ui.Each are not supported inside a ui.Each "
-            "item yet. Use ui.cond(...) for conditional values."
-        )
 
 
 def _template_js(nodes: list[Node]) -> str:
@@ -219,6 +242,9 @@ def _template_js(nodes: list[Node]) -> str:
 
 def _template_element_js(node: Element) -> str:
     out = [f"<{node.tag}"]
+    hid = getattr(node, "template_hid", None)
+    if hid:
+        out.append(f' data-vh="{hid}"')
     for key, value in node.attrs.items():
         if value is None or value is False:
             continue
@@ -254,6 +280,9 @@ def template_html(nodes: list[Node], env: dict[str, Any]) -> str:
             parts.append(node.markup)
         elif isinstance(node, Element):
             out = [f"<{node.tag}"]
+            hid = getattr(node, "template_hid", None)
+            if hid:
+                out.append(f' data-vh="{hid}"')
             for key, value in node.attrs.items():
                 if value is None or value is False:
                     continue
@@ -348,12 +377,16 @@ class Emitter:
         if isinstance(node, EachNode):
             vid = self.assign_id()
             js_item = "(item) => `" + _template_js(node.template) + "`"
+            js_key = f"(item) => {node.key.js()}" if node.key is not None else "null"
             self.bindings.append(
-                f'$.bindList("{vid}", () => {node.items.js()} || [], {js_item});')
+                f'$.bindList("{vid}", () => {node.items.js()} || [], '
+                f"{js_item}, {js_key}, {node.handlers_js()});")
             initial = node.items.evaluate(self.env) or []
             rendered = "".join(
-                template_html(node.template, self.env | {"item": item})
-                for item in initial
+                f'<div class="v-each-item" style="display:contents" data-vi="{index}">'
+                + template_html(node.template, self.env | {"item": item})
+                + "</div>"
+                for index, item in enumerate(initial)
             )
             style = ""
             if node.gap is not None:

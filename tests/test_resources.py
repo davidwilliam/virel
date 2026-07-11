@@ -142,22 +142,6 @@ def test_each_escapes_untrusted_data():
     assert "&lt;script&gt;" in result.html
 
 
-def test_each_rejects_event_handlers_in_templates():
-    action = _list_action()
-
-    def page():
-        items = ui.resource(action)
-        selected = ui.state("")
-        return ui.Page(ui.Each(
-            items.value,
-            render=lambda item: ui.Button(
-                "Select", on_click=lambda: selected.set("x")),
-        ))
-
-    with pytest.raises(VirelCompileError, match="event handlers"):
-        ui.test.render(page)
-
-
 def test_resource_error_surfaces_in_suspense():
     @ui.server
     def broken() -> list:

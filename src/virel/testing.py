@@ -90,8 +90,9 @@ class TestView:
         """Read a state value by its generated name (debugging aid)."""
         return self.eval_env()[name]
 
-    def _run_handler(self, handler: Any, ev: Any = None) -> None:
-        working = self.eval_env()
+    def _run_handler(self, handler: Any, ev: Any = None,
+                     scope: dict[str, Any] | None = None) -> None:
+        working = self.eval_env() | (scope or {})
         handler.execute(working, ev)
         for name in self.states:
             self.env[name] = working[name]
@@ -99,12 +100,15 @@ class TestView:
     # -- queries -----------------------------------------------------------------
 
     def get_by_role(self, role: str, *, name: str | None = None) -> "TestElement":
-        matches = [
+        matches = self.get_all_by_role(role, name=name)
+        return self._single(matches, f"role={role!r}"
+                            + (f" name={name!r}" if name else ""))
+
+    def get_all_by_role(self, role: str, *, name: str | None = None) -> list["TestElement"]:
+        return [
             e for e in self._walk()
             if e.role == role and (name is None or e.accessible_name == name)
         ]
-        return self._single(matches, f"role={role!r}"
-                            + (f" name={name!r}" if name else ""))
 
     def get_by_label(self, label: str) -> "TestElement":
         matches = [
@@ -157,25 +161,33 @@ class TestView:
         found: list[TestElement] = []
 
         def visit(node: Node, conditions: list[tuple[Expr, bool]],
-                  label: str | None) -> None:
+                  label: str | None, scope: dict[str, Any]) -> None:
             if isinstance(node, Element):
-                element = TestElement(self, node, list(conditions), label)
+                element = TestElement(self, node, list(conditions), label,
+                                      scope)
                 found.append(element)
                 child_label = label
                 if node.tag in ("label", "fieldset"):
                     child_label = _label_text(node) or label
                 for child in node.children:
-                    visit(child, conditions, child_label)
+                    visit(child, conditions, child_label, scope)
             elif isinstance(node, When):
                 for child in node.then:
-                    visit(child, conditions + [(node.condition, True)], label)
+                    visit(child, conditions + [(node.condition, True)], label,
+                          scope)
                 for child in node.otherwise:
-                    visit(child, conditions + [(node.condition, False)], label)
+                    visit(child, conditions + [(node.condition, False)], label,
+                          scope)
+            elif isinstance(node, EachNode):
+                items = node.items.evaluate(self.eval_env() | scope) or []
+                for item in items:
+                    for child in node.template:
+                        visit(child, conditions, label, scope | {"item": item})
             elif isinstance(node, PageNode):
                 for child in node.children:
-                    visit(child, conditions, label)
+                    visit(child, conditions, label, scope)
 
-        visit(self.root, [], None)
+        visit(self.root, [], None, {})
         return found
 
 
@@ -183,11 +195,16 @@ class TestElement:
     __test__ = False
 
     def __init__(self, view: TestView, node: Element,
-                 conditions: list[tuple[Expr, bool]], label: str | None) -> None:
+                 conditions: list[tuple[Expr, bool]], label: str | None,
+                 scope: dict[str, Any] | None = None) -> None:
         self.view = view
         self.node = node
         self.conditions = conditions
         self.label_text = label
+        self.scope = scope or {}  # item bindings when inside a ui.Each
+
+    def _env(self) -> dict[str, Any]:
+        return self.view.eval_env() | self.scope
 
     # -- semantics ----------------------------------------------------------------
 
@@ -221,8 +238,7 @@ class TestElement:
         return labeled
 
     def own_text(self) -> str:
-        env = self.view.eval_env()
-        return " ".join(_node_text(self.node, env)).strip()
+        return " ".join(_node_text(self.node, self._env())).strip()
 
     def text(self) -> str:
         return self.own_text()
@@ -230,17 +246,17 @@ class TestElement:
     def value(self) -> Any:
         bound = self.node.bound_props.get("value")
         if bound is not None:
-            return bound.evaluate(self.view.eval_env())
+            return bound.evaluate(self._env())
         return self.node.attrs.get("value")
 
     def is_checked(self) -> bool:
         bound = self.node.bound_props.get("checked")
         if bound is None:
             return False
-        return bool(bound.evaluate(self.view.eval_env()))
+        return bool(bound.evaluate(self._env()))
 
     def is_visible(self) -> bool:
-        env = self.view.eval_env()
+        env = self._env()
         for condition, expected in self.conditions:
             if bool(condition.evaluate(env)) is not expected:
                 return False
@@ -261,13 +277,13 @@ class TestElement:
             )
         if "disabled" in self.node.attrs:
             disabled = self.node.attrs["disabled"]
-            value = (disabled.evaluate(self.view.eval_env())
+            value = (disabled.evaluate(self._env())
                      if isinstance(disabled, Expr) else disabled)
             if value:
                 raise AssertionError(
                     f"<{self.node.tag}> is disabled and cannot be clicked."
                 )
-        self.view._run_handler(handler, ev={"target": {}})
+        self.view._run_handler(handler, ev={"target": {}}, scope=self.scope)
 
     def fill(self, value: Any) -> None:
         self._require_visible("fill")
@@ -278,7 +294,7 @@ class TestElement:
             )
         ev = {"target": {"value": value, "valueAsNumber": _as_number(value),
                          "checked": bool(value)}}
-        self.view._run_handler(handler, ev)
+        self.view._run_handler(handler, ev, scope=self.scope)
 
     def select(self, value: str) -> None:
         self._require_visible("select")
@@ -294,14 +310,14 @@ class TestElement:
         handler = self.node.events.get("change")
         if handler is None:
             raise AssertionError(f"<{self.node.tag}> has no change handler.")
-        self.view._run_handler(handler, ev={"target": {"value": value}})
+        self.view._run_handler(handler, ev={"target": {"value": value}}, scope=self.scope)
 
     def submit(self) -> None:
         self._require_visible("submit")
         handler = self.node.events.get("submit")
         if handler is None:
             raise AssertionError(f"<{self.node.tag}> has no submit handler.")
-        self.view._run_handler(handler, ev={"target": {}})
+        self.view._run_handler(handler, ev={"target": {}}, scope=self.scope)
 
     def toggle(self) -> None:
         self._require_visible("toggle")
@@ -309,7 +325,7 @@ class TestElement:
         if handler is None:
             raise AssertionError(f"<{self.node.tag}> has no change handler.")
         ev = {"target": {"checked": not self.is_checked()}}
-        self.view._run_handler(handler, ev)
+        self.view._run_handler(handler, ev, scope=self.scope)
 
     def _require_visible(self, action: str) -> None:
         if not self.is_visible():

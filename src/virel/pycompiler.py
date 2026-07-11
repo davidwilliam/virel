@@ -468,6 +468,10 @@ class FnCompiler:
             )
         if _is_reactive(resolved):
             return StateRead(resolved.name)
+        if isinstance(resolved, Expr):
+            # e.g. the symbolic item of a ui.Each template captured by a
+            # named handler defined inside the render function.
+            return resolved
         if resolved is None or isinstance(resolved, (bool, int, float, str)):
             return Lit(resolved)
         if isinstance(resolved, (list, tuple)):
@@ -615,9 +619,11 @@ class CompiledHandler:
     def __init__(self, stmts: list[Stmt]) -> None:
         self.stmts = stmts
 
+    def js_body(self) -> str:
+        return " ".join(s.js() for s in self.stmts)
+
     def js(self) -> str:
-        body = " ".join(s.js() for s in self.stmts)
-        return f"(ev) => {{ {body} }}"
+        return f"(ev) => {{ {self.js_body()} }}"
 
     def execute(self, env: dict[str, Any], ev: Any = None) -> None:
         for stmt in self.stmts:
