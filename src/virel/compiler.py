@@ -59,6 +59,27 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
                 f"{type(root).__name__!r}."
             )
 
+        # Nested layouts: matching prefixes wrap the page content, the
+        # longest (innermost) first, still inside the same trace so layout
+        # state and handlers compile normally.
+        registry_layouts = active_registry().layouts
+        matching = sorted(
+            (prefix for prefix in registry_layouts
+             if page.path == prefix or page.path.startswith(
+                 prefix if prefix.endswith("/") else prefix + "/")
+             or prefix == "/"),
+            key=len, reverse=True,
+        )
+        if matching:
+            from .nodes import Element
+            content: Any = (root.children[0] if len(root.children) == 1
+                            else Element("div", root.children,
+                                         attrs={"style": "display: contents"}))
+            for prefix in matching:
+                content = registry_layouts[prefix](content)
+            from .nodes import normalize_children
+            root.children = normalize_children((content,))
+
         env = {name: state.initial for name, state in ctx.states.items()}
         # Derived values participate in the initial environment in
         # declaration order (a derived may read earlier deriveds).
@@ -260,6 +281,8 @@ def _emit_document(root: PageNode, body_html: str, js_module: str,
     head.append('<link rel="stylesheet" href="/_virel/app.css">')
     for name, content in root.meta.items():
         head.append(f'<meta name="{_escape(name)}" content="{_escape(content)}">')
+    if root.canonical:
+        head.append(f'<link rel="canonical" href="{_escape(root.canonical)}">')
     for module in root.head_modules:
         head.append(f'<script type="module" src="{_escape(module)}"></script>')
     if js is not None:

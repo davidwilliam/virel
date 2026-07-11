@@ -341,11 +341,13 @@ class PageNode(Node):
     """Root of a compiled page."""
 
     def __init__(self, children: list[Node], title: str, meta: dict[str, str],
-                 head_modules: list[str]) -> None:
+                 head_modules: list[str],
+                 canonical: str | None = None) -> None:
         self.children = children
         self.title = title
         self.meta = meta
         self.head_modules = head_modules  # extra JS modules (web components)
+        self.canonical = canonical
 
     def to_ir(self) -> dict[str, Any]:
         return {

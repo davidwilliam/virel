@@ -83,6 +83,16 @@ class Page:
             for name, param in signature.parameters.items()
             if name not in self.param_names and param.default is not inspect.Parameter.empty
         }
+        # Query parameters convert to their annotated types (int, float,
+        # bool); anything else stays a string.
+        try:
+            import typing
+            hints = typing.get_type_hints(fn)
+        except Exception:
+            hints = {}
+        self.query_types = {
+            name: hints.get(name, str) for name in self.query_params
+        }
 
     @property
     def is_dynamic(self) -> bool:
@@ -357,6 +367,8 @@ class AppRegistry:
         self.default_guard: Callable[..., Any] | None = None
         # Build-time functions (@ui.build), memoized per build.
         self.build_functions: dict[str, Any] = {}
+        # Nested layouts by path prefix (@ui.layout).
+        self.layouts: dict[str, Callable[..., Any]] = {}
 
     def match_page(self, path: str) -> tuple[Page, dict[str, str]] | None:
         page = self.pages.get(path)
@@ -419,6 +431,24 @@ def server(fn: Callable[..., Any] | None = None, *, stream: bool = False,
 
     if fn is not None:
         return decorate(fn)
+    return decorate
+
+
+def layout(prefix: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Register a nested layout (SPEC 8.10): every page whose path starts
+    with the prefix renders inside it. Layouts nest from the shortest
+    prefix outward, and each receives the inner content as its argument."""
+    if not prefix.startswith("/"):
+        raise VirelCompileError(f"Layout prefix {prefix!r} must start with '/'.")
+
+    def decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
+        registry = active_registry()
+        if prefix in registry.layouts:
+            raise VirelCompileError(
+                f"A layout for prefix {prefix!r} is already registered.")
+        registry.layouts[prefix] = fn
+        return fn
+
     return decorate
 
 

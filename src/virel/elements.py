@@ -74,12 +74,20 @@ _JUSTIFY = {
 # --------------------------------------------------------------------------
 
 def Page(*children: Any, title: str = "Virel App",
-         meta: dict[str, str] | None = None) -> PageNode:
+         meta: dict[str, str] | None = None,
+         canonical: str | None = None) -> PageNode:
+    if canonical is not None:
+        from .security import is_safe_url
+        if not is_safe_url(canonical):
+            raise VirelCompileError(
+                f"canonical URL {canonical!r} uses a blocked scheme."
+            )
     return PageNode(
         children=normalize_children(children),
         title=title,
         meta=meta or {},
         head_modules=list(_page_modules),
+        canonical=canonical,
     )
 
 

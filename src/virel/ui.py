@@ -72,7 +72,8 @@ from .icons import Icon, icon_names
 from .uploads import FileDownload, UploadFile
 from .resources import Resource, invalidate, resource
 from .nodes import Node, When
-from .registry import (Request, build, client, component, deny, page,
+from .registry import (Request, build, client, component, deny, layout,
+                       page,
                        redirect, server, shared, use_guard,
                        web_component)
 from .theme import FontFace, GoogleFont, Theme
@@ -101,7 +102,7 @@ def use_theme(theme: Theme) -> None:
 
 __all__ = [
     # programming model
-    "page", "component", "server", "client", "shared", "build",
+    "page", "layout", "component", "server", "client", "shared", "build",
     "web_component",
     "use_guard", "redirect", "deny", "Request", "context", "Context",
     "state", "derived", "effect", "cond", "not_", "length", "set_from_event",

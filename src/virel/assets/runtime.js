@@ -726,16 +726,41 @@ export function router() {
   });
 }
 
+let progressBar = null;
+
+function showProgress() {
+  progressBar?.remove();
+  progressBar = document.createElement("div");
+  progressBar.setAttribute("aria-hidden", "true");
+  progressBar.style.cssText =
+    "position:fixed;top:0;left:0;height:2px;width:0;z-index:99999;" +
+    "background:var(--v-accent, #4f46e5);transition:width 400ms ease;" +
+    "border-radius:0 2px 2px 0";
+  document.body.appendChild(progressBar);
+  requestAnimationFrame(() => { if (progressBar) progressBar.style.width = "70%"; });
+}
+
+function hideProgress() {
+  if (!progressBar) return;
+  const bar = progressBar;
+  progressBar = null;
+  bar.style.width = "100%";
+  setTimeout(() => bar.remove(), 180);
+}
+
 async function navigate(url, push) {
+  showProgress();
   let doc;
   try {
     const response = await fetch(url);
     if (!response.ok) {
+      hideProgress();
       location.href = url;
       return;
     }
     doc = new DOMParser().parseFromString(await response.text(), "text/html");
   } catch {
+    hideProgress();
     location.href = url;
     return;
   }
@@ -766,6 +791,7 @@ async function navigate(url, push) {
       await import(src); // fresh modules mount themselves
     }
   }
+  hideProgress();
   window.scrollTo(0, 0);
   markCurrentPage();
   document.body.setAttribute("tabindex", "-1");

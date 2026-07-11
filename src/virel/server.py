@@ -195,9 +195,15 @@ class VirelASGIApp:
             await self._send_text(send, 500, f"Virel compile error:\n\n{error}",
                                   content_type="text/plain; charset=utf-8")
         except Exception:
-            detail = traceback.format_exc() if self.dev else "internal server error"
-            await self._send_text(send, 500, detail,
-                                  content_type="text/plain; charset=utf-8")
+            if self.dev:
+                await self._send_text(send, 500, traceback.format_exc(),
+                                      content_type="text/plain; charset=utf-8")
+            else:
+                await self._send_text(
+                    send, 500,
+                    _error_html(500, "Something went wrong",
+                                "The error has been logged."),
+                    content_type="text/html; charset=utf-8")
 
     async def _lifespan(self, receive: Receive, send: Send) -> None:
         while True:
@@ -385,7 +391,10 @@ class VirelASGIApp:
     async def _serve_page(self, path: str, scope: Scope, send: Send) -> None:
         matched = self.registry.match_page(path)
         if not matched:
-            await self._send_text(send, 404, f"No route matches {path!r}.")
+            await self._send_text(send, 404,
+                                  _error_html(404, "Page not found",
+                                              "The address may have changed."),
+                                  content_type="text/html; charset=utf-8")
             return
         page, params = matched
         from .registry import Deny, Redirect
@@ -405,7 +414,9 @@ class VirelASGIApp:
         if page.is_dynamic or page.query_params:
             query = _parse_query(scope.get("query_string", b""))
             for name, default in page.query_params.items():
-                params[name] = query.get(name, default)
+                params[name] = _convert_query(query.get(name),
+                                              page.query_types.get(name, str),
+                                              default)
             result = compile_page(page, params=params, dev=self.dev,
                                   inline_js=True, locale=locale)
         else:
@@ -810,6 +821,41 @@ async def _read_body(receive: Receive, limit: int | None = None) -> bytes:
 def _parse_query(raw: bytes) -> dict[str, str]:
     from urllib.parse import parse_qsl
     return dict(parse_qsl(raw.decode("latin-1")))
+
+
+def _convert_query(raw: str | None, annotation: type, default: Any) -> Any:
+    """Typed query parameters (SPEC 8.10): convert to the annotated type,
+    falling back to the declared default on absent or invalid values."""
+    if raw is None:
+        return default
+    try:
+        if annotation is int:
+            return int(raw)
+        if annotation is float:
+            return float(raw)
+        if annotation is bool:
+            return raw in ("1", "true", "yes", "on")
+    except ValueError:
+        return default
+    return raw
+
+
+def _error_html(status: int, title: str, detail: str) -> str:
+    return (
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        f"<title>{status} {title}</title>"
+        "<style>body{font-family:ui-sans-serif,system-ui,sans-serif;"
+        "display:grid;place-items:center;min-height:100vh;margin:0;"
+        "background:#f7f7f9;color:#16181d}"
+        "@media(prefers-color-scheme:dark){body{background:#0e0f13;"
+        "color:#ecedf1}}"
+        "main{text-align:center;padding:2rem}"
+        "h1{font-size:4rem;margin:0;opacity:.25}"
+        "p{margin:.75rem 0 0;font-size:1.05rem}</style></head>"
+        f"<body><main><h1>{status}</h1><p>{title}</p>"
+        f"<p style=\"opacity:.6;font-size:.9rem\">{detail}</p>"
+        "</main></body></html>"
+    )
 
 
 def _safe_message(error: Exception, dev: bool) -> str:
