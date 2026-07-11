@@ -447,10 +447,18 @@ source .venv/bin/activate
 ./scripts/ci            # tests, demo build, scaffold build
 
 ./scripts/ci 3.11       # same, in a throwaway venv on another Python
+
+./scripts/ci browser    # real-browser suite (headless Chromium)
 ```
 
-Continuous integration runs the script on Python 3.11 through 3.14 for every
-push to main and every pull request. Day-to-day work goes directly to main;
+The default suite is dependency-free and fast; component behavior is tested
+in pure Python. The browser suite is a separate layer that verifies what
+only a real engine can: custom element upgrades, shadow DOM rendering, and
+client-side navigation. It installs the `browser` extra (Playwright) and a
+managed Chromium on first run.
+
+Continuous integration runs the default script on Python 3.11 through 3.14
+plus the browser suite for every push to main and every pull request. Day-to-day work goes directly to main;
 breaking or risky changes are developed on a branch and merged only after
 the checks pass.
 

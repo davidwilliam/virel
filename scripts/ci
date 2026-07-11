@@ -5,11 +5,29 @@
 # Usage:
 #   scripts/ci             run inside an activated virtualenv (or CI)
 #   scripts/ci 3.11        create a throwaway venv with python3.11 and run
+#   scripts/ci browser     run the real-browser suite (Playwright Chromium)
 #
 # The optional version argument needs the matching python3.X on PATH.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+if [[ $# -ge 1 && "$1" == "browser" ]]; then
+    echo "==> Python: $(python --version)"
+    echo "==> Installing package with browser extras"
+    python -m pip install --quiet --upgrade pip
+    python -m pip install --quiet -e ".[browser]"
+    echo "==> Installing Playwright Chromium"
+    if [[ "$(uname)" == "Linux" ]]; then
+        python -m playwright install --with-deps chromium
+    else
+        python -m playwright install chromium
+    fi
+    echo "==> Running the browser suite"
+    python -m pytest tests_browser -q
+    echo "==> Browser checks passed"
+    exit 0
+fi
 
 if [[ $# -ge 1 ]]; then
     version="$1"
