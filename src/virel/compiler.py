@@ -34,12 +34,17 @@ class CompiledPage:
     needs_request_render: bool = False
     # Exact text content of each inline <script>, for CSP hashes.
     inline_scripts: list[str] = field(default_factory=list)
+    # Filename of the external page module (locale-suffixed when the app
+    # registers message catalogs).
+    js_module: str = ""
 
 
 def compile_page(page: Page, params: dict[str, Any] | None = None,
-                 dev: bool = False, inline_js: bool = False) -> CompiledPage:
+                 dev: bool = False, inline_js: bool = False,
+                 locale: str | None = None) -> CompiledPage:
     elements._reset_page_modules()
     with TraceContext() as ctx:
+        ctx.locale = locale
         kwargs = dict(params or {})
         try:
             root = page.fn(**kwargs)
@@ -85,9 +90,15 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
         if needs_request_render:
             render_mode = "server"
 
+        from .registry import active_registry as _registry
+        lang = locale or _registry().default_locale
+        # Translated reactive strings live in the page module, so localized
+        # apps get one module per locale.
+        js_module = (f"{page.slug}.{lang}.js" if _registry().catalogs
+                     else f"{page.slug}.js")
         html_doc, inline_scripts = _emit_document(
-            root, body_html, page.slug, js, dev=dev,
-            inline_js=inline_js or needs_request_render)
+            root, body_html, js_module, js, dev=dev,
+            inline_js=inline_js or needs_request_render, lang=lang)
         return CompiledPage(
             route=page.path,
             slug=page.slug,
@@ -99,6 +110,7 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
             render_mode=render_mode,
             needs_request_render=needs_request_render,
             inline_scripts=inline_scripts,
+            js_module=js_module,
         )
 
 
@@ -202,9 +214,10 @@ def _client_fn_definitions(ctx: TraceContext) -> list[str]:
     return emitted
 
 
-def _emit_document(root: PageNode, body_html: str, slug: str,
+def _emit_document(root: PageNode, body_html: str, js_module: str,
                    js: str | None, dev: bool,
-                   inline_js: bool = False) -> tuple[str, list[str]]:
+                   inline_js: bool = False,
+                   lang: str = "en") -> tuple[str, list[str]]:
     # Applies a stored light/dark preference before first paint so theme
     # switching never flashes. With no stored preference the CSS media
     # query follows the system setting.
@@ -234,14 +247,14 @@ def _emit_document(root: PageNode, body_html: str, slug: str,
             inline_scripts.append(source)
             head.append(f'<script type="module">{source}</script>')
         else:
-            head.append(f'<script type="module" src="/_virel/page/{slug}.js"></script>')
+            head.append(f'<script type="module" src="/_virel/page/{js_module}"></script>')
     if dev:
         head.append('<script type="module" src="/_virel/dev.js"></script>')
 
     head_html = "\n    ".join(head)
     document = (
         "<!doctype html>\n"
-        '<html lang="en">\n'
+        f'<html lang="{_escape(lang)}">\n'
         f"  <head>\n    {head_html}\n  </head>\n"
         f"  <body>\n{body_html}\n  </body>\n"
         "</html>\n"

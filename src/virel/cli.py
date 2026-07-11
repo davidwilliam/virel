@@ -157,7 +157,7 @@ def cmd_build(args: argparse.Namespace) -> None:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(compiled.html)
         if compiled.js:
-            (framework_dir / "page" / f"{compiled.slug}.js").write_text(compiled.js)
+            (framework_dir / "page" / compiled.js_module).write_text(compiled.js)
         (ir_dir / f"{compiled.slug}.json").write_text(
             json.dumps(compiled.ir, indent=2))
 

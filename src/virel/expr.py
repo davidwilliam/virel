@@ -45,6 +45,7 @@ class TraceContext:
         self.expr_registry: dict[int, "Expr"] = {}
         self.client_fns: dict[str, Any] = {}  # name -> ClientFunction used by page
         self.resources: dict[str, Any] = {}   # id -> Resource
+        self.locale: str | None = None         # active locale for ui.t
         self._counter = 0
 
     def next_id(self, prefix: str) -> str:

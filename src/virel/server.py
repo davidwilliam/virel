@@ -233,22 +233,58 @@ class VirelASGIApp:
 
     # -- pages ----------------------------------------------------------------
 
-    def _compiled(self, path: str) -> Any | None:
+    def _negotiate_locale(self, scope: Scope) -> str | None:
+        """Pick the locale for a request: ?lang= override, then
+        Accept-Language, then the default. None when the app registers no
+        catalogs (single-locale fast path)."""
+        from .i18n import available_locales
+        if not self.registry.catalogs:
+            return None
+        available = available_locales()
+        query = _parse_query(scope.get("query_string", b""))
+        override = query.get("lang")
+        if override in available:
+            return override
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1")
+                   for k, v in scope.get("headers", [])}
+        ranges: list[tuple[float, str]] = []
+        for part in headers.get("accept-language", "").split(","):
+            piece = part.strip()
+            if not piece:
+                continue
+            quality = 1.0
+            if ";q=" in piece:
+                piece, _, q = piece.partition(";q=")
+                try:
+                    quality = float(q)
+                except ValueError:
+                    quality = 0.0
+            ranges.append((quality, piece.strip().lower()))
+        for _, tag in sorted(ranges, reverse=True):
+            if tag in available:
+                return tag
+            primary = tag.split("-")[0]
+            if primary in available:
+                return primary
+        return self.registry.default_locale
+
+    def _compiled(self, path: str, locale: str | None = None) -> Any | None:
         """Compile (and cache) the page for a concrete request path."""
         if self.dev:
             token = self._watch_token()
             if token != self._cache_token:
                 self._page_cache.clear()
                 self._cache_token = token
-        if path in self._page_cache:
-            return self._page_cache[path]
+        cache_key = f"{path}|{locale}"
+        if cache_key in self._page_cache:
+            return self._page_cache[cache_key]
         matched = self.registry.match_page(path)
         if not matched:
             return None
         page, params = matched
         result = compile_page(page, params=params, dev=self.dev,
-                              inline_js=page.is_dynamic)
-        self._page_cache[path] = result
+                              inline_js=page.is_dynamic, locale=locale)
+        self._page_cache[cache_key] = result
         return result
 
     async def _serve_page(self, path: str, scope: Scope, send: Send) -> None:
@@ -257,34 +293,48 @@ class VirelASGIApp:
             await self._send_text(send, 404, f"No route matches {path!r}.")
             return
         page, params = matched
+        locale = self._negotiate_locale(scope)
         if page.is_dynamic or page.query_params:
             query = _parse_query(scope.get("query_string", b""))
             for name, default in page.query_params.items():
                 params[name] = query.get(name, default)
-            result = compile_page(page, params=params, dev=self.dev, inline_js=True)
+            result = compile_page(page, params=params, dev=self.dev,
+                                  inline_js=True, locale=locale)
         else:
-            result = self._compiled(path)
+            result = self._compiled(path, locale)
             if result.needs_request_render:
                 # Server-rendered resources embed data fetched at render
                 # time; compile fresh for every request.
-                result = compile_page(page, dev=self.dev, inline_js=True)
+                result = compile_page(page, dev=self.dev, inline_js=True,
+                                      locale=locale)
         from .security import content_security_policy
         csp = content_security_policy(result.inline_scripts)
+        headers = [(b"content-security-policy", csp.encode("latin-1"))]
+        if locale is not None:
+            headers.append((b"vary", b"accept-language"))
         await self._send_text(send, 200, result.html,
                               content_type="text/html; charset=utf-8",
-                              extra=[(b"content-security-policy",
-                                      csp.encode("latin-1"))])
+                              extra=headers)
 
     async def _serve_page_js(self, path: str, send: Send) -> None:
-        slug = path.removeprefix("/_virel/page/").removesuffix(".js")
+        from .i18n import available_locales
+        name = path.removeprefix("/_virel/page/").removesuffix(".js")
+        locale = None
+        slug = name
+        if "." in name:
+            slug, _, candidate = name.rpartition(".")
+            if candidate in available_locales():
+                locale = candidate
+            else:
+                slug = name
         for page in self.registry.pages.values():
             if page.slug == slug and not page.is_dynamic:
-                result = self._compiled(page.path)
+                result = self._compiled(page.path, locale)
                 if result and result.js:
                     await self._send_text(send, 200, result.js,
                                           content_type="text/javascript; charset=utf-8")
                     return
-        await self._send_text(send, 404, f"No page module {slug!r}.")
+        await self._send_text(send, 404, f"No page module {name!r}.")
 
     # -- server actions ---------------------------------------------------------
 

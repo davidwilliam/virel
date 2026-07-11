@@ -55,6 +55,7 @@ from .elements import (
 )
 from .elements import Each, Island, Suspense
 from .forms import Form, FormActions, SubmitButton, form
+from .i18n import messages, t
 from .icons import Icon, icon_names
 from .resources import Resource, resource
 from .nodes import Node, When
@@ -85,6 +86,7 @@ __all__ = [
     "page", "component", "server", "client", "web_component",
     "state", "derived", "cond", "not_", "length", "set_from_event",
     "use_theme", "Theme", "Node", "VirelCompileError", "test",
+    "messages", "t",
     # layout
     "Page", "Stack", "Row", "Container", "Section", "Card",
     "Divider", "Spacer", "AppShell",

@@ -288,6 +288,29 @@ Each templates are data-only for now: elements inside an item cannot carry
 event handlers yet, and `ui.When` inside an item is a compile error that
 points to `ui.cond`.
 
+## Internationalization
+
+Message catalogs are dictionaries per locale, and `ui.t` resolves at
+compile time, so each locale gets its own compiled page with translated
+static HTML and its own page module:
+
+```python
+ui.messages("en", {"greeting": "Hello {name}",
+                   "runs": {"one": "{count} run", "other": "{count} runs"}})
+ui.messages("pt", {"greeting": "Ola {name}",
+                   "runs": {"one": "{count} execucao", "other": "{count} execucoes"}})
+
+ui.Text(ui.t("greeting", name=user_name))
+ui.Text(ui.t("runs", count=total))
+```
+
+Placeholders accept reactive values, in which case the translation compiles
+to a reactive expression (plurals become a ternary over the count) and
+updates in the browser. Missing keys and missing placeholders are compile
+errors; locales fall back to the default for untranslated keys. The server
+negotiates the locale from Accept-Language with a `?lang=` override and a
+`Vary` header; apps without catalogs skip all of this.
+
 ## Components
 
 The library covers the essentials in four groups, all with accessibility
@@ -361,7 +384,8 @@ builtins (`len`, `str`, `int`, `float`, `bool`, `abs`, `min`, `max`,
 error that names the nearest replacement.
 
 Not implemented yet, in rough priority order: optimistic mutation with
-rollback, and internationalization.
+rollback, locale-aware date and number formatting, and right-to-left
+layout support.
 
 ## License
 

@@ -280,6 +280,9 @@ class AppRegistry:
         # Soft navigation between pages (fetch, swap, mount). Configurable
         # via [app] client_nav in virel.toml.
         self.client_nav = True
+        # Message catalogs per locale (ui.messages) and the fallback locale.
+        self.catalogs: dict[str, dict] = {}
+        self.default_locale = "en"
 
     def match_page(self, path: str) -> tuple[Page, dict[str, str]] | None:
         page = self.pages.get(path)
