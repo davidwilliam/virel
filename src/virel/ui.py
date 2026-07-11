@@ -56,12 +56,15 @@ from .elements import (
     unsafe_html,
 )
 from .elements import Each, Island, Suspense
+from .formatting import (format_currency, format_date, format_number,
+                         format_percent)
 from .forms import Form, FormActions, SubmitButton, form
 from .i18n import messages, t
 from .icons import Icon, icon_names
 from .resources import Resource, resource
 from .nodes import Node, When
-from .registry import client, component, page, server, web_component
+from .registry import (Request, client, component, deny, page,
+                       redirect, server, use_guard, web_component)
 from .theme import FontFace, GoogleFont, Theme
 from . import testing as test
 
@@ -86,9 +89,11 @@ def use_theme(theme: Theme) -> None:
 __all__ = [
     # programming model
     "page", "component", "server", "client", "web_component",
+    "use_guard", "redirect", "deny", "Request",
     "state", "derived", "cond", "not_", "length", "set_from_event",
     "use_theme", "Theme", "FontFace", "GoogleFont", "Node", "VirelCompileError", "test",
     "messages", "t",
+    "format_number", "format_currency", "format_percent", "format_date",
     # layout
     "Page", "Stack", "Row", "Grid", "Container", "Section", "Card",
     "Divider", "Spacer", "AppShell",

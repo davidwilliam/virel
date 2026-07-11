@@ -353,11 +353,20 @@ class FnCompiler:
                 args[key.value] = self.expr(value)
         into = error_into = None
         done_set = None
+        optimistic = None
         for keyword in call.keywords:
             if keyword.arg == "into":
                 into = self._resolve_state_kw(call, keyword)
             elif keyword.arg == "error_into":
                 error_into = self._resolve_state_kw(call, keyword)
+            elif keyword.arg == "optimistic" and attr == "call":
+                if not (isinstance(keyword.value, ast.Tuple)
+                        and len(keyword.value.elts) == 2):
+                    raise self.error(call, "optimistic takes a (state, value) tuple.")
+                state = self._try_resolve_node(keyword.value.elts[0])
+                if not _is_reactive(state):
+                    raise self.error(call, "optimistic's first element must be a state.")
+                optimistic = (state, self.expr(keyword.value.elts[1]))
             elif keyword.arg == "done_set" and attr == "stream":
                 if not (isinstance(keyword.value, ast.Tuple)
                         and len(keyword.value.elts) == 2):
@@ -372,7 +381,8 @@ class FnCompiler:
         # Reuse the ServerAction signature validation.
         action._check_args(args)
         if attr == "call":
-            return CallOp(action.name, args, into, error_into)
+            return CallOp(action.name, args, into, error_into,
+                          optimistic=optimistic)
         if into is None:
             raise self.error(call, "action.stream(...) requires into=<state>.")
         return StreamOp(action.name, args, into, done_set)

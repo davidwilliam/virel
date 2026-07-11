@@ -22,11 +22,56 @@ from .expr import (
 )
 
 
+from dataclasses import dataclass, field as dataclass_field
+
+
+@dataclass
+class Request:
+    """What a guard sees about the incoming request (SPEC 8.10)."""
+
+    method: str
+    path: str
+    headers: dict[str, str] = dataclass_field(default_factory=dict)
+    query: dict[str, str] = dataclass_field(default_factory=dict)
+    cookies: dict[str, str] = dataclass_field(default_factory=dict)
+
+
+class Redirect:
+    """Guard decision: send the client elsewhere. Only same-origin
+    relative paths are allowed (open-redirect protection, SPEC 18.2)."""
+
+    def __init__(self, to: str) -> None:
+        if not to.startswith("/") or to.startswith("//"):
+            raise VirelCompileError(
+                f"redirect target {to!r} must be a same-origin path starting "
+                "with '/'."
+            )
+        self.to = to
+
+
+class Deny:
+    """Guard decision: refuse the request."""
+
+    def __init__(self, status: int = 403, message: str = "Forbidden") -> None:
+        self.status = status
+        self.message = message
+
+
+def redirect(to: str) -> Redirect:
+    return Redirect(to)
+
+
+def deny(status: int = 403, message: str = "Forbidden") -> Deny:
+    return Deny(status, message)
+
+
 class Page:
-    def __init__(self, path: str, fn: Callable[..., Any], render: str) -> None:
+    def __init__(self, path: str, fn: Callable[..., Any], render: str,
+                 guard: Callable[..., Any] | None = None) -> None:
         self.path = path
         self.fn = fn
         self.render = render
+        self.guard = guard
         self.name = fn.__name__
         self.param_names = re.findall(r"\{(\w+)\}", path)
         self._regex = re.compile(
@@ -74,10 +119,12 @@ class ServerAction:
     wrapped function runs in CPython.
     """
 
-    def __init__(self, fn: Callable[..., Any], stream: bool) -> None:
+    def __init__(self, fn: Callable[..., Any], stream: bool,
+                 guard: Callable[..., Any] | None = None) -> None:
         self.fn = fn
         self.name = fn.__name__
         self.stream_response = stream
+        self.guard = guard
         self.signature = inspect.signature(fn)
         self.is_async = inspect.iscoroutinefunction(fn)
         self.is_async_gen = inspect.isasyncgenfunction(fn)
@@ -130,11 +177,22 @@ class ServerAction:
         return kwargs
 
     def call(self, args: dict[str, Any] | None = None, *, into: State | None = None,
-             error_into: State | None = None) -> None:
+             error_into: State | None = None,
+             optimistic: tuple[State, Any] | None = None) -> None:
         recorder = current_recorder()
         lifted = {k: lift(v) for k, v in (args or {}).items()}
         self._check_args(lifted)
-        recorder.ops.append(CallOp(self.name, lifted, into, error_into))
+        lifted_optimistic = None
+        if optimistic is not None:
+            state, value = optimistic
+            if not isinstance(state, State):
+                raise VirelCompileError(
+                    "optimistic= takes a (state, value) tuple where the first "
+                    "element is a ui.state."
+                )
+            lifted_optimistic = (state, lift(value))
+        recorder.ops.append(CallOp(self.name, lifted, into, error_into,
+                                   optimistic=lifted_optimistic))
 
     def stream(self, args: dict[str, Any] | None = None, *, into: State,
                done_set: tuple[State, Any] | None = None) -> None:
@@ -283,6 +341,8 @@ class AppRegistry:
         # Message catalogs per locale (ui.messages) and the fallback locale.
         self.catalogs: dict[str, dict] = {}
         self.default_locale = "en"
+        # Guard applied to every page and action before specific guards.
+        self.default_guard: Callable[..., Any] | None = None
 
     def match_page(self, path: str) -> tuple[Page, dict[str, str]] | None:
         page = self.pages.get(path)
@@ -314,7 +374,8 @@ def fresh_registry() -> AppRegistry:
 # Decorators
 # --------------------------------------------------------------------------
 
-def page(path: str, render: str = "auto") -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+def page(path: str, render: str = "auto",
+         guard: Callable[..., Any] | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     if not path.startswith("/"):
         raise VirelCompileError(f"Route path {path!r} must start with '/'.")
     if render not in ("auto", "static", "server", "client"):
@@ -327,21 +388,28 @@ def page(path: str, render: str = "auto") -> Callable[[Callable[..., Any]], Call
         registry = active_registry()
         if path in registry.pages:
             raise VirelCompileError(f"Route {path!r} is already registered.")
-        registry.pages[path] = Page(path, fn, render)
+        registry.pages[path] = Page(path, fn, render, guard=guard)
         return fn
 
     return decorate
 
 
-def server(fn: Callable[..., Any] | None = None, *, stream: bool = False):
+def server(fn: Callable[..., Any] | None = None, *, stream: bool = False,
+           guard: Callable[..., Any] | None = None):
     def decorate(inner: Callable[..., Any]) -> ServerAction:
-        action = ServerAction(inner, stream=stream)
+        action = ServerAction(inner, stream=stream, guard=guard)
         active_registry().actions[action.name] = action
         return action
 
     if fn is not None:
         return decorate(fn)
     return decorate
+
+
+def use_guard(fn: Callable[..., Any]) -> None:
+    """Install a guard that runs before every page and server action,
+    ahead of any route-specific guard."""
+    active_registry().default_guard = fn
 
 
 def client(fn: Callable[..., Any]) -> ClientFunction:

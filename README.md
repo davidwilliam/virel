@@ -192,6 +192,31 @@ Some consequences of this design:
   An image without alt text or an icon-only button without an accessible
   label will not compile.
 
+## Guards
+
+Pages and server actions take guards: functions (sync or async) that run
+per request before anything is compiled or invoked. A guard returns None
+to allow, `ui.redirect(path)` for a same-origin redirect (external targets
+are compile errors), or `ui.deny(status, message)`:
+
+```python
+def require_session(request: ui.Request):
+    if request.cookies.get("session") != "valid":
+        return ui.redirect("/login")
+
+@ui.page("/admin", guard=require_session)
+def admin() -> ui.Node: ...
+
+@ui.server(guard=require_session)
+def delete_project(project_id: str) -> str: ...
+```
+
+`ui.use_guard(fn)` installs a default guard ahead of every route-specific
+one. Guards see the method, path, headers, query, and cookies. For JSON
+action calls a redirect decision becomes a 401 with the redirect target in
+the body, and guarded routes are reported as server dependencies by the
+static build.
+
 ## Forms
 
 One model drives the whole form: field states, input types, native browser
@@ -286,6 +311,15 @@ def runs_page() -> ui.Node:
     )
 ```
 
+Handlers can update state optimistically: the state changes immediately,
+the server result replaces it on success, and a rejected call restores the
+captured previous value before the error surfaces:
+
+```python
+mark_done.call({"id": task.id}, into=status,
+               optimistic=(status, "done"), error_into=error)
+```
+
 Fetched values are cached by action and arguments, and the cache survives
 soft navigation: returning to a page shows its data instantly. With
 `stale_for=30`, entries younger than 30 seconds skip the network entirely,
@@ -324,6 +358,12 @@ updates in the browser. Missing keys and missing placeholders are compile
 errors; locales fall back to the default for untranslated keys. The server
 negotiates the locale from Accept-Language with a `?lang=` override and a
 `Vary` header; apps without catalogs skip all of this.
+
+Numbers, currencies, percentages, and dates format for the active locale:
+`ui.format_number`, `ui.format_currency`, `ui.format_percent`, and
+`ui.format_date` render static values at compile time with built-in rules
+for common locales, and compile reactive values to Intl calls that run in
+the browser with full locale data.
 
 ## Components
 
@@ -404,9 +444,8 @@ builtins (`len`, `str`, `int`, `float`, `bool`, `abs`, `min`, `max`,
 `@ui.client` functions and server actions. Anything outside it is a build
 error that names the nearest replacement.
 
-Not implemented yet, in rough priority order: optimistic mutation with
-rollback, locale-aware date and number formatting, and right-to-left
-layout support.
+Not implemented yet: right-to-left layout support and locale-aware
+collation.
 
 ## License
 

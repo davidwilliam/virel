@@ -667,37 +667,60 @@ class SetFromEventOp:
 
 
 class CallOp:
-    """Invoke a server action over HTTP."""
+    """Invoke a server action over HTTP.
+
+    With ``optimistic=(state, value)`` the state updates immediately; if the
+    server rejects the call, the previous value is restored before the error
+    is surfaced.
+    """
 
     def __init__(self, action: str, args: dict[str, Expr], into: State | None,
-                 error_into: State | None) -> None:
+                 error_into: State | None,
+                 optimistic: "tuple[State, Expr] | None" = None) -> None:
         self.action, self.args, self.into, self.error_into = action, args, into, error_into
+        self.optimistic = optimistic
 
     def js(self) -> str:
         js_args = "{" + ", ".join(f"{k}: {v.js()}" for k, v in self.args.items()) + "}"
         then = f".then((r) => S.{self.into.name}.set(r))" if self.into is not None else ""
         if self.error_into is not None:
-            catch = f".catch((e) => S.{self.error_into.name}.set(String(e.message || e)))"
+            on_error = f"S.{self.error_into.name}.set(String(e.message || e));"
         else:
-            catch = ".catch((e) => console.error(e))"
-        return f'$.action("{self.action}", {js_args}){then}{catch};'
+            on_error = "console.error(e);"
+        if self.optimistic is None:
+            return f'$.action("{self.action}", {js_args}){then}.catch((e) => {{ {on_error} }});'
+        state, value = self.optimistic
+        return (
+            f"{{ const __prev = S.{state.name}.get(); "
+            f"S.{state.name}.set({value.js()}); "
+            f'$.action("{self.action}", {js_args}){then}'
+            f".catch((e) => {{ S.{state.name}.set(__prev); {on_error} }}); }}"
+        )
 
     def execute(self, env: dict[str, Any], ev: Any = None) -> None:
         """Test-mode execution: call the Python function synchronously."""
         from .registry import active_registry
         action = active_registry().actions[self.action]
         args = {k: v.evaluate(env) for k, v in self.args.items()}
+        previous = None
+        if self.optimistic is not None:
+            state, value = self.optimistic
+            previous = env.get(state.name)
+            env[state.name] = value.evaluate(env)
         try:
             result = action.fn(**args)
             if inspect_isawaitable(result):
                 result = _run_coroutine(result)
         except Exception as error:
+            if self.optimistic is not None:
+                env[self.optimistic[0].name] = previous
             if self.error_into is not None:
                 env[self.error_into.name] = f"{type(error).__name__}: {error}"
                 return
             raise
         if self.into is not None:
-            env[self.into.name] = result
+            from .registry import to_jsonable
+            env[self.into.name] = to_jsonable(result)
 
     def to_ir(self) -> dict[str, Any]:
         return {

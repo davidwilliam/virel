@@ -307,6 +307,12 @@ def build_static(check_only: bool = False) -> BuildReport:
                 "require request-time rendering"
             )
             continue
+        if page.guard is not None or registry.default_guard is not None:
+            problems.append(
+                f"  {page.path}: route guards run per request and need a "
+                "running Python server"
+            )
+            continue
         result = compile_page(page)
         if result.server_actions:
             problems.append(

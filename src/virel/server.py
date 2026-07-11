@@ -277,6 +277,49 @@ class VirelASGIApp:
 
     # -- pages ----------------------------------------------------------------
 
+    def _request(self, scope: Scope) -> "Any":
+        from http.cookies import SimpleCookie
+        from .registry import Request
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1")
+                   for k, v in scope.get("headers", [])}
+        cookies: dict[str, str] = {}
+        if "cookie" in headers:
+            jar = SimpleCookie()
+            try:
+                jar.load(headers["cookie"])
+                cookies = {key: morsel.value for key, morsel in jar.items()}
+            except Exception:
+                cookies = {}
+        return Request(
+            method=scope.get("method", "GET"),
+            path=scope.get("path", "/"),
+            headers=headers,
+            query=_parse_query(scope.get("query_string", b"")),
+            cookies=cookies,
+        )
+
+    async def _run_guards(self, scope: Scope, specific: Any) -> Any:
+        """Evaluate the default guard then the route guard. Returns None
+        to allow, or a Redirect/Deny decision."""
+        from .registry import Deny, Redirect
+        guards = [g for g in (self.registry.default_guard, specific) if g]
+        if not guards:
+            return None
+        request = self._request(scope)
+        for guard in guards:
+            decision = guard(request)
+            if inspect.isawaitable(decision):
+                decision = await decision
+            if decision is None:
+                continue
+            if isinstance(decision, (Redirect, Deny)):
+                return decision
+            raise VirelCompileError(
+                f"Guard {guard.__name__!r} returned {decision!r}; guards "
+                "must return None, ui.redirect(path), or ui.deny()."
+            )
+        return None
+
     def _negotiate_locale(self, scope: Scope) -> str | None:
         """Pick the locale for a request: ?lang= override, then
         Accept-Language, then the default. None when the app registers no
@@ -337,6 +380,19 @@ class VirelASGIApp:
             await self._send_text(send, 404, f"No route matches {path!r}.")
             return
         page, params = matched
+        from .registry import Deny, Redirect
+        decision = await self._run_guards(scope, page.guard)
+        if isinstance(decision, Redirect):
+            await send({"type": "http.response.start", "status": 303,
+                        "headers": _headers("text/plain; charset=utf-8",
+                                            length=0,
+                                            extra=[(b"location",
+                                                    decision.to.encode("latin-1"))])})
+            await send({"type": "http.response.body", "body": b""})
+            return
+        if isinstance(decision, Deny):
+            await self._send_text(send, decision.status, decision.message)
+            return
         locale = self._negotiate_locale(scope)
         if page.is_dynamic or page.query_params:
             query = _parse_query(scope.get("query_string", b""))
@@ -412,6 +468,19 @@ class VirelASGIApp:
         action = self.registry.actions.get(name)
         if action is None:
             await self._send_json(send, 404, {"error": f"unknown server action {name!r}"})
+            return
+
+        from .registry import Deny, Redirect
+        decision = await self._run_guards(scope, action.guard)
+        if isinstance(decision, Redirect):
+            # Redirects are meaningless for JSON calls; treat as
+            # authentication required.
+            await self._send_json(send, 401, {"error": "authentication required",
+                                              "redirect": decision.to})
+            return
+        if isinstance(decision, Deny):
+            await self._send_json(send, decision.status,
+                                  {"error": decision.message})
             return
 
         try:
