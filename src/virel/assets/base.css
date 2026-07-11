@@ -8,6 +8,8 @@ html {
   color: var(--v-fg);
   background: var(--v-bg);
   -webkit-text-size-adjust: 100%;
+  /* No rubber-band bounce or scroll chaining past the document edge. */
+  overscroll-behavior: none;
 }
 
 body { margin: 0; min-height: 100vh; line-height: 1.55; }

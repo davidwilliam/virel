@@ -112,3 +112,8 @@ def test_default_csp_has_no_external_font_origins():
     csp = response.headers["content-security-policy"]
     assert "googleapis" not in csp
     assert "font-src 'self';" in csp
+
+
+def test_overscroll_bounce_disabled_by_default():
+    css = build_stylesheet(Theme())
+    assert "overscroll-behavior: none" in css
