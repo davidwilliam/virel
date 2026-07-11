@@ -60,4 +60,6 @@ class StarRating extends HTMLElement {
   }
 }
 
-customElements.define("star-rating", StarRating);
+if (!customElements.get("star-rating")) {
+  customElements.define("star-rating", StarRating);
+}

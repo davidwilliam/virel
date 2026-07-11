@@ -69,7 +69,7 @@ virel dev
 
 | Route | What it shows |
 |---|---|
-| `/` | Static landing page, no framework JavaScript modules |
+| `/` | Static landing page with a highlighted code sample |
 | `/counter` | Local state, derived values, conditional rendering |
 | `/search` | Two-way input binding, `ui.derived`, `ui.When` |
 | `/invite` | Model-driven form with server revalidation and field errors |

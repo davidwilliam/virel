@@ -96,7 +96,22 @@ export function bindProp(id, prop, fn) {
   effect(() => {
     const value = fn();
     if (node[prop] !== value) node[prop] = value;
+    if (prop === "value") {
+      if (node.type === "range") paintRange(node);
+      if (node.__virelSync) node.__virelSync();
+    }
   });
+  if (prop === "value" && node.type === "range") {
+    node.addEventListener("input", () => paintRange(node));
+  }
+}
+
+function paintRange(node) {
+  const min = Number(node.min || 0);
+  const max = Number(node.max || 100);
+  const value = Number(node.value || 0);
+  const percent = max > min ? ((value - min) / (max - min)) * 100 : 0;
+  node.style.setProperty("--v-fill", percent.toFixed(2) + "%");
 }
 
 export function bindDialog(id, fn) {
@@ -288,6 +303,133 @@ export function refreshResource(id) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Custom select: a styled combobox enhancing a native <select>. The
+ * native element stays as the source of truth (form semantics, tests,
+ * bindings); the runtime renders the button and listbox, handles
+ * keyboard interaction, and flips the menu upward when the space below
+ * is not sufficient.
+ * ------------------------------------------------------------------ */
+
+const CHEVRON =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" ' +
+  'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+  'stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
+
+export function select(id) {
+  const wrap = el(id);
+  if (!wrap || wrap.classList.contains("v-select-enhanced")) return;
+  const native = wrap.querySelector("select");
+  if (!native) return;
+  const options = [...native.options];
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "v-input v-select-btn";
+  btn.setAttribute("role", "combobox");
+  btn.setAttribute("aria-haspopup", "listbox");
+  btn.setAttribute("aria-expanded", "false");
+  const labelSpan = wrap.closest("label")?.querySelector(".v-label");
+  if (labelSpan) btn.setAttribute("aria-label", labelSpan.textContent);
+  const valueSpan = document.createElement("span");
+  valueSpan.className = "v-select-value";
+  btn.appendChild(valueSpan);
+  btn.insertAdjacentHTML("beforeend", CHEVRON);
+
+  const list = document.createElement("ul");
+  list.className = "v-select-list";
+  list.setAttribute("role", "listbox");
+  options.forEach((option, index) => {
+    const item = document.createElement("li");
+    item.className = "v-select-option";
+    item.setAttribute("role", "option");
+    item.id = `v-${id}-opt-${index}`;
+    item.textContent = option.textContent;
+    item.addEventListener("click", () => choose(index));
+    list.appendChild(item);
+  });
+
+  let active = Math.max(0, native.selectedIndex);
+  const isOpen = () => wrap.classList.contains("v-select-open");
+
+  const sync = () => {
+    const index = native.selectedIndex;
+    valueSpan.textContent = index >= 0 ? options[index].textContent : "";
+    [...list.children].forEach((item, i) =>
+      item.setAttribute("aria-selected", String(i === index)));
+  };
+  native.__virelSync = sync;
+
+  const highlight = () => {
+    [...list.children].forEach((item, i) =>
+      item.classList.toggle("v-active", i === active));
+    btn.setAttribute("aria-activedescendant", `v-${id}-opt-${active}`);
+    list.children[active]?.scrollIntoView({ block: "nearest" });
+  };
+
+  const openList = () => {
+    wrap.classList.add("v-select-open");
+    btn.setAttribute("aria-expanded", "true");
+    active = Math.max(0, native.selectedIndex);
+    highlight();
+    // Flip upward when the menu does not fit below the control.
+    const rect = btn.getBoundingClientRect();
+    const height = list.offsetHeight;
+    const fitsBelow = window.innerHeight - rect.bottom >= height + 12;
+    const fitsAbove = rect.top >= height + 12;
+    wrap.classList.toggle("v-select-up", !fitsBelow && fitsAbove);
+  };
+
+  const closeList = () => {
+    wrap.classList.remove("v-select-open", "v-select-up");
+    btn.setAttribute("aria-expanded", "false");
+    btn.removeAttribute("aria-activedescendant");
+  };
+
+  const choose = (index) => {
+    native.value = options[index].value;
+    native.dispatchEvent(new Event("change"));
+    sync();
+    closeList();
+    btn.focus();
+  };
+
+  btn.addEventListener("click", () => (isOpen() ? closeList() : openList()));
+  btn.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      if (!isOpen()) return openList();
+      const step = ev.key === "ArrowDown" ? 1 : -1;
+      active = Math.min(Math.max(active + step, 0), options.length - 1);
+      highlight();
+    } else if (ev.key === "Enter" || ev.key === " ") {
+      ev.preventDefault();
+      isOpen() ? choose(active) : openList();
+    } else if (ev.key === "Escape" && isOpen()) {
+      ev.preventDefault();
+      closeList();
+    } else if (ev.key === "Home" && isOpen()) {
+      active = 0;
+      highlight();
+    } else if (ev.key === "End" && isOpen()) {
+      active = options.length - 1;
+      highlight();
+    } else if (ev.key === "Tab") {
+      closeList();
+    }
+  });
+  document.addEventListener("click", (ev) => {
+    if (isOpen() && !wrap.contains(ev.target)) closeList();
+  });
+
+  native.setAttribute("aria-hidden", "true");
+  native.tabIndex = -1;
+  wrap.classList.add("v-select-enhanced");
+  wrap.appendChild(btn);
+  wrap.appendChild(list);
+  sync();
+}
+
+/* ------------------------------------------------------------------ *
  * Islands: deferred hydration boundaries (SPEC 9.7). The HTML is
  * already server-rendered; bind() activates the subtree's reactivity
  * according to the load strategy.
@@ -296,6 +438,9 @@ export function refreshResource(id) {
 export function island(id, strategy, bind) {
   const node = el(id);
   if (!node) return;
+  // The island wrapper uses display:contents and has no box of its own;
+  // intersection and interaction need a real element.
+  const target = node.firstElementChild || node;
   if (strategy === "idle") {
     const schedule = window.requestIdleCallback || ((fn) => setTimeout(fn, 1));
     schedule(bind);
@@ -315,7 +460,7 @@ export function island(id, strategy, bind) {
         }
       }
     });
-    observer.observe(node);
+    observer.observe(target);
     return;
   }
   if (strategy === "interaction") {
@@ -325,9 +470,9 @@ export function island(id, strategy, bind) {
       bound = true;
       bind();
     };
-    node.addEventListener("pointerenter", activate, { once: true });
-    node.addEventListener("focusin", activate, { once: true });
-    node.addEventListener("touchstart", activate, { once: true, passive: true });
+    target.addEventListener("pointerenter", activate, { once: true });
+    target.addEventListener("focusin", activate, { once: true });
+    target.addEventListener("touchstart", activate, { once: true, passive: true });
     return;
   }
   bind(); // immediate
@@ -394,6 +539,11 @@ async function navigate(url, push) {
   document.body.replaceWith(document.adoptNode(doc.body));
   if (push) history.pushState({}, "", url);
 
+  for (const script of doc.querySelectorAll(
+      'head script[type="module"][src]')) {
+    const src = script.getAttribute("src");
+    if (!src.startsWith("/_virel/")) import(src); // e.g. web components
+  }
   const moduleScript = doc.querySelector(
     'head script[type="module"][src^="/_virel/page/"]');
   if (moduleScript) {

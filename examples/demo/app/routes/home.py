@@ -70,13 +70,12 @@ def home() -> ui.Node:
                     gap=4,
                 ),
                 ui.Text(
-                    "This page is fully static: view source. There are no "
-                    "framework JavaScript modules on this route, and it "
-                    "still follows your system color scheme.",
+                    "This landing page is a static route: the content and "
+                    "the highlighted snippet above are plain server-rendered "
+                    "HTML. View source.",
                     muted=True, size="sm"),
                 gap=10,
             ),
-            theme_toggle=False,
         ),
         title="Virel Demo",
         meta={"description": "Virel demonstration application."},

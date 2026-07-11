@@ -45,19 +45,23 @@ def runs_page() -> ui.Node:
     def run_row(run) -> ui.Node:
         return ui.Card(
             ui.Row(
-                ui.Text(run.name),
+                ui.Stack(
+                    ui.Text(run.name),
+                    ui.Text(f"score {run.score}", muted=True, size="sm"),
+                    gap=0,
+                ),
                 ui.Spacer(),
-                ui.Text(f"score {run.score}", muted=True, size="sm"),
                 ui.Badge(run.status),
-                ui.Button("Inspect", size="sm",
+                ui.Button("Inspect", size="sm", emphasis="ghost",
                           on_click=lambda: selected.set(run.name)),
                 ui.Button("Archive", size="sm", intent="danger",
+                          emphasis="ghost",
                           on_click=lambda: archive_run.call(
                               {"name": run.name, "query": query},
                               into=runs.value)),
-                gap=3,
+                gap=4,
             ),
-            gap=2,
+            gap=0,
         )
 
     return ui.Page(

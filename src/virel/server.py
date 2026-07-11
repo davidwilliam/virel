@@ -98,7 +98,9 @@ function describeNode(node, depth) {
 
 function liveStates() {
   const S = window.__virel && window.__virel.S;
-  if (!S) return paint(P.dim, "(static page: no reactive state)");
+  if (!S || !Object.keys(S).length) {
+    return paint(P.dim, "(no reactive state on this page)");
+  }
   return Object.keys(S)
     .map((k) => paint(P.comp, k) + paint(P.dim, " = ") +
                 paint(P.text, JSON.stringify(S[k].get())))
@@ -220,7 +222,7 @@ class VirelASGIApp:
         if path.startswith("/_virel/fonts/"):
             from importlib import resources as _resources
             name = path.removeprefix("/_virel/fonts/")
-            if "/" in name or name not in ("InterVariable.woff2",):
+            if "/" in name or name not in ("InterVariable.woff2", "SpaceGrotesk.woff2"):
                 await self._send_text(send, 404, "not found")
                 return
             # Single-segment joins only: multi-segment joinpath needs 3.12.

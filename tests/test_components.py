@@ -143,3 +143,27 @@ def test_accordion_uses_native_disclosure():
     })))
     assert "<details" in result.html
     assert "<summary>Q1</summary>" in result.html
+
+
+def test_select_is_enhanced_by_the_runtime():
+    def page():
+        role = ui.state("viewer")
+        return ui.Page(ui.Select(role, label="Role",
+                                 options=["viewer", "editor"]))
+
+    result = _compile(page)
+    assert 'class="v-select"' in result.html
+    assert "$.select(" in result.js
+    # The native element stays in the markup as the source of truth.
+    assert "v-select-native" in result.html
+    assert '<option value="viewer">' in result.html
+
+
+def test_button_ghost_emphasis():
+    button = ui.Button("Archive", intent="danger", emphasis="ghost")
+    assert "v-btn-ghost" in button.attrs["class"]
+    assert "v-btn-danger" in button.attrs["class"]
+    solid = ui.Button("Save", intent="primary")
+    assert "v-btn-ghost" not in solid.attrs["class"]
+    with pytest.raises(VirelCompileError, match="emphasis"):
+        ui.Button("x", emphasis="outline")

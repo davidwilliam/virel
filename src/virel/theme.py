@@ -24,7 +24,7 @@ class Theme:
         "'InterVariable', ui-sans-serif, system-ui, -apple-system, "
         "'Segoe UI', Roboto, sans-serif"
     )
-    font_heading: str = "inherit"
+    font_heading: str = "'Space Grotesk', 'InterVariable', ui-sans-serif, system-ui, sans-serif"
     font_mono: str = "ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
 
     def css_tokens(self) -> str:
@@ -125,6 +125,13 @@ _FONT_FACE = """\
   font-weight: 100 900;
   font-display: swap;
   src: url('/_virel/fonts/InterVariable.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/_virel/fonts/SpaceGrotesk.woff2') format('woff2');
 }
 """
 

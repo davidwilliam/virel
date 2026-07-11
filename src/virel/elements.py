@@ -279,14 +279,22 @@ def set_from_event(state: State, path: str = "target.value") -> Handler:
 
 def Button(label: Any, *, on_click: Callable[[], None] | None = None,
            intent: str = "neutral", size: str = "md",
+           emphasis: str = "solid",
            disabled: Any = None, kind: str = "button",
            aria_label: str | None = None) -> Element:
     if intent not in _INTENTS:
         raise VirelCompileError(
             f"intent={intent!r} is not valid. Use one of: {', '.join(_INTENTS)}."
         )
+    if emphasis not in ("solid", "ghost"):
+        raise VirelCompileError(
+            f"emphasis={emphasis!r} is not valid. Use 'solid' or 'ghost'."
+        )
+    classes = f"v-btn v-btn-{intent} v-btn-{size}"
+    if emphasis == "ghost":
+        classes += " v-btn-ghost"
     attrs: dict[str, Any] = {
-        "class": f"v-btn v-btn-{intent} v-btn-{size}",
+        "class": classes,
         "type": kind,
     }
     if aria_label:
@@ -374,13 +382,17 @@ def Select(state: Any, *, label: str, options: list[str] | None = None) -> Eleme
     select_el = Element(
         "select",
         option_nodes,
-        attrs={"class": "v-input", **extra_attrs},
+        attrs={"class": "v-input v-select-native", **extra_attrs},
         events={"change": Handler([SetFromEventOp(state.name, "target.value")])},
         bound_props={"value": state},
     )
+    # The runtime replaces the native control with a styled combobox and
+    # keeps the native element as the source of truth.
+    enhanced = Element("div", [select_el], attrs={"class": "v-select"},
+                       runtime_binding="select")
     children: list[Node] = [
         Element("span", [TextNode(label)], attrs={"class": "v-label"}),
-        select_el,
+        enhanced,
     ]
     if error_node is not None:
         children.append(error_node)
