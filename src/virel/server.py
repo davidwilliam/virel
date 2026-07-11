@@ -665,8 +665,11 @@ class VirelASGIApp:
             return
         raw = _parse_query(scope.get("query_string", b""))
         hints = action.type_hints()
+        valid = set(action.signature.parameters)
         args: dict[str, Any] = {}
         for key, value in raw.items():
+            if key not in valid:
+                continue
             annotation = hints.get(key)
             try:
                 if annotation is int:
@@ -713,9 +716,11 @@ class VirelASGIApp:
             return
         raw = _parse_query(scope.get("query_string", b""))
         hints = action.type_hints()
+        valid = set(action.signature.parameters)
         args: dict[str, Any] = {}
         for key, value in raw.items():
-            args[key] = _convert_query(value, hints.get(key, str), value)
+            if key in valid:
+                args[key] = _convert_query(value, hints.get(key, str), value)
         try:
             kwargs = action.prepare(args)
         except ActionArgumentError as error:
