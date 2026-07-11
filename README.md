@@ -81,7 +81,7 @@ virel dev
 
 The invite button stays disabled until you type an email address. That check
 runs in the browser; the server revalidates on submit. The stream page reads
-chunked HTTP from an async generator, not a WebSocket.
+chunked HTTP from an async generator.
 
 ## CLI
 
@@ -162,7 +162,7 @@ Some consequences of this design:
 - Everything is inspectable. `virel inspect` prints the IR, `dist/` contains
   readable HTML and JavaScript, and each build writes the IR for every route
   to `.virel/ir/`.
-- Security is a tenet, not an option. Escaping is automatic in every
+- Security is a tenet. Escaping is automatic in every
   rendering context; raw HTML requires an explicit call with a written
   reason. URLs are scheme-checked so data cannot inject javascript: links.
   HTML responses carry a content security policy that allows only

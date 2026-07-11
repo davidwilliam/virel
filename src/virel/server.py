@@ -4,7 +4,7 @@ asyncio HTTP bridge for ``virel dev``.
 The ASGI app (``create_asgi_app``) works under uvicorn/hypercorn or mounted
 inside an existing ASGI deployment (SPEC 9.4). Server actions are stateless
 HTTP endpoints — no per-user server object graph, no sticky sessions
-(SPEC 6.8). Streaming actions use plain chunked HTTP, not WebSocket.
+(SPEC 6.8). Streaming actions use plain chunked HTTP.
 """
 
 from __future__ import annotations

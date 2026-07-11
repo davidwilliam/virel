@@ -1,7 +1,7 @@
 # Security policy
 
-Security is a design tenet of Virel, not an add-on. The framework is meant
-to be safe by default: an application written against the documented API
+Security is a design tenet of Virel. The framework is meant to be safe
+by default: an application written against the documented API
 should not be expressible in a way that introduces the common web
 vulnerability classes.
 
