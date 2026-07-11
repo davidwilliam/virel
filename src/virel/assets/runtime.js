@@ -405,6 +405,45 @@ export function invalidate(actionName) {
   }
 }
 
+// Send the files from a ui.FileField to an upload action as multipart,
+// reporting byte-level progress (0-100) into a signal.
+export function upload(name, fileRef, args, opts) {
+  const input = document.querySelector(`[data-vf="${fileRef}"]`);
+  const files = input?.files;
+  if (!files || files.length === 0) {
+    opts.error?.set("no file selected");
+    return;
+  }
+  const form = new FormData();
+  form.append("__args", JSON.stringify(args || {}));
+  for (const file of files) form.append(opts.fileParam, file, file.name);
+
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", `/_virel/action/${name}`);
+  xhr.responseType = "json";
+  if (opts.progress) {
+    opts.progress.set(0);
+    xhr.upload.addEventListener("progress", (ev) => {
+      if (ev.lengthComputable) {
+        opts.progress.set(Math.round((ev.loaded / ev.total) * 100));
+      }
+    });
+  }
+  xhr.addEventListener("load", () => {
+    const payload = xhr.response || {};
+    if (xhr.status >= 200 && xhr.status < 300) {
+      opts.progress?.set(100);
+      opts.into?.set(payload.result);
+    } else {
+      opts.error?.set(payload.error || `upload failed (${xhr.status})`);
+    }
+  });
+  xhr.addEventListener("error", () => {
+    opts.error?.set("upload failed");
+  });
+  xhr.send(form);
+}
+
 /* ------------------------------------------------------------------ *
  * Custom select: a styled combobox enhancing a native <select>. The
  * native element stays as the source of truth (form semantics, tests,

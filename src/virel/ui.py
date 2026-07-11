@@ -23,7 +23,9 @@ from .elements import (
     Container,
     Dialog,
     Divider,
+    DownloadButton,
     EmptyState,
+    FileField,
     Footer,
     Grid,
     Hero,
@@ -61,12 +63,13 @@ from .elements import (
     unsafe_html,
 )
 from .context import Context, context
-from .elements import Each, Island, Suspense, effect
+from .elements import Each, Island, Suspense, effect, upload
 from .formatting import (format_currency, format_date, format_number,
                          format_percent)
 from .forms import Form, FormActions, SubmitButton, form
 from .i18n import messages, t
 from .icons import Icon, icon_names
+from .uploads import FileDownload, UploadFile
 from .resources import Resource, invalidate, resource
 from .nodes import Node, When
 from .registry import (Request, build, client, component, deny, page,
@@ -113,6 +116,7 @@ __all__ = [
     "unsafe_html", "When",
     # data loading
     "resource", "Resource", "invalidate", "Each", "Suspense", "Island",
+    "upload", "UploadFile", "FileDownload", "FileField", "DownloadButton",
     # forms
     "form", "Form", "FormActions", "SubmitButton",
     # form controls

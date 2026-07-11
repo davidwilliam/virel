@@ -682,3 +682,18 @@ html[data-theme="dark"] .v-theme-toggle svg[data-icon="dark"] { display: inline;
 }
 .v-hero-actions { gap: calc(var(--v-space) * 3); flex-wrap: wrap; }
 .v-hero-media { margin-top: calc(var(--v-space) * 10); }
+
+/* File inputs */
+.v-file { font: inherit; font-size: 0.9rem; color: var(--v-fg-muted); }
+.v-file::file-selector-button {
+  font: inherit;
+  font-weight: 560;
+  margin-right: calc(var(--v-space) * 3);
+  padding: calc(var(--v-space) * 1.5) calc(var(--v-space) * 3);
+  border: 1px solid var(--v-border-strong);
+  border-radius: var(--v-radius-md);
+  background: var(--v-surface-1);
+  color: var(--v-fg);
+  cursor: pointer;
+}
+.v-file::file-selector-button:hover { background: var(--v-surface-2); }

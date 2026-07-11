@@ -77,6 +77,7 @@ class TestView:
             self.env: dict[str, Any] = {
                 name: state.initial for name, state in self.states.items()
             }
+            self._files: dict[str, list[Any]] = {}
             if fetch_resources:
                 # Simulate the browser's initial load: every resource fetches
                 # (running the real server action) unless server rendering
@@ -104,7 +105,9 @@ class TestView:
             for eff in self.effects
         }
         working = self.eval_env() | (scope or {})
+        working["__files__"] = self._files
         handler.execute(working, ev)
+        working.pop("__files__", None)
         for action_name in working.pop("__invalidated__", []):
             for res in self.resources.values():
                 if res.action.name == action_name:
@@ -348,6 +351,18 @@ class TestElement:
         if handler is None:
             raise AssertionError(f"<{self.node.tag}> has no submit handler.")
         self.view._run_handler(handler, ev={"target": {}}, scope=self.scope)
+
+    def attach(self, filename: str, content: bytes | str,
+               content_type: str = "application/octet-stream") -> None:
+        """Attach a file to a ui.FileField for the next upload."""
+        ref = self.node.attrs.get("data-vf")
+        if ref is None:
+            raise AssertionError("attach() targets a ui.FileField input.")
+        from .uploads import UploadFile, sanitize_filename
+        data = content.encode("utf-8") if isinstance(content, str) else content
+        self.view._files.setdefault(ref, []).append(UploadFile(
+            filename=sanitize_filename(filename),
+            content_type=content_type, data=data))
 
     def toggle(self) -> None:
         self._require_visible("toggle")

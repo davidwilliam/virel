@@ -292,6 +292,85 @@ def effect(fn: Callable[[], None], *, dependencies: list[Any],
         EffectDef(_handler(fn), deps, run_on_mount))
 
 
+def FileField(*, label: str, accept: str | None = None,
+              multiple: bool = False,
+              description: str | None = None) -> Element:
+    """File picker for upload actions. Pass the returned element to
+    ui.upload(files=...) inside a handler."""
+    from .expr import current_context
+    ref = current_context().next_id("f")
+    control = Element("input", attrs={
+        "class": "v-file", "type": "file", "data-vf": ref,
+        "accept": accept, "multiple": multiple or None,
+    })
+    children: list[Node] = [
+        Element("span", [TextNode(label)], attrs={"class": "v-label"}),
+        control,
+    ]
+    if description:
+        children.append(Element("span", [TextNode(description)],
+                                attrs={"class": "v-hint"}))
+    wrapper = Element("label", children, attrs={"class": "v-field"})
+    wrapper.file_ref = ref
+    return wrapper
+
+
+def upload(action: Any, *, files: Element, args: dict[str, Any] | None = None,
+           into: State | None = None, progress_into: State | None = None,
+           error_into: State | None = None) -> None:
+    """Inside a handler: send the selected files to an upload action over
+    multipart, with byte-level progress into a state (SPEC 8.8)."""
+    from .expr import UploadOp, current_recorder
+    from .registry import ServerAction
+    from .uploads import file_params
+    if not isinstance(action, ServerAction):
+        raise VirelCompileError("ui.upload takes a @ui.server action.")
+    ref = getattr(files, "file_ref", None)
+    if ref is None:
+        raise VirelCompileError(
+            "ui.upload(files=...) takes the element returned by "
+            "ui.FileField()."
+        )
+    params = file_params(action)
+    if not params:
+        raise VirelCompileError(
+            f"Server action {action.name!r} has no parameter annotated with "
+            "ui.UploadFile (or list[ui.UploadFile])."
+        )
+    file_param = next(iter(params))
+    lifted = {k: lift(v) for k, v in (args or {}).items()}
+    current_recorder().ops.append(UploadOp(
+        action.name, file_param, ref, lifted, into, progress_into,
+        error_into))
+
+
+upload.__virel_op__ = "upload"
+
+
+def DownloadButton(label: Any, *, action: Any,
+                   args: dict[str, Any] | None = None,
+                   intent: str = "neutral", size: str = "md") -> Element:
+    """A link styled as a button that downloads the file returned by a
+    download action (a GET; the action must not change state)."""
+    from urllib.parse import urlencode
+    from .registry import ServerAction
+    if not isinstance(action, ServerAction) or not action.download:
+        raise VirelCompileError(
+            "DownloadButton takes a @ui.server(download=True) action."
+        )
+    for key, value in (args or {}).items():
+        if isinstance(value, Expr):
+            raise VirelCompileError(
+                "DownloadButton args must be plain values; reactive download "
+                "parameters are not supported yet."
+            )
+    query = urlencode(args or {})
+    href = f"/_virel/action/{action.name}" + (f"?{query}" if query else "")
+    return Element("a", normalize_children((label,)),
+                   attrs={"href": href, "download": True,
+                          "class": f"v-btn v-btn-{intent} v-btn-{size}"})
+
+
 def set_from_event(state: State, path: str = "target.value") -> Handler:
     """An event handler that writes an event property into a state.
 

@@ -259,6 +259,10 @@ class VirelASGIApp:
             await self._serve_page_js(path, send)
             return
         if path.startswith("/_virel/action/"):
+            if method == "GET":
+                await self._serve_download(
+                    path.removeprefix("/_virel/action/"), scope, send)
+                return
             if method != "POST":
                 await self._send_json(send, 405, {"error": "actions require POST"})
                 return
@@ -463,8 +467,10 @@ class VirelASGIApp:
         elif origin == "null":
             return "requests from an opaque origin are not allowed"
         content_type = headers.get("content-type", "")
-        if content_type and not content_type.startswith("application/json"):
-            return "server actions require a JSON request body"
+        if content_type and not (
+                content_type.startswith("application/json")
+                or content_type.startswith("multipart/form-data")):
+            return "server actions require a JSON or multipart request body"
         return None
 
     async def _serve_action(self, name: str, scope: Scope,
@@ -492,6 +498,13 @@ class VirelASGIApp:
         except _BodyTooLarge:
             await self._send_json(send, 413, {
                 "error": f"request body exceeds {self.max_body_bytes} bytes"})
+            return
+
+        request_headers = {k.decode("latin-1").lower(): v.decode("latin-1")
+                           for k, v in scope.get("headers", [])}
+        if request_headers.get("content-type", "").startswith("multipart/form-data"):
+            await self._serve_upload(action, body,
+                                     request_headers["content-type"], send)
             return
         try:
             args = json.loads(body or b"{}")
@@ -549,6 +562,111 @@ class VirelASGIApp:
         await self._send_text(send, 200, payload,
                               content_type="application/json; charset=utf-8",
                               extra=_action_headers(duration))
+
+    async def _serve_upload(self, action: Any, body: bytes,
+                            content_type: str, send: Send) -> None:
+        import json as _json
+        from .registry import (ActionArgumentError, ActionValidationError,
+                               to_jsonable)
+        from .uploads import MultipartError, file_params, parse_multipart
+        params = file_params(action)
+        if not params:
+            await self._send_json(send, 400, {
+                "error": f"action {action.name!r} does not accept file uploads"})
+            return
+        try:
+            fields, files = parse_multipart(body, content_type)
+        except MultipartError as error:
+            await self._send_json(send, 400, {"error": str(error)})
+            return
+        try:
+            args = _json.loads(fields.get("__args", "{}"))
+            if not isinstance(args, dict):
+                raise ValueError("__args must be a JSON object")
+        except ValueError as error:
+            await self._send_json(send, 400, {"error": f"invalid arguments: {error}"})
+            return
+        try:
+            kwargs = action.prepare(args, provided=set(params))
+        except ActionArgumentError as error:
+            await self._send_json(send, 400, {"error": str(error)})
+            return
+        except ActionValidationError as error:
+            await self._send_json(send, 400, {
+                "error": "validation failed",
+                "field_errors": error.field_errors})
+            return
+        for name, multiple in params.items():
+            received = files.get(name, [])
+            if not received:
+                if name in kwargs:
+                    continue
+                await self._send_json(send, 400, {
+                    "error": f"missing file(s) for parameter {name!r}"})
+                return
+            kwargs[name] = received if multiple else received[0]
+        try:
+            result = action.fn(**kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception as error:
+            await self._send_json(send, 500,
+                                  {"error": _safe_message(error, self.dev)})
+            return
+        await self._send_json(send, 200, {"result": to_jsonable(result)})
+
+    async def _serve_download(self, name: str, scope: Scope, send: Send) -> None:
+        from .uploads import FileDownload, sanitize_filename
+        action = self.registry.actions.get(name)
+        if action is None or not action.download:
+            await self._send_text(send, 404, "not found")
+            return
+        from .registry import Deny, Redirect
+        decision = await self._run_guards(scope, action.guard)
+        if isinstance(decision, Redirect):
+            await self._send_text(send, 401, "authentication required")
+            return
+        if isinstance(decision, Deny):
+            await self._send_text(send, decision.status, decision.message)
+            return
+        raw = _parse_query(scope.get("query_string", b""))
+        hints = action.type_hints()
+        args: dict[str, Any] = {}
+        for key, value in raw.items():
+            annotation = hints.get(key)
+            try:
+                if annotation is int:
+                    args[key] = int(value)
+                elif annotation is float:
+                    args[key] = float(value)
+                elif annotation is bool:
+                    args[key] = value in ("1", "true", "yes")
+                else:
+                    args[key] = value
+            except ValueError:
+                await self._send_text(send, 400, f"invalid value for {key!r}")
+                return
+        from .registry import ActionArgumentError
+        try:
+            kwargs = action.prepare(args)
+            result = action.fn(**kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+        except ActionArgumentError as error:
+            await self._send_text(send, 400, str(error))
+            return
+        except Exception as error:
+            await self._send_text(send, 500, _safe_message(error, self.dev))
+            return
+        if not isinstance(result, FileDownload):
+            await self._send_text(send, 500,
+                                  "download actions must return ui.FileDownload")
+            return
+        filename = sanitize_filename(result.filename)
+        await self._send_bytes(
+            send, 200, result.body(), result.content_type,
+            extra=[(b"content-disposition",
+                    f'attachment; filename="{filename}"'.encode("latin-1"))])
 
     async def _stream_action(self, action: Any, args: dict[str, Any], send: Send) -> None:
         await send({

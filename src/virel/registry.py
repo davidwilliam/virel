@@ -121,11 +121,15 @@ class ServerAction:
 
     def __init__(self, fn: Callable[..., Any], stream: bool,
                  guard: Callable[..., Any] | None = None,
-                 idempotent: bool = False) -> None:
+                 idempotent: bool = False,
+                 download: bool = False) -> None:
         self.fn = fn
         self.name = fn.__name__
         self.stream_response = stream
         self.guard = guard
+        # Download actions answer GET requests with a FileDownload and by
+        # contract must not change state.
+        self.download = download
         # Idempotent actions replay the stored response when a request
         # carries an already-seen Idempotency-Key (safe retries).
         self.idempotent = idempotent
@@ -148,10 +152,12 @@ class ServerAction:
                 self._hints = {}
         return self._hints
 
-    def prepare(self, raw: dict[str, Any]) -> dict[str, Any]:
+    def prepare(self, raw: dict[str, Any],
+                provided: set[str] | None = None) -> dict[str, Any]:
         """Validate a JSON payload against the signature and convert any
         model-annotated parameters. Every server action revalidates on the
-        server regardless of client checks (SPEC 8.9)."""
+        server regardless of client checks (SPEC 8.9). ``provided`` names
+        parameters supplied out of band (uploaded files)."""
         valid = set(self.signature.parameters)
         unknown = set(raw) - valid
         if unknown:
@@ -160,6 +166,7 @@ class ServerAction:
         missing = [
             p.name for p in self.signature.parameters.values()
             if p.default is inspect.Parameter.empty and p.name not in raw
+            and p.name not in (provided or set())
         ]
         if missing:
             raise ActionArgumentError(
@@ -403,10 +410,10 @@ def page(path: str, render: str = "auto",
 
 def server(fn: Callable[..., Any] | None = None, *, stream: bool = False,
            guard: Callable[..., Any] | None = None,
-           idempotent: bool = False):
+           idempotent: bool = False, download: bool = False):
     def decorate(inner: Callable[..., Any]) -> ServerAction:
         action = ServerAction(inner, stream=stream, guard=guard,
-                              idempotent=idempotent)
+                              idempotent=idempotent, download=download)
         active_registry().actions[action.name] = action
         return action
 

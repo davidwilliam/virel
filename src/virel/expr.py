@@ -743,6 +743,64 @@ class CallOp:
         }
 
 
+class UploadOp:
+    """Invoke an upload action with the files from a ui.FileField."""
+
+    def __init__(self, action: str, file_param: str, file_ref: str,
+                 args: dict[str, "Expr"], into: "State | None",
+                 progress_into: "State | None",
+                 error_into: "State | None") -> None:
+        self.action = action
+        self.file_param = file_param
+        self.file_ref = file_ref
+        self.args = args
+        self.into = into
+        self.progress_into = progress_into
+        self.error_into = error_into
+
+    def js(self) -> str:
+        js_args = "{" + ", ".join(f"{k}: {v.js()}" for k, v in self.args.items()) + "}"
+        opts = [f'fileParam: "{self.file_param}"']
+        if self.into is not None:
+            opts.append(f"into: S.{self.into.name}")
+        if self.progress_into is not None:
+            opts.append(f"progress: S.{self.progress_into.name}")
+        if self.error_into is not None:
+            opts.append(f"error: S.{self.error_into.name}")
+        return (f'$.upload("{self.action}", "{self.file_ref}", {js_args}, '
+                f'{{ {", ".join(opts)} }});')
+
+    def execute(self, env: dict[str, Any], ev: Any = None) -> None:
+        from .registry import active_registry, to_jsonable
+        action = active_registry().actions[self.action]
+        files = (env.get("__files__") or {}).get(self.file_ref, [])
+        if not files:
+            if self.error_into is not None:
+                env[self.error_into.name] = "no file selected"
+            return
+        args = {k: v.evaluate(env) for k, v in self.args.items()}
+        from .uploads import file_params
+        multiple = file_params(action).get(self.file_param, False)
+        args[self.file_param] = files if multiple else files[0]
+        if self.progress_into is not None:
+            env[self.progress_into.name] = 100
+        try:
+            result = action.fn(**args)
+            if inspect_isawaitable(result):
+                result = _run_coroutine(result)
+        except Exception as error:
+            if self.error_into is not None:
+                env[self.error_into.name] = f"{type(error).__name__}: {error}"
+                return
+            raise
+        if self.into is not None:
+            env[self.into.name] = to_jsonable(result)
+
+    def to_ir(self) -> dict[str, Any]:
+        return {"op": "upload", "action": self.action,
+                "file_param": self.file_param}
+
+
 class StreamOp:
     """Invoke a streaming server action, appending chunks into a state."""
 

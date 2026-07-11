@@ -297,16 +297,20 @@ class FnCompiler:
             raise self.error(node, "Expression statements must be calls "
                                    "(state.set, action.call, ...).")
         call = node
+        marker = None
         if isinstance(call.func, ast.Name):
-            resolved = self._resolve(call.func.id)
-            if getattr(resolved, "__virel_op__", None) == "invalidate":
-                return OpStmt(self._compile_invalidate(call))
+            marker = getattr(self._resolve(call.func.id), "__virel_op__", None)
+        elif isinstance(call.func, ast.Attribute):
+            base = self._try_resolve_node(call.func.value)
+            marker = getattr(getattr(base, call.func.attr, None),
+                             "__virel_op__", None)
+        if marker == "invalidate":
+            return OpStmt(self._compile_invalidate(call))
+        if marker == "upload":
+            return OpStmt(self._compile_upload(call))
         if isinstance(call.func, ast.Attribute):
             target = self._try_resolve_node(call.func.value)
             attr = call.func.attr
-            if getattr(getattr(target, attr, None), "__virel_op__", None) \
-                    == "invalidate":
-                return OpStmt(self._compile_invalidate(call))
             from .registry import ServerAction
             from .resources import RefreshOp, Resource
             if _is_reactive(target) and attr in ("set", "update"):
@@ -336,6 +340,52 @@ class FnCompiler:
         if not isinstance(target, ServerAction):
             raise self.error(call, "ui.invalidate takes a @ui.server action.")
         return InvalidateOp(target.name)
+
+    def _compile_upload(self, call: ast.Call) -> Any:
+        from .expr import UploadOp
+        from .registry import ServerAction
+        from .uploads import file_params
+        if len(call.args) != 1:
+            raise self.error(call, "ui.upload takes the action as its only "
+                                   "positional argument.")
+        action = self._try_resolve_node(call.args[0])
+        if not isinstance(action, ServerAction):
+            raise self.error(call, "ui.upload takes a @ui.server action.")
+        params = file_params(action)
+        if not params:
+            raise self.error(call, f"Action {action.name!r} has no "
+                                   "ui.UploadFile parameter.")
+        file_ref = None
+        args: dict[str, Any] = {}
+        into = progress_into = error_into = None
+        for keyword in call.keywords:
+            if keyword.arg == "files":
+                field = self._try_resolve_node(keyword.value)
+                file_ref = getattr(field, "file_ref", None)
+                if file_ref is None:
+                    raise self.error(call, "files= must be a ui.FileField "
+                                           "element.")
+            elif keyword.arg == "args":
+                if not isinstance(keyword.value, ast.Dict):
+                    raise self.error(call, "args= must be a dict literal.")
+                for key, value in zip(keyword.value.keys, keyword.value.values):
+                    if not isinstance(key, ast.Constant):
+                        raise self.error(call, "argument names must be "
+                                               "string literals.")
+                    args[key.value] = self.expr(value)
+            elif keyword.arg == "into":
+                into = self._resolve_state_kw(call, keyword)
+            elif keyword.arg == "progress_into":
+                progress_into = self._resolve_state_kw(call, keyword)
+            elif keyword.arg == "error_into":
+                error_into = self._resolve_state_kw(call, keyword)
+            else:
+                raise self.error(call, f"Unknown keyword {keyword.arg!r} for "
+                                       "ui.upload.")
+        if file_ref is None:
+            raise self.error(call, "ui.upload requires files=<ui.FileField>.")
+        return UploadOp(action.name, next(iter(params)), file_ref, args,
+                        into, progress_into, error_into)
 
     def _compile_state_mutation(self, call: ast.Call, state: Any, attr: str) -> SetOp:
         if attr == "set":
