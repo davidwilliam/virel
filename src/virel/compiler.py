@@ -149,21 +149,28 @@ def _actions_in_bindings(bindings: list[str]) -> list[str]:
 def _emit_page_js(ctx: TraceContext, emitter: Emitter, dev: bool = False) -> str | None:
     if not ctx.states and not ctx.derived and not emitter.bindings:
         return None
-    lines = [
-        'import * as $ from "/_virel/runtime.js";',
-        "const S = {};",
-    ]
+    from .registry import active_registry
+    lines = ['import * as $ from "/_virel/runtime.js";']
     for definition in _client_fn_definitions(ctx):
         lines.append(definition)
+    # Bindings live inside mount() so client navigation can re-run them
+    # against a freshly swapped document; fresh modules mount themselves.
+    body = ["const S = {};"]
     for name, state in ctx.states.items():
-        lines.append(f"S.{name} = $.signal({_js_json(state.initial)});")
+        body.append(f"S.{name} = $.signal({_js_json(state.initial)});")
     for name, derived in ctx.derived.items():
-        lines.append(f"S.{name} = $.computed(() => {derived.expr.js()});")
+        body.append(f"S.{name} = $.computed(() => {derived.expr.js()});")
     for res in ctx.resources.values():
-        lines.append(res.binding_js())
-    lines.extend(emitter.bindings)
+        body.append(res.binding_js())
+    body.extend(emitter.bindings)
+    if active_registry().client_nav:
+        body.append("$.router();")
     if dev:
-        lines.append("window.__virel = { S };")
+        body.append("window.__virel = { S };")
+    lines.append("export function mount() {")
+    lines.extend(f"  {line}" for line in body)
+    lines.append("}")
+    lines.append("mount();")
     return "\n".join(lines) + "\n"
 
 

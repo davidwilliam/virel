@@ -46,6 +46,11 @@ btn.style.cssText =
   "font:600 12px ui-monospace,monospace;color:#fff;background:#4f46e5;" +
   "border:0;border-radius:999px;cursor:pointer;opacity:.85";
 document.addEventListener("DOMContentLoaded", () => document.body.appendChild(btn));
+// Client navigation swaps the body; put the button (and panel state) back.
+window.addEventListener("virel:navigate", () => {
+  document.body.appendChild(btn);
+  if (panel) { panel.remove(); panel = null; }
+});
 
 let panel = null;
 

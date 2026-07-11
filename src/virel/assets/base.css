@@ -164,6 +164,7 @@ p { margin: 0; }
 .v-shell-header-inner > .v-row { flex: 1; }
 .v-brand { font-weight: 700; letter-spacing: -0.01em; }
 .v-nav { display: flex; gap: calc(var(--v-space) * 4); flex-wrap: wrap; }
+.v-nav a[aria-current="page"] { color: var(--v-fg); font-weight: 650; }
 .v-shell-main { flex: 1; padding-block: calc(var(--v-space) * 8); }
 
 .v-list { margin: 0; padding-inline-start: 1.2em; }

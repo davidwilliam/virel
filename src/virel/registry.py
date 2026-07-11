@@ -277,6 +277,9 @@ class AppRegistry:
         self.components: dict[str, Callable[..., Any]] = {}
         self.client_functions: dict[str, ClientFunction] = {}
         self.theme: Any = None  # set via ui.use_theme; None -> default theme
+        # Soft navigation between pages (fetch, swap, mount). Configurable
+        # via [app] client_nav in virel.toml.
+        self.client_nav = True
 
     def match_page(self, path: str) -> tuple[Page, dict[str, str]] | None:
         page = self.pages.get(path)

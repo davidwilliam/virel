@@ -7,6 +7,7 @@
  */
 
 let activeEffect = null;
+let mountScope = [];
 
 export function signal(value) {
   const subscribers = new Set();
@@ -18,13 +19,17 @@ export function signal(value) {
     set(next) {
       if (next === value) return;
       value = next;
-      for (const fn of [...subscribers]) fn();
+      for (const fn of [...subscribers]) {
+        if (fn.disposed) subscribers.delete(fn);
+        else fn();
+      }
     },
   };
 }
 
 export function effect(fn) {
   const run = () => {
+    if (run.disposed) return;
     const previous = activeEffect;
     activeEffect = run;
     try {
@@ -33,7 +38,17 @@ export function effect(fn) {
       activeEffect = previous;
     }
   };
+  mountScope.push(run);
   run();
+}
+
+// Everything a page module binds belongs to its mount scope. Client
+// navigation disposes the scope before mounting the next page, so effects
+// from a previous page never fire against a swapped-out DOM.
+export function disposeMount() {
+  for (const run of mountScope) run.disposed = true;
+  mountScope = [];
+  for (const key in resourceRegistry) delete resourceRegistry[key];
 }
 
 export function computed(fn) {
@@ -238,6 +253,96 @@ export function refreshResource(id) {
   const refresh = resourceRegistry[id];
   if (refresh) refresh();
   else console.warn(`virel: unknown resource ${id}`);
+}
+
+/* ------------------------------------------------------------------ *
+ * Client navigation: same-origin link clicks fetch the target page,
+ * swap the document, and mount its page module, so navigation keeps
+ * scroll-restoring history semantics without full reloads. Pages that
+ * compile per request (inline modules) fall back to a full load.
+ * ------------------------------------------------------------------ */
+
+let routerInstalled = false;
+const importedPages = new Set();
+
+export function router() {
+  if (routerInstalled) return;
+  routerInstalled = true;
+  const initial = document.querySelector(
+    'head script[type="module"][src^="/_virel/page/"]');
+  if (initial) importedPages.add(initial.getAttribute("src"));
+  markCurrentPage();
+
+  document.addEventListener("click", (ev) => {
+    if (ev.defaultPrevented || ev.button !== 0) return;
+    if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+    const anchor = ev.target.closest("a");
+    if (!anchor || anchor.target || anchor.hasAttribute("download")) return;
+    const url = new URL(anchor.href, location.href);
+    if (url.origin !== location.origin) return;
+    if (url.pathname === location.pathname && url.search === location.search) {
+      return; // same page (or a fragment link): let the browser handle it
+    }
+    ev.preventDefault();
+    navigate(url.pathname + url.search, true);
+  });
+
+  window.addEventListener("popstate", () => {
+    navigate(location.pathname + location.search, false);
+  });
+}
+
+async function navigate(url, push) {
+  let doc;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      location.href = url;
+      return;
+    }
+    doc = new DOMParser().parseFromString(await response.text(), "text/html");
+  } catch {
+    location.href = url;
+    return;
+  }
+  // Per-request pages carry their module inline; run them with a full load
+  // so the document and its CSP hashes stay consistent.
+  if (doc.querySelector("head script[type=module]:not([src])")) {
+    location.href = url;
+    return;
+  }
+  disposeMount();
+  document.title = doc.title;
+  document.body.replaceWith(document.adoptNode(doc.body));
+  if (push) history.pushState({}, "", url);
+
+  const moduleScript = doc.querySelector(
+    'head script[type="module"][src^="/_virel/page/"]');
+  if (moduleScript) {
+    const src = moduleScript.getAttribute("src");
+    if (importedPages.has(src)) {
+      (await import(src)).mount();
+    } else {
+      importedPages.add(src);
+      await import(src); // fresh modules mount themselves
+    }
+  }
+  window.scrollTo(0, 0);
+  markCurrentPage();
+  document.body.setAttribute("tabindex", "-1");
+  document.body.focus({ preventScroll: true });
+  window.dispatchEvent(new CustomEvent("virel:navigate"));
+}
+
+function markCurrentPage() {
+  for (const anchor of document.querySelectorAll("nav a[href]")) {
+    const url = new URL(anchor.href, location.href);
+    if (url.pathname === location.pathname) {
+      anchor.setAttribute("aria-current", "page");
+    } else {
+      anchor.removeAttribute("aria-current");
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ *

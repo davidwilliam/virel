@@ -99,6 +99,18 @@ virel schema <name>    print a component schema as JSON
 anything requires a server (dynamic parameters, server actions). It never
 emits a site that looks static but breaks at runtime.
 
+## Navigation
+
+Same-origin link clicks navigate without a full page load: the router
+fetches the target page, swaps the document, disposes the previous page's
+reactive bindings, and mounts the new page module, with working history,
+back and forward, scroll reset, and an `aria-current` marker on the active
+nav link. Pages that compile per request (dynamic parameters or
+server-rendered resources) fall back to a normal full load, and modified
+clicks, downloads, external links, and fragment links are left to the
+browser. Set `client_nav = false` under `[app]` in `virel.toml` to turn
+soft navigation off.
+
 ## How it works
 
 A page function runs once at compile time under a trace context. Reactive

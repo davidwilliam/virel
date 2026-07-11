@@ -44,6 +44,7 @@ def _load_app(root: Path) -> dict:
     sys.path.insert(0, str(root))
     importlib.import_module(module_name)
     registry = active_registry()
+    registry.client_nav = bool(config.get("app", {}).get("client_nav", True))
     if not registry.pages:
         _fail(f"module {module_name!r} imported but registered no @ui.page routes.")
     return config
