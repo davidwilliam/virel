@@ -249,6 +249,10 @@ class VirelASGIApp:
             result = compile_page(page, params=params, dev=self.dev, inline_js=True)
         else:
             result = self._compiled(path)
+            if result.needs_request_render:
+                # Server-rendered resources embed data fetched at render
+                # time; compile fresh for every request.
+                result = compile_page(page, dev=self.dev, inline_js=True)
         await self._send_text(send, 200, result.html,
                               content_type="text/html; charset=utf-8")
 

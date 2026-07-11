@@ -53,8 +53,10 @@ from .elements import (
     set_from_event,
     unsafe_html,
 )
+from .elements import Each, Suspense
 from .forms import Form, FormActions, SubmitButton, form
 from .icons import Icon, icon_names
+from .resources import Resource, resource
 from .nodes import Node, When
 from .registry import client, component, page, server, web_component
 from .theme import Theme
@@ -89,6 +91,8 @@ __all__ = [
     # semantic elements
     "Heading", "Text", "Code", "Link", "Image", "List", "Nav",
     "unsafe_html", "When",
+    # data loading
+    "resource", "Resource", "Each", "Suspense",
     # forms
     "form", "Form", "FormActions", "SubmitButton",
     # form controls

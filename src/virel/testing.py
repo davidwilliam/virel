@@ -17,7 +17,16 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from .expr import Expr, TraceContext, VirelCompileError, _js_like_str
-from .nodes import BindText, Element, Node, PageNode, RawHTML, TextNode, When
+from .nodes import (
+    BindText,
+    EachNode,
+    Element,
+    Node,
+    PageNode,
+    RawHTML,
+    TextNode,
+    When,
+)
 
 _IMPLICIT_ROLES = {
     "button": "button",
@@ -45,7 +54,8 @@ _INPUT_ROLES = {
 class TestView:
     __test__ = False  # keep pytest from collecting this class
 
-    def __init__(self, fn: Callable[..., Any], params: dict[str, Any] | None = None) -> None:
+    def __init__(self, fn: Callable[..., Any], params: dict[str, Any] | None = None,
+                 fetch_resources: bool = True) -> None:
         with TraceContext() as ctx:
             root = fn(**(params or {}))
             if not isinstance(root, (PageNode, Element)):
@@ -56,9 +66,17 @@ class TestView:
             self.root = root
             self.states = dict(ctx.states)
             self.derived = dict(ctx.derived)
+            self.resources = dict(ctx.resources)
         self.env: dict[str, Any] = {
             name: state.initial for name, state in self.states.items()
         }
+        if fetch_resources:
+            # Simulate the browser's initial load: every resource fetches
+            # (running the real server action) unless server rendering
+            # already populated it.
+            for res in self.resources.values():
+                if not res.server_render:
+                    res.fetch_into(self.env)
 
     # -- state environment ------------------------------------------------------
 
@@ -360,6 +378,14 @@ def _node_text(node: Node, env: dict[str, Any], visible_only: bool = False,
         for child in node.then + node.otherwise:
             out.extend(_node_text(child, env, visible_only, view))
         return out
+    if isinstance(node, EachNode):
+        items = node.items.evaluate(env) or []
+        out = []
+        for item in items:
+            item_env = env | {"item": item}
+            for child in node.template:
+                out.extend(_node_text(child, item_env, visible_only, view))
+        return out
     if isinstance(node, (Element, PageNode)):
         out = []
         for child in node.children:
@@ -375,6 +401,12 @@ def _as_number(value: Any) -> float | None:
         return None
 
 
-def render(fn: Callable[..., Any], **params: Any) -> TestView:
-    """Compile a page or component function and return a queryable view."""
-    return TestView(fn, params or None)
+def render(fn: Callable[..., Any], *, fetch_resources: bool = True,
+           **params: Any) -> TestView:
+    """Compile a page or component function and return a queryable view.
+
+    Resources fetch eagerly (running their real server actions) so the view
+    reflects the loaded page. Pass ``fetch_resources=False`` to assert on
+    loading states instead.
+    """
+    return TestView(fn, params or None, fetch_resources=fetch_resources)

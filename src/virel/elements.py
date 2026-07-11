@@ -608,6 +608,33 @@ def Breadcrumbs(items: list[tuple[str, str | None]]) -> Element:
                    attrs={"aria-label": "Breadcrumb"})
 
 
+def Each(items: Any, *, render: Callable[[Any], Any], tag: str = "div",
+         gap: int | None = 3) -> Node:
+    """Reactive list rendering. ``render`` receives a symbolic item and is
+    traced once into a template; the browser re-renders the list when the
+    data changes."""
+    from .nodes import EachNode
+    return EachNode(items, render, tag=tag, gap=gap)
+
+
+def Suspense(resource: Any, *, content: Any, fallback: Any = None,
+             error: Any = None) -> Node:
+    """Loading, error, and ready states for a resource in one place."""
+    from .expr import Compare, Lit
+    from .resources import Resource
+    if not isinstance(resource, Resource):
+        raise VirelCompileError(
+            "Suspense requires a ui.resource(...) as its first argument."
+        )
+    content_node = content() if callable(content) else content
+    fallback_node = fallback if fallback is not None else Skeleton()
+    error_node = error if error is not None else Alert(resource.error,
+                                                       intent="danger")
+    settled = When(Compare("!=", resource.error, Lit(None)),
+                   then=error_node, otherwise=content_node)
+    return When(resource.loading, then=fallback_node, otherwise=settled)
+
+
 def ThemeToggle() -> Element:
     """Cycles the color scheme between system, light, and dark.
 

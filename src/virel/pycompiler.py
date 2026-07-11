@@ -301,16 +301,23 @@ class FnCompiler:
             target = self._try_resolve_node(call.func.value)
             attr = call.func.attr
             from .registry import ServerAction
+            from .resources import RefreshOp, Resource
             if _is_reactive(target) and attr in ("set", "update"):
                 return OpStmt(self._compile_state_mutation(call, target, attr))
             if isinstance(target, ServerAction):
                 return OpStmt(self._compile_action_call(call, target, attr))
+            if isinstance(target, Resource):
+                if attr != "refresh" or call.args or call.keywords:
+                    raise self.error(call, "Resources support .refresh() with "
+                                           "no arguments in handlers.")
+                return OpStmt(RefreshOp(target))
         # A bare client-function call is allowed only for its value being
         # discarded intentionally; that is almost always a mistake.
         raise self.error(
             node,
-            "Only state mutations (state.set/state.update) and server-action "
-            "calls (action.call/action.stream) may be used as statements.",
+            "Only state mutations (state.set/state.update), server-action "
+            "calls (action.call/action.stream), and resource.refresh() may "
+            "be used as statements.",
         )
 
     def _compile_state_mutation(self, call: ast.Call, state: Any, attr: str) -> SetOp:

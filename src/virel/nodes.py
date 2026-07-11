@@ -152,6 +152,125 @@ class When(Node):
         }
 
 
+class EachNode(Node):
+    """Reactive list rendering. The render function is traced once with a
+    symbolic item to produce a template; the browser re-renders the list
+    container when the underlying data changes.
+
+    Templates are data-only for now: elements inside an Each item cannot
+    carry event handlers or two-way bindings.
+    """
+
+    def __init__(self, items: Any, render: Any, tag: str = "div",
+                 gap: int | None = None) -> None:
+        from .expr import ItemRef, LocalRef, lift
+        self.items = lift(items)
+        self.tag = tag
+        self.gap = gap
+        template = render(ItemRef(LocalRef("item")))
+        self.template = normalize_children((template,))
+        for node in self.template:
+            _check_template(node)
+
+    def to_ir(self) -> dict[str, Any]:
+        return {
+            "kind": "each",
+            "items": self.items.js(),
+            "tag": self.tag,
+            "template": [t.to_ir() for t in self.template],
+        }
+
+
+def _check_template(node: Node) -> None:
+    if isinstance(node, Element):
+        if node.events or node.bound_props or node.runtime_binding:
+            raise VirelCompileError(
+                "Elements inside a ui.Each item cannot have event handlers "
+                "or two-way bindings yet. Render data only, and put controls "
+                "outside the list."
+            )
+        for child in node.children:
+            _check_template(child)
+    elif isinstance(node, (When, EachNode)):
+        raise VirelCompileError(
+            "ui.When and nested ui.Each are not supported inside a ui.Each "
+            "item yet. Use ui.cond(...) for conditional values."
+        )
+
+
+def _template_js(nodes: list[Node]) -> str:
+    """Render template nodes as the body of a JS template literal."""
+    parts: list[str] = []
+    for node in nodes:
+        if isinstance(node, TextNode):
+            parts.append(_js_literal_escape(html.escape(node.text)))
+        elif isinstance(node, BindText):
+            parts.append("${$.esc(" + node.expr.js() + ")}")
+        elif isinstance(node, RawHTML):
+            parts.append(_js_literal_escape(node.markup))
+        elif isinstance(node, Element):
+            parts.append(_template_element_js(node))
+        else:
+            raise VirelCompileError(
+                f"{type(node).__name__} is not supported inside a ui.Each item."
+            )
+    return "".join(parts)
+
+
+def _template_element_js(node: Element) -> str:
+    out = [f"<{node.tag}"]
+    for key, value in node.attrs.items():
+        if value is None or value is False:
+            continue
+        if isinstance(value, Expr):
+            out.append(f' {key}="' + "${$.esc(" + value.js() + ')}"')
+        elif value is True:
+            out.append(f" {key}")
+        else:
+            out.append(f' {key}="{_js_literal_escape(html.escape(str(value), quote=True))}"')
+    if node.tag in _VOID_TAGS:
+        out.append(">")
+        return "".join(out)
+    out.append(">")
+    out.append(_template_js(node.children))
+    out.append(f"</{node.tag}>")
+    return "".join(out)
+
+
+def _js_literal_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+
+
+def template_html(nodes: list[Node], env: dict[str, Any]) -> str:
+    """Render template nodes to HTML with a concrete item in the env."""
+    from .expr import _js_like_str
+    parts: list[str] = []
+    for node in nodes:
+        if isinstance(node, TextNode):
+            parts.append(html.escape(node.text))
+        elif isinstance(node, BindText):
+            parts.append(html.escape(_js_like_str(node.expr.evaluate(env))))
+        elif isinstance(node, RawHTML):
+            parts.append(node.markup)
+        elif isinstance(node, Element):
+            out = [f"<{node.tag}"]
+            for key, value in node.attrs.items():
+                if value is None or value is False:
+                    continue
+                if isinstance(value, Expr):
+                    out.append(f' {key}="{html.escape(str(value.evaluate(env)), quote=True)}"')
+                elif value is True:
+                    out.append(f" {key}")
+                else:
+                    out.append(f' {key}="{html.escape(str(value), quote=True)}"')
+            out.append(">")
+            if node.tag not in _VOID_TAGS:
+                out.append(template_html(node.children, env))
+                out.append(f"</{node.tag}>")
+            parts.append("".join(out))
+    return "".join(parts)
+
+
 class PageNode(Node):
     """Root of a compiled page."""
 
@@ -225,6 +344,22 @@ class Emitter:
                 f'<div data-v="{then_id}" class="v-when"{then_style}>{then_html}</div>'
                 f'<div data-v="{else_id}" class="v-when"{else_style}>{else_html}</div>'
             )
+
+        if isinstance(node, EachNode):
+            vid = self.assign_id()
+            js_item = "(item) => `" + _template_js(node.template) + "`"
+            self.bindings.append(
+                f'$.bindList("{vid}", () => {node.items.js()} || [], {js_item});')
+            initial = node.items.evaluate(self.env) or []
+            rendered = "".join(
+                template_html(node.template, self.env | {"item": item})
+                for item in initial
+            )
+            style = ""
+            if node.gap is not None:
+                style = f' style="gap: calc(var(--v-space) * {node.gap})"'
+            return (f'<{node.tag} data-v="{vid}" class="v-each"{style}>'
+                    f"{rendered}</{node.tag}>")
 
         if isinstance(node, Element):
             return self._emit_element(node)

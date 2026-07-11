@@ -44,6 +44,7 @@ class TraceContext:
         self.derived: dict[str, "Derived"] = {}
         self.expr_registry: dict[int, "Expr"] = {}
         self.client_fns: dict[str, Any] = {}  # name -> ClientFunction used by page
+        self.resources: dict[str, Any] = {}   # id -> Resource
         self._counter = 0
 
     def next_id(self, prefix: str) -> str:
@@ -426,6 +427,36 @@ class DictExpr(Expr):
 
     def evaluate(self, env: dict[str, Any]) -> Any:
         return {k: v.evaluate(env) for k, v in self.pairs.items()}
+
+
+class ItemRef(Expr):
+    """The loop variable inside a ui.Each template.
+
+    Attribute access builds property reads (``item.name`` compiles to
+    ``item.name`` in JS and dict access in Python); supported string methods
+    keep working.
+    """
+
+    def __init__(self, inner: Expr) -> None:
+        object.__setattr__(self, "_inner", inner)
+
+    def js(self) -> str:
+        return self._inner.js()
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return self._inner.evaluate(env)
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        if name in _JS_METHODS:
+            def method(*args: Any) -> "Expr":
+                return MethodCall(self._inner, name, [lift(a) for a in args])
+            return method
+        return ItemRef(PropAccess(self._inner, name))
+
+    def __getitem__(self, key: Any) -> "ItemRef":
+        return ItemRef(Index(self._inner, lift(key)))
 
 
 class ListExpr(Expr):

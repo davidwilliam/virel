@@ -100,6 +100,78 @@ export function on(id, event, handler) {
   node.addEventListener(event, handler);
 }
 
+export function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;",
+  })[c]);
+}
+
+export function bindList(id, items, renderItem) {
+  const node = el(id);
+  if (!node) return;
+  effect(() => {
+    const list = items() || [];
+    node.innerHTML = list.map(renderItem).join("");
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Resources: async data with loading/value/error states (SPEC 8.7).
+ * Fetches on load (unless server-rendered), refetches when reactive
+ * parameters change, deduplicates identical in-flight requests.
+ * ------------------------------------------------------------------ */
+
+const resourceRegistry = {};
+
+export function resource(id, spec) {
+  const state = { key: null, inflight: false };
+  let hydrated = spec.initial;
+
+  const run = (args, force) => {
+    const key = JSON.stringify(args);
+    if (!force && state.inflight && state.key === key) return;
+    state.key = key;
+    state.inflight = true;
+    spec.loading.set(true);
+    spec.error.set(null);
+    action(spec.action, args)
+      .then((result) => {
+        if (state.key === key) spec.value.set(result);
+      })
+      .catch((err) => {
+        if (state.key === key) spec.error.set(String(err.message || err));
+      })
+      .finally(() => {
+        if (state.key === key) {
+          state.inflight = false;
+          spec.loading.set(false);
+        }
+      });
+  };
+
+  const currentArgs = () => (spec.params ? spec.params() : {});
+  // The effect subscribes to every signal the params read, so a parameter
+  // change triggers a refetch. The first run is the initial load, skipped
+  // when the server already rendered the data.
+  effect(() => {
+    const args = currentArgs();
+    if (hydrated) {
+      hydrated = false;
+      state.key = JSON.stringify(args);
+      return;
+    }
+    run(args, false);
+  });
+
+  resourceRegistry[id] = () => run(currentArgs(), true);
+}
+
+export function refreshResource(id) {
+  const refresh = resourceRegistry[id];
+  if (refresh) refresh();
+  else console.warn(`virel: unknown resource ${id}`);
+}
+
 /* ------------------------------------------------------------------ *
  * Theme switching: system, light, dark. The stored preference is
  * applied before first paint by the inline bootstrap in the document

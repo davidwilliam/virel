@@ -74,6 +74,7 @@ virel dev
 | `/search` | Two-way input binding, `ui.derived`, `ui.When` |
 | `/invite` | Model-driven form with server revalidation and field errors |
 | `/components` | Gallery: tabs, dialog, switches, tables, icons, and more |
+| `/runs` | Resource-backed list: loading states, filtering, refresh |
 | `/stream` | Streaming server action rendered incrementally |
 | `/widgets` | Third-party web component through a typed binding |
 | `/projects/{id}` | Server-rendered dynamic route with query parameters |
@@ -218,6 +219,46 @@ preference before first paint so switching never flashes, and
 `ui.ThemeToggle()` gives users a control that cycles the modes and persists
 the choice.
 
+## Loading data
+
+`ui.resource` turns a server action into a reactive value with loading and
+error states. The browser fetches on page load, refetches when a reactive
+parameter changes (identical in-flight requests are deduplicated), and any
+handler can force a refresh. `ui.Each` renders lists from the data and
+`ui.Suspense` handles the loading and error states:
+
+```python
+@ui.server
+async def list_runs(query: str = "") -> list[dict]:
+    return await repository.runs.search(query)
+
+@ui.page("/runs")
+def runs_page() -> ui.Node:
+    query = ui.state("")
+    runs = ui.resource(list_runs, params={"query": query})
+
+    return ui.Page(
+        ui.TextField(query, label="Filter"),
+        ui.Button("Refresh", on_click=lambda: runs.refresh()),
+        ui.Suspense(
+            runs,
+            content=ui.Each(runs.value,
+                            render=lambda run: ui.Text(f"{run.name}: {run.score}")),
+            fallback=ui.Skeleton(),
+        ),
+    )
+```
+
+Pass `server_render=True` and the initial data is fetched during server
+rendering instead: the page arrives populated, the browser skips the first
+fetch, and the route is compiled per request. Item data is HTML-escaped on
+both the server and the client, and values embedded during server rendering
+are encoded so they cannot break out of the surrounding script context.
+
+Each templates are data-only for now: elements inside an item cannot carry
+event handlers yet, and `ui.When` inside an item is a compile error that
+points to `ui.cond`.
+
 ## Components
 
 The library covers the essentials in four groups, all with accessibility
@@ -290,9 +331,10 @@ builtins (`len`, `str`, `int`, `float`, `bool`, `abs`, `min`, `max`,
 `@ui.client` functions and server actions. Anything outside it is a build
 error that names the nearest replacement.
 
-Not implemented yet, in rough priority order: the `ui.resource` data layer
-with caching and suspense, client-side routing and partial hydration,
-`virel bind` for npm packages, and internationalization.
+Not implemented yet, in rough priority order: client-side routing and
+partial hydration, event handlers and keyed updates inside `ui.Each` items,
+resource caching policies (stale-while-revalidate, cache keys, optimistic
+mutation), `virel bind` for npm packages, and internationalization.
 
 ## License
 

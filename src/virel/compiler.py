@@ -29,6 +29,9 @@ class CompiledPage:
     ir: dict[str, Any]
     server_actions: list[str] = field(default_factory=list)
     render_mode: str = "static"
+    # True when the page embeds data fetched at render time (server-rendered
+    # resources): it must be compiled per request, never cached or prebuilt.
+    needs_request_render: bool = False
 
 
 def compile_page(page: Page, params: dict[str, Any] | None = None,
@@ -65,15 +68,24 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
             "title": root.title,
             "states": [s.to_ir() for s in ctx.states.values()],
             "derived": [d.to_ir() for d in ctx.derived.values()],
+            "resources": [r.to_ir() for r in ctx.resources.values()],
             "tree": root.to_ir(),
         }
 
         js = _emit_page_js(ctx, emitter, dev=dev)
         actions_used = _actions_in_bindings(emitter.bindings)
+        for res in ctx.resources.values():
+            if res.action.name not in actions_used:
+                actions_used.append(res.action.name)
+        needs_request_render = any(
+            r.server_render for r in ctx.resources.values())
         render_mode = _resolve_render_mode(page, js, actions_used)
+        if needs_request_render:
+            render_mode = "server"
 
-        html_doc = _emit_document(root, body_html, page.slug, js, dev=dev,
-                                  inline_js=inline_js)
+        html_doc = _emit_document(root, body_html, page.slug, js,
+                                  dev=dev,
+                                  inline_js=inline_js or needs_request_render)
         return CompiledPage(
             route=page.path,
             slug=page.slug,
@@ -83,6 +95,7 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
             ir=ir,
             server_actions=actions_used,
             render_mode=render_mode,
+            needs_request_render=needs_request_render,
         )
 
 
@@ -140,13 +153,22 @@ def _emit_page_js(ctx: TraceContext, emitter: Emitter, dev: bool = False) -> str
     for definition in _client_fn_definitions(ctx):
         lines.append(definition)
     for name, state in ctx.states.items():
-        lines.append(f"S.{name} = $.signal({json.dumps(state.initial)});")
+        lines.append(f"S.{name} = $.signal({_js_json(state.initial)});")
     for name, derived in ctx.derived.items():
         lines.append(f"S.{name} = $.computed(() => {derived.expr.js()});")
+    for res in ctx.resources.values():
+        lines.append(res.binding_js())
     lines.extend(emitter.bindings)
     if dev:
         lines.append("window.__virel = { S };")
     return "\n".join(lines) + "\n"
+
+
+def _js_json(value: Any) -> str:
+    """JSON that is safe to embed inside an inline <script> element: a
+    literal ``</script>`` or ``<!--`` in the data must not terminate or
+    alter the surrounding script context."""
+    return json.dumps(value).replace("<", "\\u003c").replace(">", "\\u003e")
 
 
 def _client_fn_definitions(ctx: TraceContext) -> list[str]:
@@ -276,5 +298,9 @@ def build_all(dev: bool = False) -> BuildReport:
         if page.is_dynamic:
             skipped.append(page.path)
             continue
-        compiled.append(compile_page(page, dev=dev))
+        result = compile_page(page, dev=dev)
+        if result.needs_request_render:
+            skipped.append(page.path)
+            continue
+        compiled.append(result)
     return BuildReport(pages=compiled, skipped_dynamic=skipped)
