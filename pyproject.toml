@@ -22,7 +22,7 @@ virel = "virel.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-virel = ["assets/*"]
+virel = ["assets/*", "assets/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

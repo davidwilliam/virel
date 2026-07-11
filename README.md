@@ -326,6 +326,13 @@ built in:
   `Skeleton`, `Avatar`, `Badge`, `Alert`, `Breadcrumbs`, `EmptyState`,
   `Icon` (a built-in inline SVG set)
 
+`ui.Code` highlights source at compile time using theme-aware token colors,
+so code blocks ship as plain HTML spans with no client JavaScript:
+
+```python
+ui.Code(snippet, block=True, language="python")
+```
+
 Run `virel schema <Name>` for the machine-readable schema of any component.
 
 ## Testing
@@ -389,4 +396,5 @@ layout support.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). The bundled Inter font is licensed under the
+SIL Open Font License; see `src/virel/assets/fonts/LICENSE.txt`.

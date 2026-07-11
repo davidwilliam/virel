@@ -49,7 +49,7 @@ def home() -> ui.Node:
                     gap=5,
                     align="start",
                 ),
-                ui.Card(ui.Code(_SNIPPET, block=True), gap=0),
+                ui.Code(_SNIPPET, block=True, language="python"),
                 ui.Grid(
                     _feature("play", "Local interaction",
                              "State lives in the browser. Clicking a button "

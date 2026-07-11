@@ -21,7 +21,8 @@ class Theme:
     space_base: int = 4  # px
     radius: dict[str, int] = field(default_factory=lambda: {"sm": 4, "md": 8, "lg": 14})
     font_body: str = (
-        "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+        "'InterVariable', ui-sans-serif, system-ui, -apple-system, "
+        "'Segoe UI', Roboto, sans-serif"
     )
     font_heading: str = "inherit"
     font_mono: str = "ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
@@ -46,6 +47,17 @@ class Theme:
                               "0 8px 24px rgba(22, 24, 29, 0.07)"),
             "--v-shadow-lg": ("0 4px 8px rgba(22, 24, 29, 0.06), "
                               "0 20px 48px rgba(22, 24, 29, 0.14)"),
+            "--v-code-bg": "#fafafa",
+            "--v-code-fg": "#383a42",
+            "--v-tok-kw": "#a626a4",
+            "--v-tok-str": "#50a14f",
+            "--v-tok-num": "#986801",
+            "--v-tok-com": "#a0a1a7",
+            "--v-tok-fn": "#4078f2",
+            "--v-tok-dec": "#c18401",
+            "--v-tok-blt": "#0184bc",
+            "--v-tok-self": "#e45649",
+            "--v-tok-op": "#0184bc",
         }
         dark = {
             "--v-bg": "#0e0f13",
@@ -66,6 +78,17 @@ class Theme:
                               "0 8px 24px rgba(0, 0, 0, 0.35)"),
             "--v-shadow-lg": ("0 4px 8px rgba(0, 0, 0, 0.35), "
                               "0 20px 48px rgba(0, 0, 0, 0.5)"),
+            "--v-code-bg": "#111218",
+            "--v-code-fg": "#abb2bf",
+            "--v-tok-kw": "#c678dd",
+            "--v-tok-str": "#98c379",
+            "--v-tok-num": "#d19a66",
+            "--v-tok-com": "#5c6370",
+            "--v-tok-fn": "#61afef",
+            "--v-tok-dec": "#e5c07b",
+            "--v-tok-blt": "#56b6c2",
+            "--v-tok-self": "#e06c75",
+            "--v-tok-op": "#56b6c2",
         }
         shared = {
             "--v-accent": self.accent,
@@ -95,10 +118,21 @@ class Theme:
         )
 
 
+_FONT_FACE = """\
+@font-face {
+  font-family: 'InterVariable';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/_virel/fonts/InterVariable.woff2') format('woff2');
+}
+"""
+
+
 def build_stylesheet(theme: Theme | None = None) -> str:
     theme = theme or Theme()
     base = resources.files("virel.assets").joinpath("base.css").read_text("utf-8")
-    return theme.css_tokens() + "\n" + base
+    return _FONT_FACE + "\n" + theme.css_tokens() + "\n" + base
 
 
 def runtime_js() -> str:

@@ -175,8 +175,24 @@ def Text(content: Any, *, muted: bool = False, size: str = "md") -> Element:
     return Element("p", normalize_children((content,)), attrs={"class": classes})
 
 
-def Code(content: Any, block: bool = False) -> Element:
-    inner = Element("code", normalize_children((content,)))
+def Code(content: Any, block: bool = False,
+         language: str | None = None) -> Element:
+    """Code display. With ``language`` and literal content, the snippet is
+    syntax highlighted at compile time (no client JavaScript)."""
+    children: list[Node] | None = None
+    if language and isinstance(content, str):
+        from .highlight import highlight
+        spans = highlight(content, language)
+        if spans is not None:
+            children = [
+                TextNode(text) if cls in ("ws", "txt", "pun")
+                else Element("span", [TextNode(text)],
+                             attrs={"class": f"v-tok-{cls}"})
+                for cls, text in spans
+            ]
+    if children is None:
+        children = normalize_children((content,))
+    inner = Element("code", children)
     if block:
         return Element("pre", [inner], attrs={"class": "v-code"})
     inner.attrs["class"] = "v-code-inline"

@@ -235,6 +235,8 @@ def _emit_document(root: PageNode, body_html: str, js_module: str,
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         f"<title>{_escape(root.title)}</title>",
         f"<script>{bootstrap_source}</script>",
+        '<link rel="preload" href="/_virel/fonts/InterVariable.woff2" '
+        'as="font" type="font/woff2" crossorigin>',
         '<link rel="stylesheet" href="/_virel/app.css">',
     ]
     for name, content in root.meta.items():

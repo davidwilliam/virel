@@ -146,6 +146,12 @@ def cmd_build(args: argparse.Namespace) -> None:
     framework_dir = dist / "_virel"
     (framework_dir / "page").mkdir(parents=True)
     (framework_dir / "runtime.js").write_text(runtime_js())
+    from importlib import resources as _resources
+    fonts_dir = framework_dir / "fonts"
+    fonts_dir.mkdir()
+    fonts = _resources.files("virel.assets") / "fonts"
+    for font in fonts.iterdir():
+        (fonts_dir / font.name).write_bytes(font.read_bytes())
     theme = registry.theme or Theme()
     (framework_dir / "app.css").write_text(build_stylesheet(theme))
 

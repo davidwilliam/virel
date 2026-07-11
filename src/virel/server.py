@@ -54,27 +54,42 @@ window.addEventListener("virel:navigate", () => {
 
 let panel = null;
 
+const P = {
+  tag: "#7dcfff", comp: "#bb9af7", src: "#565f89", text: "#9ece6a",
+  expr: "#e0af68", kw: "#f7768e", dim: "#565f89", fg: "#c0caf5",
+};
+const escHtml = (s) => String(s).replace(/[&<>]/g,
+  (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"})[c]);
+const paint = (color, text) =>
+  `<span style="color:${color}">${escHtml(text)}</span>`;
+
 function describeNode(node, depth) {
   const pad = "  ".repeat(depth);
   let lines = [];
   if (node.kind === "element") {
-    let head = pad + "<" + node.tag + ">";
-    if (node.component) head += "  [" + node.component + "]";
-    if (node.source) head += "  " + node.source.split("/").pop();
+    let head = pad + paint(P.dim, "<") + paint(P.tag, node.tag) + paint(P.dim, ">");
+    if (node.component) head += "  " + paint(P.comp, node.component);
+    if (node.source) head += "  " + paint(P.src, node.source.split("/").pop());
     lines.push(head);
     (node.children || []).forEach((c) => lines.push(...describeNode(c, depth + 1)));
   } else if (node.kind === "when") {
-    lines.push(pad + "when " + node.condition);
+    lines.push(pad + paint(P.kw, "when ") + paint(P.expr, node.condition));
     (node.then || []).forEach((c) => lines.push(...describeNode(c, depth + 1)));
     if ((node.otherwise || []).length) {
-      lines.push(pad + "else");
+      lines.push(pad + paint(P.kw, "else"));
       node.otherwise.forEach((c) => lines.push(...describeNode(c, depth + 1)));
     }
+  } else if (node.kind === "each") {
+    lines.push(pad + paint(P.kw, "each ") + paint(P.expr, node.items));
+    (node.template || []).forEach((c) => lines.push(...describeNode(c, depth + 1)));
+  } else if (node.kind === "island") {
+    lines.push(pad + paint(P.kw, "island ") + paint(P.expr, node.load));
+    (node.children || []).forEach((c) => lines.push(...describeNode(c, depth + 1)));
   } else if (node.kind === "bind_text") {
-    lines.push(pad + "{ " + node.expr + " }");
+    lines.push(pad + paint(P.expr, "{ " + node.expr + " }"));
   } else if (node.kind === "text") {
     const text = node.text.trim();
-    if (text) lines.push(pad + JSON.stringify(text.slice(0, 40)));
+    if (text) lines.push(pad + paint(P.text, JSON.stringify(text.slice(0, 48))));
   } else if (node.kind === "page") {
     (node.children || []).forEach((c) => lines.push(...describeNode(c, depth)));
   }
@@ -83,42 +98,57 @@ function describeNode(node, depth) {
 
 function liveStates() {
   const S = window.__virel && window.__virel.S;
-  if (!S) return "(static page: no reactive state)";
+  if (!S) return paint(P.dim, "(static page: no reactive state)");
   return Object.keys(S)
-    .map((k) => k + " = " + JSON.stringify(S[k].get()))
+    .map((k) => paint(P.comp, k) + paint(P.dim, " = ") +
+                paint(P.text, JSON.stringify(S[k].get())))
     .join("\\n");
 }
 
+function closeInspector() {
+  if (panel) { panel.remove(); panel = null; }
+}
+
 async function toggleInspector() {
-  if (panel) {
-    panel.remove();
-    panel = null;
-    return;
-  }
+  if (panel) { closeInspector(); return; }
   const res = await fetch(
     "/_virel/ir?path=" + encodeURIComponent(location.pathname));
   if (!res.ok) return;
   const ir = await res.json();
   panel = document.createElement("div");
   panel.style.cssText =
-    "position:fixed;top:0;right:0;bottom:0;width:min(480px,90vw);" +
-    "z-index:99999;overflow:auto;background:#14151a;color:#e6e6ea;" +
-    "font:12px/1.5 ui-monospace,monospace;padding:16px;border-left:1px solid #33343c";
-  const states = liveStates();
+    "position:fixed;top:0;right:0;bottom:0;width:min(720px,94vw);" +
+    "z-index:99999;display:flex;flex-direction:column;background:#16161e;" +
+    "color:" + P.fg + ";font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;" +
+    "border-left:1px solid #2a2b3d;box-shadow:-24px 0 48px rgba(0,0,0,.4)";
+  const section = (title) =>
+    "<div style='color:" + P.dim + ";text-transform:uppercase;font-size:10.5px;" +
+    "letter-spacing:.08em;margin:18px 0 6px'>" + title + "</div>";
   panel.innerHTML =
-    "<div style='font-weight:700;margin-bottom:8px'>" + ir.route +
-    " (render=" + ir.render + ", ir v" + ir.version + ")</div>" +
-    "<div style='color:#9a9ea8'>live state</div>" +
-    "<pre style='white-space:pre-wrap'>" + states + "</pre>" +
-    "<div style='color:#9a9ea8'>component tree</div>" +
-    "<pre style='white-space:pre-wrap'>" +
-    describeNode(ir.tree, 0).join("\\n").replace(/</g, "&lt;") + "</pre>";
+    "<div style='display:flex;align-items:center;gap:10px;padding:12px 16px;" +
+    "border-bottom:1px solid #2a2b3d;background:#1a1b26'>" +
+    "<span style='color:#7aa2f7;font-weight:700'>virel</span>" +
+    "<span style='color:" + P.fg + "'>" + escHtml(ir.route) + "</span>" +
+    "<span style='color:" + P.dim + "'>render=" + escHtml(ir.render) +
+    " &middot; ir v" + escHtml(ir.version) + "</span>" +
+    "<span style='flex:1'></span>" +
+    "<button id='virel-close' aria-label='Close inspector' style='border:0;" +
+    "background:#2a2b3d;color:" + P.fg + ";border-radius:6px;padding:4px 10px;" +
+    "cursor:pointer;font:inherit'>Esc</button></div>" +
+    "<div style='overflow:auto;padding:4px 16px 24px'>" +
+    section("live state") +
+    "<pre style='white-space:pre-wrap;margin:0'>" + liveStates() + "</pre>" +
+    section("component tree") +
+    "<pre style='white-space:pre;margin:0'>" +
+    describeNode(ir.tree, 0).join("\\n") + "</pre></div>";
   document.body.appendChild(panel);
+  panel.querySelector("#virel-close").addEventListener("click", closeInspector);
 }
 
 btn.addEventListener("click", toggleInspector);
 document.addEventListener("keydown", (ev) => {
   if (ev.altKey && ev.key.toLowerCase() === "v") toggleInspector();
+  if (ev.key === "Escape") closeInspector();
 });
 """
 
@@ -186,6 +216,18 @@ class VirelASGIApp:
             theme = self.registry.theme or Theme()
             await self._send_text(send, 200, build_stylesheet(theme),
                                   content_type="text/css; charset=utf-8")
+            return
+        if path.startswith("/_virel/fonts/"):
+            from importlib import resources as _resources
+            name = path.removeprefix("/_virel/fonts/")
+            if "/" in name or name not in ("InterVariable.woff2",):
+                await self._send_text(send, 404, "not found")
+                return
+            data = _resources.files("virel.assets").joinpath(
+                "fonts", name).read_bytes()
+            await self._send_bytes(send, 200, data, "font/woff2",
+                                   extra=[(b"cache-control",
+                                           b"public, max-age=31536000, immutable")])
             return
         if path == "/_virel/dev.js":
             await self._send_text(send, 200, DEV_JS,
