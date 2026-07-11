@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1.0.0",
+  "readme": "",
+  "modules": [
+    {
+      "kind": "javascript-module",
+      "path": "public/star-rating.js",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "StarRating",
+          "customElement": true,
+          "tagName": "star-rating",
+          "summary": "Interactive star rating input.",
+          "attributes": [
+            { "name": "value", "type": { "text": "number" } },
+            { "name": "max", "type": { "text": "number" } }
+          ],
+          "events": [
+            { "name": "rating-changed", "type": { "text": "CustomEvent" } }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -76,7 +76,7 @@ virel dev
 | `/components` | Gallery: tabs, dialog, switches, tables, icons, and more |
 | `/runs` | Resource-backed list: loading states, filtering, refresh |
 | `/stream` | Streaming server action rendered incrementally |
-| `/widgets` | Third-party web component through a typed binding |
+| `/widgets` | Web component bound via a generated typed binding |
 | `/projects/{id}` | Server-rendered dynamic route with query parameters |
 
 The invite button stays disabled until you type an email address. That check
@@ -93,6 +93,7 @@ virel check            compile every route and report diagnostics
 virel routes           list routes and rendering modes
 virel inspect <route>  print the intermediate representation as JSON
 virel schema <name>    print a component schema as JSON
+virel bind <manifest>  generate typed bindings from custom-elements.json
 ```
 
 `virel build --target static` fails with a precise, per-route report if
@@ -360,8 +361,7 @@ builtins (`len`, `str`, `int`, `float`, `bool`, `abs`, `min`, `max`,
 error that names the nearest replacement.
 
 Not implemented yet, in rough priority order: optimistic mutation with
-rollback, `virel bind` for web-component manifests, and
-internationalization.
+rollback, and internationalization.
 
 ## License
 

@@ -217,6 +217,22 @@ def cmd_inspect(args: argparse.Namespace) -> None:
     print(json.dumps(compiled.ir, indent=2))
 
 
+def cmd_bind(args: argparse.Namespace) -> None:
+    from .bind import bind_manifest
+    manifest = Path(args.manifest)
+    if not manifest.exists():
+        _fail(f"manifest {manifest} does not exist")
+    try:
+        source = bind_manifest(manifest, args.module)
+    except VirelCompileError as error:
+        _fail(str(error))
+    if args.out:
+        Path(args.out).write_text(source)
+        print(f"Wrote bindings to {args.out}")
+    else:
+        print(source, end="")
+
+
 def cmd_schema(args: argparse.Namespace) -> None:
     """Machine-readable component schema for agents (SPEC 14.2)."""
     from . import elements
@@ -275,6 +291,15 @@ def main(argv: list[str] | None = None) -> None:
     p_inspect = sub.add_parser("inspect", help="print the UI IR for a route")
     p_inspect.add_argument("route")
     p_inspect.set_defaults(fn=cmd_inspect)
+
+    p_bind = sub.add_parser(
+        "bind", help="generate typed bindings from a custom elements manifest")
+    p_bind.add_argument("manifest", help="path to custom-elements.json")
+    p_bind.add_argument("--module", required=True,
+                        help="URL of the JS module that defines the elements")
+    p_bind.add_argument("--out", help="write the bindings to this file "
+                                      "instead of stdout")
+    p_bind.set_defaults(fn=cmd_bind)
 
     p_schema = sub.add_parser("schema", help="print a component schema as JSON")
     p_schema.add_argument("component")

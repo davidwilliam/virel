@@ -1,14 +1,16 @@
-"""Third-party web component integrated through a typed binding (SPEC 13.1)."""
+"""Third-party web component integrated through a typed binding (SPEC 13.1).
+
+The binding module is generated from the element's custom elements
+manifest:
+
+    virel bind star-rating.manifest.json \
+        --module /public/star-rating.js --out app/bindings.py
+"""
 
 from virel import ui
 
+from ..bindings import StarRating
 from ..shared import shell
-
-StarRating = ui.web_component(
-    tag="star-rating",
-    module="/public/star-rating.js",
-    props={"value": int, "max": int},
-)
 
 
 @ui.page("/widgets")
