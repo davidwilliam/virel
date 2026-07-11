@@ -148,7 +148,14 @@ def Code(content: Any, block: bool = False) -> Element:
     return inner
 
 
-def Link(text: Any, to: str, *, external: bool = False) -> Element:
+def Link(text: Any, to: str | Expr, *, external: bool = False) -> Element:
+    if isinstance(to, str):
+        from .security import is_safe_url
+        if not is_safe_url(to):
+            raise VirelCompileError(
+                f"Link target {to!r} uses a blocked URL scheme. Allowed: "
+                "relative URLs, http(s), mailto, and tel."
+            )
     attrs: dict[str, Any] = {"href": to, "class": "v-link"}
     if external:
         attrs["rel"] = "noopener noreferrer"
@@ -156,10 +163,17 @@ def Link(text: Any, to: str, *, external: bool = False) -> Element:
     return Element("a", normalize_children((text,)), attrs=attrs)
 
 
-def Image(src: str, alt: str, *, width: int | None = None) -> Element:
+def Image(src: str | Expr, alt: str, *, width: int | None = None) -> Element:
     # Accessibility is a correctness property (SPEC 6.5): alt is required.
     if alt is None:
         raise VirelCompileError("Image requires alt text (use alt='' only for decorative images).")
+    if isinstance(src, str):
+        from .security import is_safe_url
+        if not is_safe_url(src, image=True):
+            raise VirelCompileError(
+                f"Image source {src!r} uses a blocked URL scheme. Allowed: "
+                "relative URLs, http(s), and data:."
+            )
     attrs: dict[str, Any] = {"src": src, "alt": alt}
     if width:
         attrs["width"] = width

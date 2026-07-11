@@ -240,6 +240,9 @@ def _template_js(nodes: list[Node]) -> str:
     return "".join(parts)
 
 
+_URL_ATTRS = {"href", "src", "action", "formaction", "poster"}
+
+
 def _template_element_js(node: Element) -> str:
     out = [f"<{node.tag}"]
     hid = getattr(node, "template_hid", None)
@@ -249,7 +252,12 @@ def _template_element_js(node: Element) -> str:
         if value is None or value is False:
             continue
         if isinstance(value, Expr):
-            out.append(f' {key}="' + "${$.esc(" + value.js() + ')}"')
+            if key in _URL_ATTRS:
+                # Dynamic URLs are scheme-checked at render time so item
+                # data cannot inject javascript: links (SPEC 18).
+                out.append(f' {key}="' + "${$.esc($.safeUrl(" + value.js() + '))}"')
+            else:
+                out.append(f' {key}="' + "${$.esc(" + value.js() + ')}"')
         elif value is True:
             out.append(f" {key}")
         else:
@@ -287,7 +295,11 @@ def template_html(nodes: list[Node], env: dict[str, Any]) -> str:
                 if value is None or value is False:
                     continue
                 if isinstance(value, Expr):
-                    out.append(f' {key}="{html.escape(str(value.evaluate(env)), quote=True)}"')
+                    rendered = str(value.evaluate(env))
+                    if key in _URL_ATTRS:
+                        from .security import safe_url
+                        rendered = safe_url(rendered)
+                    out.append(f' {key}="{html.escape(rendered, quote=True)}"')
                 elif value is True:
                     out.append(f" {key}")
                 else:
@@ -419,9 +431,18 @@ class Emitter:
                 if vid is None:
                     vid = self.assign_id()
                     parts.insert(1, f' data-v="{vid}"')
-                self.bindings.append(f'$.bindAttr("{vid}", "{key}", () => {value.js()});')
-                if initial is not None and initial is not False:
-                    parts.append(f' {key}="{html.escape(str(initial), quote=True)}"')
+                if key in _URL_ATTRS:
+                    from .security import safe_url
+                    self.bindings.append(
+                        f'$.bindAttr("{vid}", "{key}", () => $.safeUrl({value.js()}));')
+                    if initial is not None and initial is not False:
+                        parts.append(
+                            f' {key}="{html.escape(safe_url(initial), quote=True)}"')
+                else:
+                    self.bindings.append(
+                        f'$.bindAttr("{vid}", "{key}", () => {value.js()});')
+                    if initial is not None and initial is not False:
+                        parts.append(f' {key}="{html.escape(str(initial), quote=True)}"')
             elif value is True:
                 parts.append(f" {key}")
             else:

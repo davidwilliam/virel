@@ -32,6 +32,8 @@ class CompiledPage:
     # True when the page embeds data fetched at render time (server-rendered
     # resources): it must be compiled per request, never cached or prebuilt.
     needs_request_render: bool = False
+    # Exact text content of each inline <script>, for CSP hashes.
+    inline_scripts: list[str] = field(default_factory=list)
 
 
 def compile_page(page: Page, params: dict[str, Any] | None = None,
@@ -83,9 +85,9 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
         if needs_request_render:
             render_mode = "server"
 
-        html_doc = _emit_document(root, body_html, page.slug, js,
-                                  dev=dev,
-                                  inline_js=inline_js or needs_request_render)
+        html_doc, inline_scripts = _emit_document(
+            root, body_html, page.slug, js, dev=dev,
+            inline_js=inline_js or needs_request_render)
         return CompiledPage(
             route=page.path,
             slug=page.slug,
@@ -96,6 +98,7 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
             server_actions=actions_used,
             render_mode=render_mode,
             needs_request_render=needs_request_render,
+            inline_scripts=inline_scripts,
         )
 
 
@@ -193,20 +196,25 @@ def _client_fn_definitions(ctx: TraceContext) -> list[str]:
 
 
 def _emit_document(root: PageNode, body_html: str, slug: str,
-                   js: str | None, dev: bool, inline_js: bool = False) -> str:
+                   js: str | None, dev: bool,
+                   inline_js: bool = False) -> tuple[str, list[str]]:
     # Applies a stored light/dark preference before first paint so theme
     # switching never flashes. With no stored preference the CSS media
     # query follows the system setting.
-    theme_bootstrap = (
-        "<script>(()=>{try{const t=localStorage.getItem(\"virel-theme\");"
-        "if(t===\"light\"||t===\"dark\")document.documentElement.dataset.theme=t}"
-        "catch{}})()</script>"
+    bootstrap_source = (
+        '(()=>{try{const t=localStorage.getItem("virel-theme");'
+        'if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}'
+        "catch{}})()"
     )
+    # Every inline script's exact text is tracked so the server can emit
+    # a content security policy that allows these scripts by hash and
+    # nothing else (SPEC 18.2).
+    inline_scripts = [bootstrap_source]
     head = [
         '<meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         f"<title>{_escape(root.title)}</title>",
-        theme_bootstrap,
+        f"<script>{bootstrap_source}</script>",
         '<link rel="stylesheet" href="/_virel/app.css">',
     ]
     for name, content in root.meta.items():
@@ -215,20 +223,23 @@ def _emit_document(root: PageNode, body_html: str, slug: str,
         head.append(f'<script type="module" src="{_escape(module)}"></script>')
     if js is not None:
         if inline_js:
-            head.append(f'<script type="module">\n{js}</script>')
+            source = f"\n{js}"
+            inline_scripts.append(source)
+            head.append(f'<script type="module">{source}</script>')
         else:
             head.append(f'<script type="module" src="/_virel/page/{slug}.js"></script>')
     if dev:
         head.append('<script type="module" src="/_virel/dev.js"></script>')
 
     head_html = "\n    ".join(head)
-    return (
+    document = (
         "<!doctype html>\n"
         '<html lang="en">\n'
         f"  <head>\n    {head_html}\n  </head>\n"
         f"  <body>\n{body_html}\n  </body>\n"
         "</html>\n"
     )
+    return document, inline_scripts
 
 
 def _escape(text: str) -> str:

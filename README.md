@@ -162,9 +162,14 @@ Some consequences of this design:
 - Everything is inspectable. `virel inspect` prints the IR, `dist/` contains
   readable HTML and JavaScript, and each build writes the IR for every route
   to `.virel/ir/`.
-- Escaping is automatic. Raw HTML requires an explicit call with a written
-  reason. Serialization is JSON only. Responses carry sensible security
-  headers.
+- Security is a tenet, not an option. Escaping is automatic in every
+  rendering context; raw HTML requires an explicit call with a written
+  reason. URLs are scheme-checked so data cannot inject javascript: links.
+  HTML responses carry a content security policy that allows only
+  same-origin scripts plus the compiler's own inline scripts by hash.
+  Server actions accept JSON only, validate every payload, reject
+  cross-site browser requests, and cap body size. See
+  [SECURITY.md](SECURITY.md) for the full list of guarantees.
 - Accessibility violations the compiler can detect are errors, not warnings.
   An image without alt text or an icon-only button without an accessible
   label will not compile.

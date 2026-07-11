@@ -125,11 +125,17 @@ Send = Callable[[dict[str, Any]], Awaitable[None]]
 class VirelASGIApp:
     def __init__(self, registry: AppRegistry | None = None, *,
                  dev: bool = False, public_dir: Path | None = None,
-                 watch_dirs: list[Path] | None = None) -> None:
+                 watch_dirs: list[Path] | None = None,
+                 allowed_origins: list[str] | None = None,
+                 max_body_bytes: int = 1_000_000) -> None:
         self.registry = registry or active_registry()
         self.dev = dev
         self.public_dir = public_dir
         self.watch_dirs = watch_dirs or []
+        # Cross-origin callers must be explicitly allowed; by default only
+        # same-origin requests may invoke server actions (CSRF defense).
+        self.allowed_origins = allowed_origins or []
+        self.max_body_bytes = max_body_bytes
         self._page_cache: dict[str, Any] = {}
         self._cache_token: str | None = None
 
@@ -205,8 +211,12 @@ class VirelASGIApp:
             if method != "POST":
                 await self._send_json(send, 405, {"error": "actions require POST"})
                 return
+            rejection = self._reject_cross_site(scope)
+            if rejection:
+                await self._send_json(send, 403, {"error": rejection})
+                return
             await self._serve_action(path.removeprefix("/_virel/action/"),
-                                     receive, send)
+                                     scope, receive, send)
             return
         if self.public_dir and path.startswith("/public/"):
             await self._serve_public(path.removeprefix("/public/"), send)
@@ -253,8 +263,12 @@ class VirelASGIApp:
                 # Server-rendered resources embed data fetched at render
                 # time; compile fresh for every request.
                 result = compile_page(page, dev=self.dev, inline_js=True)
+        from .security import content_security_policy
+        csp = content_security_policy(result.inline_scripts)
         await self._send_text(send, 200, result.html,
-                              content_type="text/html; charset=utf-8")
+                              content_type="text/html; charset=utf-8",
+                              extra=[(b"content-security-policy",
+                                      csp.encode("latin-1"))])
 
     async def _serve_page_js(self, path: str, send: Send) -> None:
         slug = path.removeprefix("/_virel/page/").removesuffix(".js")
@@ -269,13 +283,41 @@ class VirelASGIApp:
 
     # -- server actions ---------------------------------------------------------
 
-    async def _serve_action(self, name: str, receive: Receive, send: Send) -> None:
+    def _reject_cross_site(self, scope: Scope) -> str | None:
+        """Stateless CSRF defense (SPEC 18.2): server actions accept
+        same-origin requests, explicitly allowed origins, and requests
+        with no browser origin metadata (non-browser clients)."""
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1")
+                   for k, v in scope.get("headers", [])}
+        fetch_site = headers.get("sec-fetch-site")
+        if fetch_site == "cross-site":
+            return "cross-site requests to server actions are not allowed"
+        origin = headers.get("origin")
+        if origin and origin != "null":
+            from .security import same_origin
+            if not same_origin(origin, headers.get("host", ""),
+                               self.allowed_origins):
+                return f"origin {origin!r} is not allowed"
+        elif origin == "null":
+            return "requests from an opaque origin are not allowed"
+        content_type = headers.get("content-type", "")
+        if content_type and not content_type.startswith("application/json"):
+            return "server actions require a JSON request body"
+        return None
+
+    async def _serve_action(self, name: str, scope: Scope,
+                            receive: Receive, send: Send) -> None:
         action = self.registry.actions.get(name)
         if action is None:
             await self._send_json(send, 404, {"error": f"unknown server action {name!r}"})
             return
 
-        body = await _read_body(receive)
+        try:
+            body = await _read_body(receive, self.max_body_bytes)
+        except _BodyTooLarge:
+            await self._send_json(send, 413, {
+                "error": f"request body exceeds {self.max_body_bytes} bytes"})
+            return
         try:
             args = json.loads(body or b"{}")
             if not isinstance(args, dict):
@@ -361,17 +403,21 @@ class VirelASGIApp:
         return str(latest)
 
     async def _send_text(self, send: Send, status: int, text: str,
-                         content_type: str = "text/plain; charset=utf-8") -> None:
-        await self._send_bytes(send, status, text.encode("utf-8"), content_type)
+                         content_type: str = "text/plain; charset=utf-8",
+                         extra: list[tuple[bytes, bytes]] | None = None) -> None:
+        await self._send_bytes(send, status, text.encode("utf-8"), content_type,
+                               extra=extra)
 
     async def _send_json(self, send: Send, status: int, payload: dict[str, Any]) -> None:
         await self._send_bytes(send, status, json.dumps(payload).encode("utf-8"),
                                "application/json; charset=utf-8")
 
     async def _send_bytes(self, send: Send, status: int, body: bytes,
-                          content_type: str) -> None:
+                          content_type: str,
+                          extra: list[tuple[bytes, bytes]] | None = None) -> None:
         await send({"type": "http.response.start", "status": status,
-                    "headers": _headers(content_type, length=len(body))})
+                    "headers": _headers(content_type, length=len(body),
+                                        extra=extra)})
         await send({"type": "http.response.body", "body": body})
 
 
@@ -383,6 +429,8 @@ def _headers(content_type: str, length: int | None = None,
         (b"x-content-type-options", b"nosniff"),
         (b"x-frame-options", b"DENY"),
         (b"referrer-policy", b"strict-origin-when-cross-origin"),
+        (b"cross-origin-opener-policy", b"same-origin"),
+        (b"cross-origin-resource-policy", b"same-origin"),
     ]
     if length is not None:
         headers.append((b"content-length", str(length).encode("latin-1")))
@@ -403,11 +451,17 @@ async def _iterate_chunks(result: Any) -> AsyncIterator[Any]:
         raise TypeError("streaming action must return a generator")
 
 
-async def _read_body(receive: Receive) -> bytes:
+class _BodyTooLarge(Exception):
+    pass
+
+
+async def _read_body(receive: Receive, limit: int | None = None) -> bytes:
     body = b""
     while True:
         message = await receive()
         body += message.get("body", b"")
+        if limit is not None and len(body) > limit:
+            raise _BodyTooLarge
         if not message.get("more_body"):
             return body
 
@@ -431,8 +485,12 @@ def _guess_type(name: str) -> str:
 
 def create_asgi_app(registry: AppRegistry | None = None, *, dev: bool = False,
                     public_dir: Path | None = None,
-                    watch_dirs: list[Path] | None = None) -> VirelASGIApp:
-    return VirelASGIApp(registry, dev=dev, public_dir=public_dir, watch_dirs=watch_dirs)
+                    watch_dirs: list[Path] | None = None,
+                    allowed_origins: list[str] | None = None,
+                    max_body_bytes: int = 1_000_000) -> VirelASGIApp:
+    return VirelASGIApp(registry, dev=dev, public_dir=public_dir,
+                        watch_dirs=watch_dirs, allowed_origins=allowed_origins,
+                        max_body_bytes=max_body_bytes)
 
 
 # ---------------------------------------------------------------------------
@@ -477,12 +535,13 @@ class DevHTTPServer:
             if length:
                 body = await reader.readexactly(length)
 
+            from urllib.parse import unquote
             path, _, query = target.partition("?")
             scope = {
                 "type": "http",
                 "http_version": "1.1",
                 "method": method,
-                "path": path,
+                "path": unquote(path),
                 "query_string": query.encode("latin-1"),
                 "headers": [(k.encode(), v.encode()) for k, v in headers.items()],
             }

@@ -30,15 +30,19 @@ class ASGIResponse:
 
 
 def asgi_request(app, method: str, path: str, body: bytes = b"",
-                 query: str = "") -> ASGIResponse:
+                 query: str = "", headers: list | None = None) -> ASGIResponse:
     """Drive an ASGI app directly — a minimal in-process test client."""
+    if headers is None:
+        headers = []
+        if method == "POST":
+            headers = [(b"content-type", b"application/json")]
     scope = {
         "type": "http",
         "http_version": "1.1",
         "method": method,
         "path": path,
         "query_string": query.encode(),
-        "headers": [],
+        "headers": headers,
     }
     response = ASGIResponse()
     sent = False

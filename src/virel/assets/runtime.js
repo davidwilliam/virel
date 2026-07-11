@@ -100,6 +100,14 @@ export function on(id, event, handler) {
   node.addEventListener(event, handler);
 }
 
+export function safeUrl(value) {
+  const url = String(value ?? "").trim();
+  const match = url.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
+  if (!match) return url;
+  const scheme = match[1].toLowerCase();
+  return ["http", "https", "mailto", "tel"].includes(scheme) ? url : "#";
+}
+
 export function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;",
