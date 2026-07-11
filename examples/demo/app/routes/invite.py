@@ -27,11 +27,16 @@ def invite() -> ui.Node:
     result = ui.state("")
     error = ui.state("")
 
+    # A named handler goes through the AST client compiler, so real Python
+    # control flow works and compiles to JavaScript.
     def submit() -> None:
         result.set("")
         error.set("")
-        invite_member.call({"email": email, "role": role},
-                           into=result, error_into=error)
+        if len(email.strip()) < 3:
+            error.set("Enter an email address first.")
+        else:
+            invite_member.call({"email": email, "role": role},
+                               into=result, error_into=error)
 
     return ui.Page(
         shell(

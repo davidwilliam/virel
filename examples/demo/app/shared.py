@@ -10,6 +10,7 @@ def app_nav() -> ui.Node:
         ui.Link("Counter", to="/counter"),
         ui.Link("Search", to="/search"),
         ui.Link("Invite", to="/invite"),
+        ui.Link("Components", to="/components"),
         ui.Link("Stream", to="/stream"),
         ui.Link("Widgets", to="/widgets"),
         ui.Link("Project", to="/projects/atlas"),

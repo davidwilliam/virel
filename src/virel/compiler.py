@@ -68,7 +68,7 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
             "tree": root.to_ir(),
         }
 
-        js = _emit_page_js(ctx, emitter)
+        js = _emit_page_js(ctx, emitter, dev=dev)
         actions_used = _actions_in_bindings(emitter.bindings)
         render_mode = _resolve_render_mode(page, js, actions_used)
 
@@ -130,19 +130,44 @@ def _actions_in_bindings(bindings: list[str]) -> list[str]:
     return names
 
 
-def _emit_page_js(ctx: TraceContext, emitter: Emitter) -> str | None:
+def _emit_page_js(ctx: TraceContext, emitter: Emitter, dev: bool = False) -> str | None:
     if not ctx.states and not ctx.derived and not emitter.bindings:
         return None
     lines = [
         'import * as $ from "/_virel/runtime.js";',
         "const S = {};",
     ]
+    for definition in _client_fn_definitions(ctx):
+        lines.append(definition)
     for name, state in ctx.states.items():
         lines.append(f"S.{name} = $.signal({json.dumps(state.initial)});")
     for name, derived in ctx.derived.items():
         lines.append(f"S.{name} = $.computed(() => {derived.expr.js()});")
     lines.extend(emitter.bindings)
+    if dev:
+        lines.append("window.__virel = { S };")
     return "\n".join(lines) + "\n"
+
+
+def _client_fn_definitions(ctx: TraceContext) -> list[str]:
+    """Emit @ui.client functions used by this page, dependencies first."""
+    from .registry import active_registry
+    registry = active_registry()
+    emitted: list[str] = []
+    seen: set[str] = set()
+
+    def visit(name: str) -> None:
+        if name in seen:
+            return
+        seen.add(name)
+        fn = registry.client_functions[name]
+        for dep in sorted(fn.deps):
+            visit(dep)
+        emitted.append(fn.js_definition())
+
+    for name in ctx.client_fns:
+        visit(name)
+    return emitted
 
 
 def _emit_document(root: PageNode, body_html: str, slug: str,

@@ -13,6 +13,7 @@ from .expr import (
     Expr,
     Handler,
     SetFromEventOp,
+    SetOp,
     State,
     VirelCompileError,
     lift,
@@ -33,9 +34,20 @@ def _require_module(module: str) -> None:
         _page_modules.append(module)
 
 
-def _handler(fn: Callable[[], None] | Handler) -> Handler:
+def _handler(fn: Callable[[], None] | Handler) -> Any:
+    """Compile an event handler.
+
+    Lambdas are traced symbolically (fast, but limited to a sequence of
+    calls). Named functions go through the AST client compiler and may use
+    the full client subset, including if/elif/else and for-loops.
+    """
     if isinstance(fn, Handler):
         return fn
+    from .pycompiler import CompiledHandler, compile_handler
+    if isinstance(fn, CompiledHandler):
+        return fn
+    if getattr(fn, "__name__", "<lambda>") != "<lambda>":
+        return compile_handler(fn)
     return record_handler(fn)
 
 
@@ -211,7 +223,11 @@ def _check_accessible_label(button: Element) -> None:
     has_text = any(
         isinstance(c, (TextNode, BindText)) for c in button.children
     )
-    if not has_text and "aria-label" not in button.attrs:
+    has_labeled_child = any(
+        isinstance(c, Element) and c.attrs.get("aria-label")
+        for c in button.children
+    )
+    if not has_text and not has_labeled_child and "aria-label" not in button.attrs:
         raise VirelCompileError(
             "Icon-only buttons must set aria_label so the control has an "
             "accessible name (SPEC 11.2)."
@@ -290,6 +306,273 @@ def EmptyState(*, title: str, description: str = "") -> Element:
     if description:
         children.append(Element("p", [TextNode(description)], attrs={"class": "v-muted"}))
     return Element("div", children, attrs={"class": "v-empty"})
+
+
+# --------------------------------------------------------------------------
+# Additional form controls
+# --------------------------------------------------------------------------
+
+def Textarea(state: State, *, label: str, placeholder: str = "",
+             rows: int = 4) -> Element:
+    if not isinstance(state, State):
+        raise VirelCompileError("Textarea requires a ui.state(...) value.")
+    area = Element(
+        "textarea",
+        attrs={"class": "v-input", "rows": rows,
+               "placeholder": placeholder or None},
+        events={"input": Handler([SetFromEventOp(state.name, "target.value")])},
+        bound_props={"value": state},
+    )
+    return Element("label", [
+        Element("span", [TextNode(label)], attrs={"class": "v-label"}),
+        area,
+    ], attrs={"class": "v-field"})
+
+
+def NumberField(state: State, *, label: str, min: float | None = None,
+                max: float | None = None, step: float | None = None) -> Element:
+    if not isinstance(state, State):
+        raise VirelCompileError("NumberField requires a ui.state(...) value.")
+    field = Element(
+        "input",
+        attrs={"class": "v-input", "type": "number",
+               "min": min, "max": max, "step": step},
+        events={"input": Handler([SetFromEventOp(state.name, "target.valueAsNumber")])},
+        bound_props={"value": state},
+    )
+    return Element("label", [
+        Element("span", [TextNode(label)], attrs={"class": "v-label"}),
+        field,
+    ], attrs={"class": "v-field"})
+
+
+def Slider(state: State, *, label: str, min: float = 0, max: float = 100,
+           step: float = 1) -> Element:
+    if not isinstance(state, State):
+        raise VirelCompileError("Slider requires a ui.state(...) value.")
+    control = Element(
+        "input",
+        attrs={"class": "v-slider", "type": "range",
+               "min": min, "max": max, "step": step},
+        events={"input": Handler([SetFromEventOp(state.name, "target.valueAsNumber")])},
+        bound_props={"value": state},
+    )
+    return Element("label", [
+        Element("div", [
+            Element("span", [TextNode(label)], attrs={"class": "v-label"}),
+            Element("span", [BindText(state)], attrs={"class": "v-label v-muted"}),
+        ], attrs={"class": "v-row", "style": "justify-content: space-between"}),
+        control,
+    ], attrs={"class": "v-field"})
+
+
+def Switch(state: State, *, label: str) -> Element:
+    if not isinstance(state, State):
+        raise VirelCompileError("Switch requires a ui.state(...) value.")
+    control = Element(
+        "input",
+        attrs={"class": "v-switch", "type": "checkbox", "role": "switch"},
+        events={"change": Handler([SetFromEventOp(state.name, "target.checked")])},
+        bound_props={"checked": state},
+    )
+    return Element("label", [control, Element("span", [TextNode(label)])],
+                   attrs={"class": "v-field-inline"})
+
+
+def RadioGroup(state: State, *, label: str, options: list[str]) -> Element:
+    if not isinstance(state, State):
+        raise VirelCompileError("RadioGroup requires a ui.state(...) value.")
+    from .expr import Compare, Lit
+    items = []
+    for option in options:
+        radio = Element(
+            "input",
+            attrs={"class": "v-radio", "type": "radio",
+                   "name": state.name, "value": option},
+            events={"change": Handler([SetFromEventOp(state.name, "target.value")])},
+            bound_props={"checked": Compare("==", state, Lit(option))},
+        )
+        items.append(Element("label", [radio, Element("span", [TextNode(option)])],
+                             attrs={"class": "v-field-inline"}))
+    return Element("fieldset", [
+        Element("legend", [TextNode(label)], attrs={"class": "v-label"}),
+        Element("div", items, attrs={"class": "v-stack",
+                                     "style": _gap_style(2)}),
+    ], attrs={"class": "v-fieldset"})
+
+
+# --------------------------------------------------------------------------
+# Interaction patterns
+# --------------------------------------------------------------------------
+
+def Tabs(tabs: dict[str, Any], *, label: str = "Tabs") -> Element:
+    """Accessible tabs. Selection state lives in the browser; both panels
+    stay in the DOM so nested bindings keep working."""
+    if not tabs:
+        raise VirelCompileError("Tabs requires at least one entry.")
+    from .expr import Compare, Lit, Ternary
+    names = list(tabs)
+    selected = State(names[0])
+    buttons = []
+    for name in names:
+        is_selected = Compare("==", selected, Lit(name))
+        buttons.append(Element(
+            "button",
+            [TextNode(name)],
+            attrs={
+                "class": "v-tab",
+                "type": "button",
+                "role": "tab",
+                "aria-selected": Ternary(is_selected, Lit("true"), Lit("false")),
+            },
+            events={"click": Handler([SetOp(selected.name, Lit(name))])},
+        ))
+    tablist = Element("div", buttons,
+                      attrs={"class": "v-tablist", "role": "tablist",
+                             "aria-label": label})
+    panels: list[Node] = []
+    for name in names:
+        content = Element("div", normalize_children((tabs[name],)),
+                          attrs={"class": "v-tabpanel", "role": "tabpanel"})
+        panels.append(When(Compare("==", selected, Lit(name)), then=content))
+    return Element("div", [tablist, *panels], attrs={"class": "v-tabs"})
+
+
+def Dialog(*children: Any, open: State, title: str) -> Element:
+    """Modal dialog on the native <dialog> element: focus trapping and
+    Escape handling come from the platform. Visibility is driven by a
+    boolean state so it stays inspectable and testable."""
+    if not isinstance(open, State):
+        raise VirelCompileError(
+            "Dialog requires open=ui.state(False) to control visibility."
+        )
+    from .expr import Lit
+    from .icons import Icon
+    close = Handler([SetOp(open.name, Lit(False))])
+    header = Element("div", [
+        Element("h2", [TextNode(title)], attrs={"class": "v-heading"}),
+        Element("button", [Icon("x", label="Close dialog")],
+                attrs={"class": "v-btn v-btn-neutral v-btn-sm",
+                       "type": "button"},
+                events={"click": close}),
+    ], attrs={"class": "v-dialog-header"})
+    body = Element("div", normalize_children(children),
+                   attrs={"class": "v-stack", "style": _gap_style(3)})
+    return Element(
+        "dialog",
+        [header, body],
+        attrs={"class": "v-dialog", "aria-label": title},
+        events={"cancel": close, "close": close},
+        bound_props={"open": open},
+    )
+
+
+def Accordion(items: dict[str, Any]) -> Element:
+    """Disclosure list on native <details>/<summary>."""
+    sections = []
+    for title, content in items.items():
+        sections.append(Element("details", [
+            Element("summary", [TextNode(title)]),
+            Element("div", normalize_children((content,)),
+                    attrs={"class": "v-accordion-body"}),
+        ], attrs={"class": "v-accordion-item"}))
+    return Element("div", sections, attrs={"class": "v-accordion"})
+
+
+def Tooltip(child: Any, *, text: str) -> Element:
+    return Element("span", normalize_children((child,)),
+                   attrs={"class": "v-tooltip", "data-tip": text,
+                          "tabindex": "0", "aria-label": text})
+
+
+# --------------------------------------------------------------------------
+# Data display
+# --------------------------------------------------------------------------
+
+def Table(*, columns: list[str], rows: list[list[Any]],
+          caption: str | None = None) -> Element:
+    head = Element("thead", [Element("tr", [
+        Element("th", normalize_children((col,)), attrs={"scope": "col"})
+        for col in columns
+    ])])
+    body_rows = []
+    for row in rows:
+        if len(row) != len(columns):
+            raise VirelCompileError(
+                f"Table row {row!r} has {len(row)} cells but there are "
+                f"{len(columns)} columns."
+            )
+        body_rows.append(Element("tr", [
+            Element("td", normalize_children((cell,))) for cell in row
+        ]))
+    children: list[Node] = []
+    if caption:
+        children.append(Element("caption", [TextNode(caption)]))
+    children.extend([head, Element("tbody", body_rows)])
+    return Element("div", [Element("table", children, attrs={"class": "v-table"})],
+                   attrs={"class": "v-table-wrap"})
+
+
+def Stat(*, label: str, value: Any, hint: str | None = None) -> Element:
+    children: list[Node] = [
+        Element("span", [TextNode(label)], attrs={"class": "v-stat-label"}),
+        Element("span", normalize_children((value,)), attrs={"class": "v-stat-value"}),
+    ]
+    if hint:
+        children.append(Element("span", [TextNode(hint)],
+                                attrs={"class": "v-hint"}))
+    return Element("div", children, attrs={"class": "v-stat"})
+
+
+def Progress(value: Any, *, max: float = 100, label: str) -> Element:
+    from .expr import Expr
+    bound = {"value": value} if isinstance(value, Expr) else {}
+    attrs: dict[str, Any] = {"class": "v-progress", "max": max,
+                             "aria-label": label}
+    if not bound:
+        attrs["value"] = value
+    return Element("progress", attrs=attrs, bound_props=bound)
+
+
+def Spinner(*, label: str = "Loading") -> Element:
+    from .icons import Icon
+    return Element("span", [Icon("loader", size=18)],
+                   attrs={"class": "v-spinner", "role": "status",
+                          "aria-label": label})
+
+
+def Skeleton(*, lines: int = 3) -> Element:
+    bars = [Element("div", attrs={"class": "v-skeleton-line"})
+            for _ in range(lines)]
+    return Element("div", bars, attrs={"class": "v-skeleton",
+                                       "aria-hidden": "true"})
+
+
+def Avatar(name: str, *, src: str | None = None, size: int = 32) -> Element:
+    style = f"width: {size}px; height: {size}px"
+    if src:
+        return Element("img", attrs={"class": "v-avatar", "src": src,
+                                     "alt": name, "style": style})
+    initials = "".join(part[0].upper() for part in name.split()[:2] if part)
+    return Element("span", [TextNode(initials or "?")],
+                   attrs={"class": "v-avatar v-avatar-initials",
+                          "style": style, "aria-label": name,
+                          "role": "img"})
+
+
+def Breadcrumbs(items: list[tuple[str, str | None]]) -> Element:
+    crumbs = []
+    for index, (text, target) in enumerate(items):
+        last = index == len(items) - 1
+        if target and not last:
+            crumbs.append(Element("li", [Link(text, to=target)]))
+        else:
+            crumbs.append(Element("li", [Element(
+                "span", [TextNode(text)],
+                attrs={"aria-current": "page"} if last else {},
+            )]))
+    return Element("nav", [Element("ol", crumbs, attrs={"class": "v-breadcrumbs"})],
+                   attrs={"aria-label": "Breadcrumb"})
 
 
 # --------------------------------------------------------------------------

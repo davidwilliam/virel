@@ -104,11 +104,14 @@ class Element(Node):
         self.events = events or {}
         self.bound_props = bound_props or {}
         self.component = component  # originating @ui.component, for inspection
+        self.source: str | None = None  # file:line of the component function
 
     def to_ir(self) -> dict[str, Any]:
         ir: dict[str, Any] = {"kind": "element", "tag": self.tag}
         if self.component:
             ir["component"] = self.component
+        if self.source:
+            ir["source"] = self.source
         if self.attrs:
             ir["attrs"] = {
                 k: (v.js() if isinstance(v, Expr) else v) for k, v in self.attrs.items()
@@ -250,10 +253,18 @@ class Emitter:
             else:
                 parts.append(f' {key}="{html.escape(str(value), quote=True)}"')
 
+        textarea_initial = None
         for prop, expr in node.bound_props.items():
             initial = expr.evaluate(self.env)
+            if node.tag == "dialog" and prop == "open":
+                self.bindings.append(f'$.bindDialog("{vid}", () => !!{expr.js()});')
+                if initial:
+                    parts.append(" open")
+                continue
             self.bindings.append(f'$.bindProp("{vid}", "{prop}", () => {expr.js()});')
-            if prop == "value" and initial not in (None, ""):
+            if node.tag == "textarea" and prop == "value":
+                textarea_initial = initial
+            elif prop == "value" and initial not in (None, ""):
                 parts.append(f' value="{html.escape(str(initial), quote=True)}"')
             elif prop == "checked" and initial:
                 parts.append(" checked")
@@ -266,6 +277,8 @@ class Emitter:
             return "".join(parts)
 
         parts.append(">")
+        if textarea_initial not in (None, ""):
+            parts.append(html.escape(str(textarea_initial)))
         parts.append(self.emit_children(node.children))
         parts.append(f"</{node.tag}>")
         return "".join(parts)

@@ -43,6 +43,7 @@ class TraceContext:
         self.states: dict[str, "State"] = {}
         self.derived: dict[str, "Derived"] = {}
         self.expr_registry: dict[int, "Expr"] = {}
+        self.client_fns: dict[str, Any] = {}  # name -> ClientFunction used by page
         self._counter = 0
 
     def next_id(self, prefix: str) -> str:
@@ -150,6 +151,9 @@ class Expr:
     def __truediv__(self, other: Any) -> "Expr":
         return BinOp("/", self, lift(other))
 
+    def __floordiv__(self, other: Any) -> "Expr":
+        return BinOp("//", self, lift(other))
+
     def __mod__(self, other: Any) -> "Expr":
         return BinOp("%", self, lift(other))
 
@@ -249,12 +253,15 @@ class BinOp(Expr):
         "*": lambda a, b: a * b,
         "/": lambda a, b: a / b,
         "%": lambda a, b: a % b,
+        "//": lambda a, b: a // b,
     }
 
     def __init__(self, op: str, left: Expr, right: Expr) -> None:
         self.op, self.left, self.right = op, left, right
 
     def js(self) -> str:
+        if self.op == "//":
+            return f"Math.floor({self.left.js()} / {self.right.js()})"
         return f"({self.left.js()} {self.op} {self.right.js()})"
 
     def evaluate(self, env: dict[str, Any]) -> Any:
@@ -328,6 +335,149 @@ class MethodCall(Expr):
         value = self.obj.evaluate(env)
         args = [a.evaluate(env) for a in self.args]
         return getattr(value, self.method)(*args)
+
+
+class BoolOp(Expr):
+    """`and` / `or` with Python short-circuit semantics (JS matches for
+    boolean operands)."""
+
+    def __init__(self, op: str, values: list[Expr]) -> None:
+        self.op, self.values = op, values
+
+    def js(self) -> str:
+        joiner = " && " if self.op == "and" else " || "
+        return "(" + joiner.join(v.js() for v in self.values) + ")"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        result = self.values[0].evaluate(env)
+        for value in self.values[1:]:
+            if self.op == "and":
+                if not result:
+                    return result
+            elif result:
+                return result
+            result = value.evaluate(env)
+        return result
+
+
+class Neg(Expr):
+    def __init__(self, operand: Expr) -> None:
+        self.operand = operand
+
+    def js(self) -> str:
+        return f"(-{self.operand.js()})"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return -self.operand.evaluate(env)
+
+
+class LocalRef(Expr):
+    """A function parameter or local variable in compiled client code."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def js(self) -> str:
+        return self.name
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return env[self.name]
+
+
+class PropAccess(Expr):
+    """Attribute access on a local (e.g. ``ev.target.value``)."""
+
+    def __init__(self, operand: Expr, attr: str) -> None:
+        self.operand, self.attr = operand, attr
+
+    def js(self) -> str:
+        return f"{self.operand.js()}.{self.attr}"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        value = self.operand.evaluate(env)
+        if isinstance(value, dict):
+            return value.get(self.attr)
+        return getattr(value, self.attr)
+
+
+class Index(Expr):
+    def __init__(self, operand: Expr, key: Expr) -> None:
+        self.operand, self.key = operand, key
+
+    def js(self) -> str:
+        return f"{self.operand.js()}[{self.key.js()}]"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return self.operand.evaluate(env)[self.key.evaluate(env)]
+
+
+class ListExpr(Expr):
+    def __init__(self, items: list[Expr]) -> None:
+        self.items = items
+
+    def js(self) -> str:
+        return "[" + ", ".join(i.js() for i in self.items) + "]"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return [i.evaluate(env) for i in self.items]
+
+
+class Cast(Expr):
+    """Builtin conversions and math helpers with JS equivalents."""
+
+    _JS = {
+        "str": ("String(", ")"),
+        "int": ("Math.trunc(Number(", "))"),
+        "float": ("Number(", ")"),
+        "bool": ("Boolean(", ")"),
+        "abs": ("Math.abs(", ")"),
+        "round": ("Math.round(", ")"),
+    }
+    _PY = {
+        "str": lambda v: _js_like_str(v),
+        "int": lambda v: int(float(v)),
+        "float": float,
+        "bool": bool,
+        "abs": abs,
+        "round": lambda v: int(v + 0.5) if v >= 0 else -int(-v + 0.5),
+    }
+
+    def __init__(self, fn: str, operand: Expr) -> None:
+        self.fn, self.operand = fn, operand
+
+    def js(self) -> str:
+        prefix, suffix = self._JS[self.fn]
+        return f"{prefix}{self.operand.js()}{suffix}"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return self._PY[self.fn](self.operand.evaluate(env))
+
+
+class MinMax(Expr):
+    def __init__(self, fn: str, args: list[Expr]) -> None:
+        self.fn, self.args = fn, args
+
+    def js(self) -> str:
+        return f"Math.{self.fn}(" + ", ".join(a.js() for a in self.args) + ")"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        values = [a.evaluate(env) for a in self.args]
+        return min(values) if self.fn == "min" else max(values)
+
+
+class CallClient(Expr):
+    """Invocation of a @ui.client function from compiled client code."""
+
+    def __init__(self, name: str, args: list[Expr]) -> None:
+        self.name, self.args = name, args
+
+    def js(self) -> str:
+        return f"{self.name}(" + ", ".join(a.js() for a in self.args) + ")"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        from .registry import active_registry
+        fn = active_registry().client_functions[self.name].fn
+        return fn(*[a.evaluate(env) for a in self.args])
 
 
 class FormatString(Expr):
@@ -438,6 +588,9 @@ class SetOp:
     def js(self) -> str:
         return f"S.{self.state}.set({self.value.js()});"
 
+    def execute(self, env: dict[str, Any], ev: Any = None) -> None:
+        env[self.state] = self.value.evaluate(env)
+
     def to_ir(self) -> dict[str, Any]:
         return {"op": "set", "state": self.state, "value": self.value.js()}
 
@@ -450,6 +603,15 @@ class SetFromEventOp:
 
     def js(self) -> str:
         return f"S.{self.state}.set(ev.{self.event_path});"
+
+    def execute(self, env: dict[str, Any], ev: Any = None) -> None:
+        value = ev
+        for part in self.event_path.split("."):
+            if isinstance(value, dict):
+                value = value.get(part)
+            else:
+                value = getattr(value, part, None)
+        env[self.state] = value
 
     def to_ir(self) -> dict[str, Any]:
         return {"op": "set_from_event", "state": self.state, "path": self.event_path}
@@ -470,6 +632,23 @@ class CallOp:
         else:
             catch = ".catch((e) => console.error(e))"
         return f'$.action("{self.action}", {js_args}){then}{catch};'
+
+    def execute(self, env: dict[str, Any], ev: Any = None) -> None:
+        """Test-mode execution: call the Python function synchronously."""
+        from .registry import active_registry
+        action = active_registry().actions[self.action]
+        args = {k: v.evaluate(env) for k, v in self.args.items()}
+        try:
+            result = action.fn(**args)
+            if inspect_isawaitable(result):
+                result = _run_coroutine(result)
+        except Exception as error:
+            if self.error_into is not None:
+                env[self.error_into.name] = f"{type(error).__name__}: {error}"
+                return
+            raise
+        if self.into is not None:
+            env[self.into.name] = result
 
     def to_ir(self) -> dict[str, Any]:
         return {
@@ -497,6 +676,18 @@ class StreamOp:
             on_done = "null"
         return f'$.stream("{self.action}", {js_args}, {on_chunk}, {on_done});'
 
+    def execute(self, env: dict[str, Any], ev: Any = None) -> None:
+        """Test-mode execution: drain the stream synchronously."""
+        from .registry import active_registry
+        action = active_registry().actions[self.action]
+        args = {k: v.evaluate(env) for k, v in self.args.items()}
+        chunks = _collect_stream(action.fn(**args))
+        env[self.into.name] = env.get(self.into.name, "") + "".join(
+            str(c) for c in chunks)
+        if self.done_set:
+            state, value = self.done_set
+            env[state.name] = value.evaluate(env)
+
     def to_ir(self) -> dict[str, Any]:
         return {
             "op": "stream",
@@ -504,6 +695,25 @@ class StreamOp:
             "args": {k: v.js() for k, v in self.args.items()},
             "into": self.into.name,
         }
+
+
+def inspect_isawaitable(value: Any) -> bool:
+    import inspect
+    return inspect.isawaitable(value)
+
+
+def _run_coroutine(coroutine: Any) -> Any:
+    import asyncio
+    return asyncio.run(coroutine)
+
+
+def _collect_stream(result: Any) -> list[Any]:
+    import inspect
+    if inspect.isasyncgen(result):
+        async def drain() -> list[Any]:
+            return [chunk async for chunk in result]
+        return _run_coroutine(drain())
+    return list(result)
 
 
 class HandlerRecorder:
@@ -549,6 +759,11 @@ class Handler:
     def js(self) -> str:
         body = " ".join(op.js() for op in self.ops)
         return f"(ev) => {{ {body} }}"
+
+    def execute(self, env: dict[str, Any], ev: Any = None) -> None:
+        """Run the handler against a Python state environment (tests)."""
+        for op in self.ops:
+            op.execute(env, ev)
 
     def to_ir(self) -> list[dict[str, Any]]:
         return [op.to_ir() for op in self.ops]

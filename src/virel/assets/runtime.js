@@ -84,6 +84,16 @@ export function bindProp(id, prop, fn) {
   });
 }
 
+export function bindDialog(id, fn) {
+  const node = el(id);
+  if (!node) return;
+  effect(() => {
+    const open = fn();
+    if (open && !node.open) node.showModal();
+    else if (!open && node.open) node.close();
+  });
+}
+
 export function on(id, event, handler) {
   const node = el(id);
   if (!node) return;

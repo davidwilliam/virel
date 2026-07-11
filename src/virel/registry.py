@@ -114,6 +114,53 @@ class ServerAction:
         return self.fn(*args, **kwargs)
 
 
+class ClientFunction:
+    """A pure Python function compiled ahead of time to JavaScript
+    (SPEC 8.4). Callable from event handlers and other client functions;
+    also callable as normal Python on the server and in tests."""
+
+    def __init__(self, fn: Callable[..., Any]) -> None:
+        self.fn = fn
+        self.name = fn.__name__
+        self._compiled: tuple[list[str], list[Any], set[str]] | None = None
+
+    def ensure_compiled(self) -> None:
+        if self._compiled is None:
+            from .pycompiler import compile_client_function
+            self._compiled = compile_client_function(self.fn)
+
+    @property
+    def params(self) -> list[str]:
+        self.ensure_compiled()
+        return self._compiled[0]
+
+    @property
+    def deps(self) -> set[str]:
+        self.ensure_compiled()
+        return self._compiled[2]
+
+    def js_definition(self) -> str:
+        self.ensure_compiled()
+        params, stmts, _ = self._compiled
+        body = "\n  ".join(s.js() for s in stmts)
+        return f"function {self.name}({', '.join(params)}) {{\n  {body}\n}}"
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        from .expr import CallClient, Expr, current_context, in_trace, lift
+        if any(isinstance(a, Expr) for a in args) or any(
+                isinstance(v, Expr) for v in kwargs.values()):
+            if kwargs:
+                raise VirelCompileError(
+                    f"@ui.client function {self.name!r} must be called with "
+                    "positional arguments when given reactive values."
+                )
+            self.ensure_compiled()
+            if in_trace():
+                current_context().client_fns[self.name] = self
+            return CallClient(self.name, [lift(a) for a in args])
+        return self.fn(*args, **kwargs)
+
+
 class WebComponentType:
     """Typed binding for a standard web component (SPEC 13.1)."""
 
@@ -157,6 +204,7 @@ class AppRegistry:
         self.pages: dict[str, Page] = {}
         self.actions: dict[str, ServerAction] = {}
         self.components: dict[str, Callable[..., Any]] = {}
+        self.client_functions: dict[str, ClientFunction] = {}
         self.theme: Any = None  # set via ui.use_theme; None -> default theme
 
     def match_page(self, path: str) -> tuple[Page, dict[str, str]] | None:
@@ -219,15 +267,25 @@ def server(fn: Callable[..., Any] | None = None, *, stream: bool = False):
     return decorate
 
 
+def client(fn: Callable[..., Any]) -> ClientFunction:
+    """Mark a pure function for ahead-of-time compilation to JavaScript."""
+    wrapped = ClientFunction(fn)
+    active_registry().client_functions[wrapped.name] = wrapped
+    return wrapped
+
+
 def component(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Register a component for inspector/registry output (SPEC 14.2)."""
     active_registry().components[fn.__name__] = fn
+
+    source = f"{fn.__code__.co_filename}:{fn.__code__.co_firstlineno}"
 
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         node = fn(*args, **kwargs)
         from .nodes import Element
         if isinstance(node, Element) and node.component is None:
             node.component = fn.__name__
+            node.source = source
         return node
 
     wrapper.__name__ = fn.__name__

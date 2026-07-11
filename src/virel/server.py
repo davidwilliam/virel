@@ -22,7 +22,8 @@ from .registry import AppRegistry, active_registry
 from .theme import Theme, build_stylesheet, runtime_js
 
 DEV_JS = """\
-// Virel dev helper: reload the page when server-side sources change.
+// Virel dev helpers: hot reload plus the page inspector.
+
 let token = null;
 async function poll() {
   try {
@@ -34,6 +35,86 @@ async function poll() {
   setTimeout(poll, 1000);
 }
 poll();
+
+// Inspector: toggle with the floating button or Alt+V. Shows the compiled
+// IR (component tree, states, bindings) plus live signal values.
+const btn = document.createElement("button");
+btn.textContent = "virel";
+btn.setAttribute("aria-label", "Toggle Virel inspector");
+btn.style.cssText =
+  "position:fixed;bottom:14px;right:14px;z-index:99998;padding:6px 12px;" +
+  "font:600 12px ui-monospace,monospace;color:#fff;background:#4f46e5;" +
+  "border:0;border-radius:999px;cursor:pointer;opacity:.85";
+document.addEventListener("DOMContentLoaded", () => document.body.appendChild(btn));
+
+let panel = null;
+
+function describeNode(node, depth) {
+  const pad = "  ".repeat(depth);
+  let lines = [];
+  if (node.kind === "element") {
+    let head = pad + "<" + node.tag + ">";
+    if (node.component) head += "  [" + node.component + "]";
+    if (node.source) head += "  " + node.source.split("/").pop();
+    lines.push(head);
+    (node.children || []).forEach((c) => lines.push(...describeNode(c, depth + 1)));
+  } else if (node.kind === "when") {
+    lines.push(pad + "when " + node.condition);
+    (node.then || []).forEach((c) => lines.push(...describeNode(c, depth + 1)));
+    if ((node.otherwise || []).length) {
+      lines.push(pad + "else");
+      node.otherwise.forEach((c) => lines.push(...describeNode(c, depth + 1)));
+    }
+  } else if (node.kind === "bind_text") {
+    lines.push(pad + "{ " + node.expr + " }");
+  } else if (node.kind === "text") {
+    const text = node.text.trim();
+    if (text) lines.push(pad + JSON.stringify(text.slice(0, 40)));
+  } else if (node.kind === "page") {
+    (node.children || []).forEach((c) => lines.push(...describeNode(c, depth)));
+  }
+  return lines;
+}
+
+function liveStates() {
+  const S = window.__virel && window.__virel.S;
+  if (!S) return "(static page: no reactive state)";
+  return Object.keys(S)
+    .map((k) => k + " = " + JSON.stringify(S[k].get()))
+    .join("\\n");
+}
+
+async function toggleInspector() {
+  if (panel) {
+    panel.remove();
+    panel = null;
+    return;
+  }
+  const res = await fetch(
+    "/_virel/ir?path=" + encodeURIComponent(location.pathname));
+  if (!res.ok) return;
+  const ir = await res.json();
+  panel = document.createElement("div");
+  panel.style.cssText =
+    "position:fixed;top:0;right:0;bottom:0;width:min(480px,90vw);" +
+    "z-index:99999;overflow:auto;background:#14151a;color:#e6e6ea;" +
+    "font:12px/1.5 ui-monospace,monospace;padding:16px;border-left:1px solid #33343c";
+  const states = liveStates();
+  panel.innerHTML =
+    "<div style='font-weight:700;margin-bottom:8px'>" + ir.route +
+    " (render=" + ir.render + ", ir v" + ir.version + ")</div>" +
+    "<div style='color:#9a9ea8'>live state</div>" +
+    "<pre style='white-space:pre-wrap'>" + states + "</pre>" +
+    "<div style='color:#9a9ea8'>component tree</div>" +
+    "<pre style='white-space:pre-wrap'>" +
+    describeNode(ir.tree, 0).join("\\n").replace(/</g, "&lt;") + "</pre>";
+  document.body.appendChild(panel);
+}
+
+btn.addEventListener("click", toggleInspector);
+document.addEventListener("keydown", (ev) => {
+  if (ev.altKey && ev.key.toLowerCase() === "v") toggleInspector();
+});
 """
 
 Scope = dict[str, Any]
@@ -101,6 +182,21 @@ class VirelASGIApp:
             return
         if path == "/_virel/reload-token":
             await self._send_json(send, 200, {"token": self._watch_token()})
+            return
+        if path == "/_virel/ir":
+            if not self.dev:
+                await self._send_json(send, 404, {"error": "IR endpoint is dev-only"})
+                return
+            query = _parse_query(scope.get("query_string", b""))
+            target = query.get("path", "/")
+            matched = self.registry.match_page(target)
+            if not matched:
+                await self._send_json(send, 404, {"error": f"no route for {target!r}"})
+                return
+            page, params = matched
+            result = compile_page(page, params=params or None, dev=True,
+                                  inline_js=page.is_dynamic)
+            await self._send_json(send, 200, result.ir)
             return
         if path.startswith("/_virel/page/") and path.endswith(".js"):
             await self._serve_page_js(path, send)

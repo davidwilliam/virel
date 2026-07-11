@@ -6,9 +6,11 @@ Virel is a compiler-first frontend framework. You write typed, declarative
 Python; Virel compiles it to browser-native HTML, CSS, and JavaScript. CPython
 stays on the server. The browser never downloads a Python interpreter.
 
-This repository currently contains the Phase 0 prototype described in
-[SPEC.md](SPEC.md): the smallest end-to-end implementation that validates the
-architecture before the framework grows real surface area.
+The project follows the roadmap in [SPEC.md](SPEC.md). The architecture
+validation phase is complete, and the current tree adds the first
+developer-preview features: an AST-based client compiler for event handlers
+and shared functions, a component library of around forty controls, component
+testing from pytest without a browser, and a development inspector.
 
 ```python
 from virel import ui
@@ -66,7 +68,8 @@ virel dev
 | `/` | Static landing page, ships zero framework JavaScript |
 | `/counter` | Local state, derived values, conditional rendering |
 | `/search` | Two-way input binding, `ui.derived`, `ui.When` |
-| `/invite` | Form calling a typed server action, structured errors |
+| `/invite` | Form with a control-flow handler and a typed server action |
+| `/components` | Gallery: tabs, dialog, switches, tables, icons, and more |
 | `/stream` | Streaming server action rendered incrementally |
 | `/widgets` | Third-party web component through a typed binding |
 | `/projects/{id}` | Server-rendered dynamic route with query parameters |
@@ -100,6 +103,37 @@ emitted twice. It is evaluated in Python to produce the server-rendered
 initial HTML, and compiled to JavaScript for fine-grained updates in the
 browser.
 
+Event handlers come in two forms. A lambda is traced symbolically, which
+suits one-liners like `on_click=lambda: count.set(0)`. A named function goes
+through the AST client compiler and may use real control flow:
+
+```python
+def submit() -> None:
+    result.set("")
+    error.set("")
+    if len(email.strip()) < 3:
+        error.set("Enter an email address first.")
+    else:
+        invite_member.call({"email": email, "role": role},
+                           into=result, error_into=error)
+
+ui.Button("Send invitation", on_click=submit, intent="primary")
+```
+
+The `if` compiles to JavaScript and runs in the browser; the server action is
+an HTTP call. Pure helpers can be shared with `@ui.client`, which compiles
+the function to JavaScript once and keeps it callable as ordinary Python on
+the server and in tests:
+
+```python
+@ui.client
+def shout(value: str) -> str:
+    trimmed = value.strip()
+    if len(trimmed) == 0:
+        return ""
+    return trimmed.upper() + "!"
+```
+
 ```
 Python source
   -> trace          page function runs under a TraceContext     src/virel/expr.py
@@ -130,28 +164,71 @@ Some consequences of this design:
   An image without alt text or an icon-only button without an accessible
   label will not compile.
 
-## Scope of the prototype
+## Components
 
-Phase 0 validates architecture, not breadth. The supported reactive subset is
-small: arithmetic, comparisons, a documented set of string methods, f-strings,
-and the `ui.cond` / `ui.When` / `ui.length` helpers. Event handlers are traced
-symbolically, so Python control flow inside a handler is not supported yet;
-that requires the AST-based client compiler planned for Phase 1.
+The library covers the essentials in four groups, all with accessibility
+built in:
 
-Not implemented yet, in rough priority order: model-driven forms with Pydantic
-integration, the `ui.resource` data layer with caching and suspense, client
-routing and partial hydration, the component library beyond the current
-essentials, `virel bind` for npm packages, internationalization, and the
-browser inspector.
+- Layout: `Stack`, `Row`, `Container`, `Section`, `Card`, `AppShell`,
+  `Divider`, `Spacer`
+- Form controls: `Button`, `TextField`, `Textarea`, `NumberField`, `Select`,
+  `Checkbox`, `Switch`, `RadioGroup`, `Slider`
+- Interaction patterns: `Tabs`, `Dialog` (on the native dialog element),
+  `Accordion` (on details/summary), `Tooltip`, `When`
+- Data display and status: `Table`, `Stat`, `Progress`, `Spinner`,
+  `Skeleton`, `Avatar`, `Badge`, `Alert`, `Breadcrumbs`, `EmptyState`,
+  `Icon` (a built-in inline SVG set)
 
-## Tests
+Run `virel schema <Name>` for the machine-readable schema of any component.
+
+## Testing
+
+Component tests run from pytest without a browser. Queries follow
+accessibility semantics, and interactions execute the same compiled handler
+operations that would run as JavaScript, including real server-action calls:
+
+```python
+from virel import ui
+
+def test_invitation_flow():
+    view = ui.test.render(invite_page)
+    view.get_by_label("Email").fill("person@example.com")
+    view.get_by_label("Role").select("editor")
+    view.get_by_role("button", name="Send invitation").click()
+    assert view.get_by_text("Invitation sent to person@example.com "
+                            "as editor.").is_visible()
+```
+
+Hidden elements cannot be interacted with, disabled buttons refuse clicks,
+and streaming actions are drained synchronously, so tests stay deterministic.
+
+Run the framework's own suite with:
 
 ```bash
 python -m pytest
 ```
 
-The suite covers the expression compiler, page compilation and IR output,
-server actions (validation, errors, streaming), and the build targets.
+## Inspector
+
+In `virel dev`, every page gets a small floating button (or Alt+V) that opens
+the inspector: the compiled component tree with source locations, the
+intermediate representation, and live signal values read from the running
+page.
+
+## Current scope
+
+The supported client subset is documented and deliberately bounded:
+arithmetic, comparisons, boolean operators, conditional expressions,
+f-strings, list literals and indexing, a set of string methods, common
+builtins (`len`, `str`, `int`, `float`, `bool`, `abs`, `min`, `max`,
+`round`), assignments, `if`/`elif`/`else`, `for` over lists, and calls to
+`@ui.client` functions and server actions. Anything outside it is a build
+error that names the nearest replacement.
+
+Not implemented yet, in rough priority order: model-driven forms with
+Pydantic integration, the `ui.resource` data layer with caching and suspense,
+client-side routing and partial hydration, `virel bind` for npm packages, and
+internationalization.
 
 ## License
 
