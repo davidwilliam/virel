@@ -256,6 +256,52 @@ export function refreshResource(id) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Islands: deferred hydration boundaries (SPEC 9.7). The HTML is
+ * already server-rendered; bind() activates the subtree's reactivity
+ * according to the load strategy.
+ * ------------------------------------------------------------------ */
+
+export function island(id, strategy, bind) {
+  const node = el(id);
+  if (!node) return;
+  if (strategy === "idle") {
+    const schedule = window.requestIdleCallback || ((fn) => setTimeout(fn, 1));
+    schedule(bind);
+    return;
+  }
+  if (strategy === "visible") {
+    if (!("IntersectionObserver" in window)) {
+      bind();
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          observer.disconnect();
+          bind();
+          return;
+        }
+      }
+    });
+    observer.observe(node);
+    return;
+  }
+  if (strategy === "interaction") {
+    let bound = false;
+    const activate = () => {
+      if (bound) return;
+      bound = true;
+      bind();
+    };
+    node.addEventListener("pointerenter", activate, { once: true });
+    node.addEventListener("focusin", activate, { once: true });
+    node.addEventListener("touchstart", activate, { once: true, passive: true });
+    return;
+  }
+  bind(); // immediate
+}
+
+/* ------------------------------------------------------------------ *
  * Client navigation: same-origin link clicks fetch the target page,
  * swap the document, and mount its page module, so navigation keeps
  * scroll-restoring history semantics without full reloads. Pages that

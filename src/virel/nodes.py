@@ -312,6 +312,31 @@ def template_html(nodes: list[Node], env: dict[str, Any]) -> str:
     return "".join(parts)
 
 
+_ISLAND_STRATEGIES = ("immediate", "idle", "visible", "interaction")
+
+
+class IslandNode(Node):
+    """A hydration boundary (SPEC 9.7). The subtree server-renders like
+    everything else, but its bindings activate lazily by strategy: on idle,
+    when scrolled into view, or on first interaction."""
+
+    def __init__(self, children: list[Node], load: str) -> None:
+        if load not in _ISLAND_STRATEGIES:
+            raise VirelCompileError(
+                f"Island load={load!r} is not a strategy. Use one of: "
+                f"{', '.join(_ISLAND_STRATEGIES)}."
+            )
+        self.children = children
+        self.load = load
+
+    def to_ir(self) -> dict[str, Any]:
+        return {
+            "kind": "island",
+            "load": self.load,
+            "children": [c.to_ir() for c in self.children],
+        }
+
+
 class PageNode(Node):
     """Root of a compiled page."""
 
@@ -385,6 +410,21 @@ class Emitter:
                 f'<div data-v="{then_id}" class="v-when"{then_style}>{then_html}</div>'
                 f'<div data-v="{else_id}" class="v-when"{else_style}>{else_html}</div>'
             )
+
+        if isinstance(node, IslandNode):
+            vid = self.assign_id()
+            # Capture the subtree's bindings so they can be deferred as one
+            # unit; server-rendered HTML is emitted normally either way.
+            outer = self.bindings
+            self.bindings = []
+            inner_html = self.emit_children(node.children)
+            captured = self.bindings
+            self.bindings = outer
+            body = " ".join(captured)
+            self.bindings.append(
+                f'$.island("{vid}", "{node.load}", () => {{ {body} }});')
+            return (f'<div data-v="{vid}" class="v-island" '
+                    f'style="display:contents">{inner_html}</div>')
 
         if isinstance(node, EachNode):
             vid = self.assign_id()

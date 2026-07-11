@@ -650,6 +650,14 @@ def Suspense(resource: Any, *, content: Any, fallback: Any = None,
     return When(resource.loading, then=fallback_node, otherwise=settled)
 
 
+def Island(*children: Any, load: str = "visible") -> Node:
+    """Defer hydration of a subtree. The content is server-rendered and
+    visible immediately; its interactivity activates per the load strategy:
+    immediate, idle, visible, or interaction."""
+    from .nodes import IslandNode
+    return IslandNode(normalize_children(children), load)
+
+
 def ThemeToggle() -> Element:
     """Cycles the color scheme between system, light, and dark.
 

@@ -102,7 +102,28 @@ def _patterns_tab() -> ui.Node:
             gap=3,
             wrap=True,
         ),
+        _island_demo(),
         gap=6,
+    )
+
+
+def _island_demo() -> ui.Node:
+    taps = ui.state(0)
+    return ui.Card(
+        ui.Heading("Hydration island", level=3),
+        ui.Text("This block server-renders like everything else, but its "
+                "JavaScript activates only when it scrolls into view. Check "
+                "the page module: these bindings sit inside $.island.",
+                muted=True),
+        ui.Island(
+            ui.Row(
+                ui.Button("Tap", on_click=lambda: taps.update(lambda t: t + 1)),
+                ui.Text(f"Taps: {taps}"),
+                gap=4,
+            ),
+            load="visible",
+        ),
+        gap=3,
     )
 
 

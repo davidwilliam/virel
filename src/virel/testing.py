@@ -21,6 +21,7 @@ from .nodes import (
     BindText,
     EachNode,
     Element,
+    IslandNode,
     Node,
     PageNode,
     RawHTML,
@@ -183,7 +184,7 @@ class TestView:
                 for item in items:
                     for child in node.template:
                         visit(child, conditions, label, scope | {"item": item})
-            elif isinstance(node, PageNode):
+            elif isinstance(node, (PageNode, IslandNode)):
                 for child in node.children:
                     visit(child, conditions, label, scope)
 
@@ -402,7 +403,7 @@ def _node_text(node: Node, env: dict[str, Any], visible_only: bool = False,
             for child in node.template:
                 out.extend(_node_text(child, item_env, visible_only, view))
         return out
-    if isinstance(node, (Element, PageNode)):
+    if isinstance(node, (Element, PageNode, IslandNode)):
         out = []
         for child in node.children:
             out.extend(_node_text(child, env, visible_only, view))

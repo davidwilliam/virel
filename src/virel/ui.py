@@ -53,7 +53,7 @@ from .elements import (
     set_from_event,
     unsafe_html,
 )
-from .elements import Each, Suspense
+from .elements import Each, Island, Suspense
 from .forms import Form, FormActions, SubmitButton, form
 from .icons import Icon, icon_names
 from .resources import Resource, resource
@@ -92,7 +92,7 @@ __all__ = [
     "Heading", "Text", "Code", "Link", "Image", "List", "Nav",
     "unsafe_html", "When",
     # data loading
-    "resource", "Resource", "Each", "Suspense",
+    "resource", "Resource", "Each", "Suspense", "Island",
     # forms
     "form", "Form", "FormActions", "SubmitButton",
     # form controls

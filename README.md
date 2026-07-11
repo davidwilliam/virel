@@ -111,6 +111,11 @@ clicks, downloads, external links, and fragment links are left to the
 browser. Set `client_nav = false` under `[app]` in `virel.toml` to turn
 soft navigation off.
 
+`ui.Island` marks a hydration boundary inside a page: the subtree is
+server-rendered and visible immediately, but its bindings activate lazily
+with `load="immediate"`, `"idle"`, `"visible"`, or `"interaction"`, so
+below-the-fold interactivity costs nothing at page load.
+
 ## How it works
 
 A page function runs once at compile time under a trace context. Reactive
@@ -348,10 +353,9 @@ builtins (`len`, `str`, `int`, `float`, `bool`, `abs`, `min`, `max`,
 `@ui.client` functions and server actions. Anything outside it is a build
 error that names the nearest replacement.
 
-Not implemented yet, in rough priority order: client-side routing and
-partial hydration, event handlers and keyed updates inside `ui.Each` items,
-resource caching policies (stale-while-revalidate, cache keys, optimistic
-mutation), `virel bind` for npm packages, and internationalization.
+Not implemented yet, in rough priority order: resource caching policies
+(stale-while-revalidate, optimistic mutation), `virel bind` for
+web-component manifests, and internationalization.
 
 ## License
 
