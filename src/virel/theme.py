@@ -28,28 +28,44 @@ class Theme:
 
     def css_tokens(self) -> str:
         light = {
-            "--v-bg": "#f8f8fa",
-            "--v-fg": "#17181c",
-            "--v-fg-muted": "#5d616b",
+            "--v-bg": "#f7f7f9",
+            "--v-fg": "#16181d",
+            "--v-fg-muted": "#5c6270",
             "--v-surface-1": "#ffffff",
-            "--v-surface-2": "#f1f1f4",
-            "--v-surface-3": "#e6e6ea",
-            "--v-border": "#dcdce2",
-            "--v-accent-soft": "#eef2ff",
+            "--v-surface-2": "#f0f1f4",
+            "--v-surface-3": "#e5e7ec",
+            "--v-surface-glass": "rgba(255, 255, 255, 0.82)",
+            "--v-border": "#e2e4e9",
+            "--v-border-strong": "#cdd0d8",
+            "--v-accent-soft": "#eef1ff",
             "--v-danger-soft": "#fef2f2",
             "--v-success-soft": "#f0fdf4",
+            "--v-ring": "rgba(79, 70, 229, 0.35)",
+            "--v-shadow-sm": "0 1px 2px rgba(22, 24, 29, 0.05)",
+            "--v-shadow-md": ("0 2px 4px rgba(22, 24, 29, 0.05), "
+                              "0 8px 24px rgba(22, 24, 29, 0.07)"),
+            "--v-shadow-lg": ("0 4px 8px rgba(22, 24, 29, 0.06), "
+                              "0 20px 48px rgba(22, 24, 29, 0.14)"),
         }
         dark = {
-            "--v-bg": "#101114",
-            "--v-fg": "#ececf0",
-            "--v-fg-muted": "#9a9ea8",
-            "--v-surface-1": "#191a1f",
-            "--v-surface-2": "#222329",
-            "--v-surface-3": "#2c2d34",
-            "--v-border": "#33343c",
-            "--v-accent-soft": "#26264a",
+            "--v-bg": "#0e0f13",
+            "--v-fg": "#ecedf1",
+            "--v-fg-muted": "#9aa0ad",
+            "--v-surface-1": "#17181e",
+            "--v-surface-2": "#1f2129",
+            "--v-surface-3": "#2a2d37",
+            "--v-surface-glass": "rgba(23, 24, 30, 0.82)",
+            "--v-border": "#2b2e38",
+            "--v-border-strong": "#3a3e4a",
+            "--v-accent-soft": "#24264a",
             "--v-danger-soft": "#3a1d1d",
             "--v-success-soft": "#16301e",
+            "--v-ring": "rgba(129, 140, 248, 0.4)",
+            "--v-shadow-sm": "0 1px 2px rgba(0, 0, 0, 0.3)",
+            "--v-shadow-md": ("0 2px 4px rgba(0, 0, 0, 0.3), "
+                              "0 8px 24px rgba(0, 0, 0, 0.35)"),
+            "--v-shadow-lg": ("0 4px 8px rgba(0, 0, 0, 0.35), "
+                              "0 20px 48px rgba(0, 0, 0, 0.5)"),
         }
         shared = {
             "--v-accent": self.accent,

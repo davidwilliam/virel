@@ -24,9 +24,11 @@ from .elements import (
     Dialog,
     Divider,
     EmptyState,
+    Grid,
     Heading,
     Image,
     Link,
+    LinkButton,
     List,
     Nav,
     NumberField,
@@ -88,10 +90,10 @@ __all__ = [
     "use_theme", "Theme", "Node", "VirelCompileError", "test",
     "messages", "t",
     # layout
-    "Page", "Stack", "Row", "Container", "Section", "Card",
+    "Page", "Stack", "Row", "Grid", "Container", "Section", "Card",
     "Divider", "Spacer", "AppShell",
     # semantic elements
-    "Heading", "Text", "Code", "Link", "Image", "List", "Nav",
+    "Heading", "Text", "Code", "Link", "LinkButton", "Image", "List", "Nav",
     "unsafe_html", "When",
     # data loading
     "resource", "Resource", "Each", "Suspense", "Island",

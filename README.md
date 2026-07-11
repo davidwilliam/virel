@@ -162,7 +162,7 @@ Python source
   -> trace          page function runs under a TraceContext     src/virel/expr.py
   -> UI IR          versioned, deterministic, serializable      src/virel/nodes.py
   -> emission       initial HTML + per-page JS module           src/virel/compiler.py
-  -> runtime        signals, bindings, HTTP actions (~3.4 KB)   src/virel/assets/runtime.js
+  -> runtime        signals, router, resources (~4.6 KB gzip)   src/virel/assets/runtime.js
   -> server         ASGI app + built-in dev HTTP bridge         src/virel/server.py
 ```
 

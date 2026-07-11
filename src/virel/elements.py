@@ -83,34 +83,69 @@ def Page(*children: Any, title: str = "Virel App",
     )
 
 
-def Stack(*children: Any, gap: int = 4, align: str = "stretch") -> Element:
+def _classes(base: str, class_name: str | None) -> str:
+    return f"{base} {class_name}" if class_name else base
+
+
+def Stack(*children: Any, gap: int = 4, align: str = "stretch",
+          class_name: str | None = None) -> Element:
     style = _gap_style(gap, f"align-items: {_ALIGN[align]}")
     return Element("div", normalize_children(children),
-                   attrs={"class": "v-stack", "style": style})
+                   attrs={"class": _classes("v-stack", class_name),
+                          "style": style})
 
 
 def Row(*children: Any, gap: int = 3, align: str = "center",
-        justify: str = "start", wrap: bool = False) -> Element:
+        justify: str = "start", wrap: bool = False,
+        class_name: str | None = None) -> Element:
     extra = f"align-items: {_ALIGN[align]}; justify-content: {_JUSTIFY[justify]}"
     if wrap:
         extra += "; flex-wrap: wrap"
     return Element("div", normalize_children(children),
-                   attrs={"class": "v-row", "style": _gap_style(gap, extra)})
+                   attrs={"class": _classes("v-row", class_name),
+                          "style": _gap_style(gap, extra)})
 
 
-def Container(*children: Any, width: str = "md") -> Element:
+def Grid(*children: Any, columns: int | dict[str, int] = 2, gap: int = 4,
+         class_name: str | None = None) -> Element:
+    """Responsive grid. ``columns`` takes an int or typed breakpoints:
+    ``{"base": 1, "md": 2, "xl": 4}``."""
+    if isinstance(columns, int):
+        columns = {"base": columns}
+    unknown = set(columns) - {"base", "md", "xl"}
+    if unknown:
+        raise VirelCompileError(
+            f"Grid columns breakpoints {sorted(unknown)} are not supported. "
+            "Use base, md, and xl."
+        )
+    variables = "; ".join(
+        f"--v-cols{'' if bp == 'base' else '-' + bp}: {count}"
+        for bp, count in columns.items()
+    )
     return Element("div", normalize_children(children),
-                   attrs={"class": f"v-container v-container-{width}"})
+                   attrs={"class": _classes("v-grid", class_name),
+                          "style": _gap_style(gap, variables)})
 
 
-def Section(*children: Any, gap: int = 6) -> Element:
+def Container(*children: Any, width: str = "md",
+              class_name: str | None = None) -> Element:
+    return Element("div", normalize_children(children),
+                   attrs={"class": _classes(f"v-container v-container-{width}",
+                                            class_name)})
+
+
+def Section(*children: Any, gap: int = 6,
+            class_name: str | None = None) -> Element:
     return Element("section", normalize_children(children),
-                   attrs={"class": "v-stack v-section", "style": _gap_style(gap)})
+                   attrs={"class": _classes("v-stack v-section", class_name),
+                          "style": _gap_style(gap)})
 
 
-def Card(*children: Any, gap: int = 3) -> Element:
+def Card(*children: Any, gap: int = 3,
+         class_name: str | None = None) -> Element:
     return Element("div", normalize_children(children),
-                   attrs={"class": "v-card v-stack", "style": _gap_style(gap)})
+                   attrs={"class": _classes("v-card v-stack", class_name),
+                          "style": _gap_style(gap)})
 
 
 def Divider() -> Element:
@@ -161,6 +196,23 @@ def Link(text: Any, to: str | Expr, *, external: bool = False) -> Element:
         attrs["rel"] = "noopener noreferrer"
         attrs["target"] = "_blank"
     return Element("a", normalize_children((text,)), attrs=attrs)
+
+
+def LinkButton(text: Any, to: str, *, intent: str = "neutral",
+               size: str = "md") -> Element:
+    """A navigation link styled as a button (real anchor semantics)."""
+    if intent not in _INTENTS:
+        raise VirelCompileError(
+            f"intent={intent!r} is not valid. Use one of: {', '.join(_INTENTS)}."
+        )
+    from .security import is_safe_url
+    if not is_safe_url(to):
+        raise VirelCompileError(
+            f"Link target {to!r} uses a blocked URL scheme."
+        )
+    return Element("a", normalize_children((text,)),
+                   attrs={"href": to,
+                          "class": f"v-btn v-btn-{intent} v-btn-{size}"})
 
 
 def Image(src: str | Expr, alt: str, *, width: int | None = None) -> Element:

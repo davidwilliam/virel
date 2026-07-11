@@ -1,8 +1,28 @@
-"""Static landing page: ships with zero framework JavaScript (SPEC 9.3)."""
+"""Landing page: fully static, no framework JavaScript modules."""
 
 from virel import ui
 
 from ..shared import shell
+
+_SNIPPET = '''@ui.page("/")
+def home() -> ui.Node:
+    count = ui.state(0)
+    return ui.Page(
+        ui.Heading(f"Count: {count}", level=1),
+        ui.Button("Increment",
+                  on_click=lambda: count.update(lambda c: c + 1)),
+    )'''
+
+
+def _feature(icon: str, title: str, text: str, link_text: str,
+             to: str) -> ui.Node:
+    return ui.Card(
+        ui.Row(ui.Icon(icon, size=20), ui.Heading(title, level=3), gap=3),
+        ui.Text(text, muted=True),
+        ui.Spacer(),
+        ui.Link(link_text, to=to),
+        gap=3,
+    )
 
 
 @ui.page("/", render="static")
@@ -10,45 +30,54 @@ def home() -> ui.Node:
     return ui.Page(
         shell(
             ui.Section(
-                ui.Heading("Virel Phase 0 demo", level=1),
-                ui.Text(
-                    "Every page on this site is authored in typed Python and "
-                    "compiled to browser-native HTML, CSS, and JavaScript.",
-                    size="lg",
+                ui.Stack(
+                    ui.Badge("Developer preview", intent="primary"),
+                    ui.Heading("Professional interfaces, written in Python",
+                               level=1),
+                    ui.Text(
+                        "Typed, declarative Python in; fast, accessible, "
+                        "browser-native HTML, CSS, and JavaScript out. "
+                        "No Node.js, no second language, no virtual DOM.",
+                        size="lg", muted=True),
+                    ui.Row(
+                        ui.LinkButton("Explore the components",
+                                      to="/components", intent="primary",
+                                      size="lg"),
+                        ui.LinkButton("See live data", to="/runs", size="lg"),
+                        gap=3, wrap=True,
+                    ),
+                    gap=5,
+                    align="start",
                 ),
-                ui.Text(
-                    "This landing page is fully static: view source — there is "
-                    "no framework JavaScript on this route.",
-                    muted=True,
-                ),
-                ui.Row(
-                    ui.Card(
-                        ui.Heading("Local interaction", level=3),
-                        ui.Text("The counter and search pages update the DOM "
-                                "with fine-grained signals. No server round "
-                                "trips.", muted=True),
-                        ui.Link("Try the counter", to="/counter"),
-                    ),
-                    ui.Card(
-                        ui.Heading("Server actions", level=3),
-                        ui.Text("The invite form calls typed Python over "
-                                "HTTP; the stream page renders incremental "
-                                "output.", muted=True),
-                        ui.Link("Send an invite", to="/invite"),
-                    ),
-                    ui.Card(
-                        ui.Heading("Web standards", level=3),
-                        ui.Text("Third-party web components integrate through "
-                                "typed Python bindings.", muted=True),
-                        ui.Link("See the widget", to="/widgets"),
-                    ),
+                ui.Card(ui.Code(_SNIPPET, block=True), gap=0),
+                ui.Grid(
+                    _feature("play", "Local interaction",
+                             "State lives in the browser. Clicking a button "
+                             "updates exactly the DOM nodes that depend on "
+                             "it, with no server round trip.",
+                             "Try the counter", "/counter"),
+                    _feature("upload", "Typed server actions",
+                             "Forms and data calls are plain HTTP with "
+                             "schema validation on every request. Streaming "
+                             "output renders incrementally.",
+                             "Send an invite", "/invite"),
+                    _feature("square", "Web standards",
+                             "Third-party web components bind through typed "
+                             "Python generated from their manifests. The "
+                             "output is inspectable, standard markup.",
+                             "See the widget", "/widgets"),
+                    columns={"base": 1, "md": 3},
                     gap=4,
-                    align="stretch",
-                    wrap=True,
                 ),
+                ui.Text(
+                    "This page is fully static: view source. There are no "
+                    "framework JavaScript modules on this route, and it "
+                    "still follows your system color scheme.",
+                    muted=True, size="sm"),
+                gap=10,
             ),
             theme_toggle=False,
         ),
         title="Virel Demo",
-        meta={"description": "Virel Phase 0 demonstration application."},
+        meta={"description": "Virel demonstration application."},
     )
