@@ -219,13 +219,21 @@ class VirelASGIApp:
     async def _dispatch(self, path: str, method: str, scope: Scope,
                         receive: Receive, send: Send) -> None:
         if path == "/_virel/runtime.js":
-            await self._send_text(send, 200, runtime_js(),
-                                  content_type="text/javascript; charset=utf-8")
+            from .theme import compact
+            source = runtime_js() if self.dev else compact(runtime_js())
+            await self._send_text(send, 200, source,
+                                  content_type="text/javascript; charset=utf-8",
+                                  extra=self._asset_cache_headers())
             return
         if path == "/_virel/app.css":
+            from .theme import compact
             theme = self.registry.theme or Theme()
-            await self._send_text(send, 200, build_stylesheet(theme),
-                                  content_type="text/css; charset=utf-8")
+            stylesheet = build_stylesheet(theme)
+            if not self.dev:
+                stylesheet = compact(stylesheet)
+            await self._send_text(send, 200, stylesheet,
+                                  content_type="text/css; charset=utf-8",
+                                  extra=self._asset_cache_headers())
             return
         if path.startswith("/_virel/fonts/"):
             from importlib import resources as _resources
@@ -384,7 +392,8 @@ class VirelASGIApp:
             return None
         page, params = matched
         result = compile_page(page, params=params, dev=self.dev,
-                              inline_js=page.is_dynamic, locale=locale)
+                              inline_js=page.is_dynamic, locale=locale,
+                              hashed=not self.dev)
         self._page_cache[cache_key] = result
         return result
 
@@ -418,14 +427,15 @@ class VirelASGIApp:
                                               page.query_types.get(name, str),
                                               default)
             result = compile_page(page, params=params, dev=self.dev,
-                                  inline_js=True, locale=locale)
+                                  inline_js=True, locale=locale,
+                                  hashed=not self.dev)
         else:
             result = self._compiled(path, locale)
             if result.needs_request_render:
                 # Server-rendered resources embed data fetched at render
                 # time; compile fresh for every request.
                 result = compile_page(page, dev=self.dev, inline_js=True,
-                                      locale=locale)
+                                      locale=locale, hashed=not self.dev)
         from .security import content_security_policy
         from .theme import google_fonts
         csp = content_security_policy(
@@ -438,23 +448,32 @@ class VirelASGIApp:
                               content_type="text/html; charset=utf-8",
                               extra=headers)
 
+    def _asset_cache_headers(self) -> list[tuple[bytes, bytes]]:
+        if self.dev:
+            return [(b"cache-control", b"no-store")]
+        # Production URLs are content-versioned, so far-future caching is
+        # safe (SPEC 9.1 asset hashing).
+        return [(b"cache-control", b"public, max-age=31536000, immutable")]
+
     async def _serve_page_js(self, path: str, send: Send) -> None:
+        import re as _re
         from .i18n import available_locales
         name = path.removeprefix("/_virel/page/").removesuffix(".js")
+        # Names look like slug[.locale][.hash8]; strip from the right.
+        parts = name.split(".")
+        if len(parts) > 1 and _re.fullmatch(r"[0-9a-f]{8}", parts[-1]):
+            parts.pop()
         locale = None
-        slug = name
-        if "." in name:
-            slug, _, candidate = name.rpartition(".")
-            if candidate in available_locales():
-                locale = candidate
-            else:
-                slug = name
+        if len(parts) > 1 and parts[-1] in available_locales():
+            locale = parts.pop()
+        slug = ".".join(parts)
         for page in self.registry.pages.values():
             if page.slug == slug and not page.is_dynamic:
                 result = self._compiled(page.path, locale)
                 if result and result.js:
                     await self._send_text(send, 200, result.js,
-                                          content_type="text/javascript; charset=utf-8")
+                                          content_type="text/javascript; charset=utf-8",
+                                          extra=self._asset_cache_headers())
                     return
         await self._send_text(send, 404, f"No page module {name!r}.")
 

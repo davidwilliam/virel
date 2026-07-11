@@ -132,9 +132,9 @@ def cmd_build(args: argparse.Namespace) -> None:
 
     try:
         if args.target == "static":
-            report = build_static()
+            report = build_static(hashed=True)
         else:
-            report = build_all()
+            report = build_all(hashed=True)
     except VirelCompileError as error:
         _fail(str(error))
 
@@ -144,9 +144,10 @@ def cmd_build(args: argparse.Namespace) -> None:
     for stale in ir_dir.glob("*.json"):
         stale.unlink()
 
+    from .theme import compact
     framework_dir = dist / "_virel"
     (framework_dir / "page").mkdir(parents=True)
-    (framework_dir / "runtime.js").write_text(runtime_js())
+    (framework_dir / "runtime.js").write_text(compact(runtime_js()))
     from importlib import resources as _resources
     fonts_dir = framework_dir / "fonts"
     fonts_dir.mkdir()
@@ -154,7 +155,7 @@ def cmd_build(args: argparse.Namespace) -> None:
     for font in fonts.iterdir():
         (fonts_dir / font.name).write_bytes(font.read_bytes())
     theme = registry.theme or Theme()
-    (framework_dir / "app.css").write_text(build_stylesheet(theme))
+    (framework_dir / "app.css").write_text(compact(build_stylesheet(theme)))
 
     for compiled in report.pages:
         if compiled.route == "/":
@@ -182,7 +183,25 @@ def cmd_build(args: argparse.Namespace) -> None:
         print("  dynamic routes rendered per-request by the server:")
         for route in report.skipped_dynamic:
             print(f"    {route}")
+    manifest = {
+        name: {
+            "params": {
+                p.name: {
+                    "required": p.default is pyinspect.Parameter.empty,
+                    "type": str(action.type_hints().get(p.name, "str")),
+                }
+                for p in action.signature.parameters.values()
+            },
+            "stream": action.stream_response,
+            "download": action.download,
+            "idempotent": action.idempotent,
+            "guarded": action.guard is not None,
+        }
+        for name, action in registry.actions.items()
+    }
+    (ir_dir.parent / "actions.json").write_text(json.dumps(manifest, indent=2))
     print(f"UI IR written to {ir_dir}")
+    print(f"Server action manifest written to {ir_dir.parent / 'actions.json'}")
 
 
 def cmd_check(args: argparse.Namespace) -> None:

@@ -190,3 +190,33 @@ def build_stylesheet(theme: Theme | None = None) -> str:
 
 def runtime_js() -> str:
     return resources.files("virel.assets").joinpath("runtime.js").read_text("utf-8")
+
+
+def compact(source: str) -> str:
+    """Conservative production compaction: drop full-line comments and
+    blank lines. Semantics-preserving by construction; gzip does the rest."""
+    out = []
+    in_block = False
+    for line in source.splitlines():
+        stripped = line.strip()
+        if in_block:
+            if "*/" in stripped:
+                in_block = False
+            continue
+        if stripped.startswith("/*") and "*/" not in stripped:
+            in_block = True
+            continue
+        if not stripped or stripped.startswith("//") \
+                or (stripped.startswith("/*") and stripped.endswith("*/")) \
+                or stripped.startswith("* ") or stripped == "*":
+            continue
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
+def asset_version(theme: Theme | None = None) -> str:
+    """Content hash for the shared assets, used as a cache-busting
+    version on runtime.js and app.css URLs in production."""
+    import hashlib
+    payload = runtime_js() + build_stylesheet(theme)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:8]

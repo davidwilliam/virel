@@ -41,7 +41,8 @@ class CompiledPage:
 
 def compile_page(page: Page, params: dict[str, Any] | None = None,
                  dev: bool = False, inline_js: bool = False,
-                 locale: str | None = None) -> CompiledPage:
+                 locale: str | None = None,
+                 hashed: bool = False) -> CompiledPage:
     elements._reset_page_modules()
     with TraceContext() as ctx:
         ctx.locale = locale
@@ -100,7 +101,7 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
             "tree": root.to_ir(),
         }
 
-        js = _emit_page_js(ctx, emitter, dev=dev)
+        js = _emit_page_js(ctx, emitter, dev=dev, versioned=hashed)
         actions_used = _actions_in_bindings(emitter.bindings)
         for res in ctx.resources.values():
             if res.action.name not in actions_used:
@@ -116,12 +117,19 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
         from .registry import active_registry as _registry
         lang = locale or _registry().default_locale
         # Translated reactive strings live in the page module, so localized
-        # apps get one module per locale.
-        js_module = (f"{page.slug}.{lang}.js" if _registry().catalogs
-                     else f"{page.slug}.js")
+        # apps get one module per locale. Production builds content-hash the
+        # filename so far-future caching is safe (SPEC 9.1).
+        stem = f"{page.slug}.{lang}" if _registry().catalogs else page.slug
+        if hashed and js is not None:
+            import hashlib
+            digest = hashlib.sha256(js.encode("utf-8")).hexdigest()[:8]
+            js_module = f"{stem}.{digest}.js"
+        else:
+            js_module = f"{stem}.js"
         html_doc, inline_scripts = _emit_document(
             root, body_html, js_module, js, dev=dev,
-            inline_js=inline_js or needs_request_render, lang=lang)
+            inline_js=inline_js or needs_request_render, lang=lang,
+            versioned=hashed)
         return CompiledPage(
             route=page.path,
             slug=page.slug,
@@ -181,11 +189,16 @@ def _actions_in_bindings(bindings: list[str]) -> list[str]:
     return names
 
 
-def _emit_page_js(ctx: TraceContext, emitter: Emitter, dev: bool = False) -> str | None:
+def _emit_page_js(ctx: TraceContext, emitter: Emitter, dev: bool = False,
+                  versioned: bool = False) -> str | None:
     if not ctx.states and not ctx.derived and not emitter.bindings:
         return None
     from .registry import active_registry
-    lines = ['import * as $ from "/_virel/runtime.js";']
+    runtime_url = "/_virel/runtime.js"
+    if versioned:
+        from .theme import asset_version
+        runtime_url += "?v=" + asset_version(active_registry().theme)
+    lines = [f'import * as $ from "{runtime_url}";']
     for definition in _client_fn_definitions(ctx):
         lines.append(definition)
     # Bindings live inside mount() so client navigation can re-run them
@@ -249,7 +262,13 @@ def _client_fn_definitions(ctx: TraceContext) -> list[str]:
 def _emit_document(root: PageNode, body_html: str, js_module: str,
                    js: str | None, dev: bool,
                    inline_js: bool = False,
-                   lang: str = "en") -> tuple[str, list[str]]:
+                   lang: str = "en",
+                   versioned: bool = False) -> tuple[str, list[str]]:
+    suffix = ""
+    if versioned:
+        from .registry import active_registry as _reg2
+        from .theme import asset_version
+        suffix = "?v=" + asset_version(_reg2().theme)
     # Applies a stored light/dark preference before first paint so theme
     # switching never flashes. With no stored preference the CSS media
     # query follows the system setting.
@@ -278,7 +297,7 @@ def _emit_document(root: PageNode, body_html: str, js_module: str,
         head.append('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>')
         for font in fonts:
             head.append(f'<link rel="stylesheet" href="{_escape(font.css_url())}">')
-    head.append('<link rel="stylesheet" href="/_virel/app.css">')
+    head.append(f'<link rel="stylesheet" href="/_virel/app.css{suffix}">')
     for name, content in root.meta.items():
         head.append(f'<meta name="{_escape(name)}" content="{_escape(content)}">')
     if root.canonical:
@@ -325,7 +344,7 @@ class BuildReport:
         return sum(len(p.js or "") for p in self.pages)
 
 
-def build_static(check_only: bool = False) -> BuildReport:
+def build_static(check_only: bool = False, hashed: bool = False) -> BuildReport:
     """Compile all routes for a static target.
 
     Fails with a precise report if any route requires a server
@@ -347,7 +366,7 @@ def build_static(check_only: bool = False) -> BuildReport:
                 "running Python server"
             )
             continue
-        result = compile_page(page)
+        result = compile_page(page, hashed=hashed)
         if result.server_actions:
             problems.append(
                 f"  {page.path}: calls server actions "
@@ -367,7 +386,7 @@ def build_static(check_only: bool = False) -> BuildReport:
     return BuildReport(pages=compiled, skipped_dynamic=[])
 
 
-def build_all(dev: bool = False) -> BuildReport:
+def build_all(dev: bool = False, hashed: bool = False) -> BuildReport:
     """Compile every static-parameter route (ASGI/dev target).
 
     Dynamic routes are rendered per request by the server.
@@ -381,7 +400,7 @@ def build_all(dev: bool = False) -> BuildReport:
             skipped.append(page.path)
             continue
         try:
-            result = compile_page(page, dev=dev)
+            result = compile_page(page, dev=dev, hashed=hashed)
         except ContextMissingError:
             skipped.append(page.path)
             continue
