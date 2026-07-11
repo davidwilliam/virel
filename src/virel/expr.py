@@ -48,6 +48,7 @@ class TraceContext:
         self.locale: str | None = None         # active locale for ui.t
         self.uses_request_context = False      # page read a per-request value
         self.effects: list[Any] = []           # ui.effect registrations
+        self.subscriptions: list[Any] = []      # ui.subscribe registrations
         self._counter = 0
 
     def next_id(self, prefix: str) -> str:

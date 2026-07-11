@@ -274,8 +274,12 @@ class VirelASGIApp:
             return
         if path.startswith("/_virel/action/"):
             if method == "GET":
-                await self._serve_download(
-                    path.removeprefix("/_virel/action/"), scope, send)
+                name = path.removeprefix("/_virel/action/")
+                candidate = self.registry.actions.get(name)
+                if candidate is not None and candidate.stream_response:
+                    await self._serve_sse(candidate, scope, send)
+                    return
+                await self._serve_download(name, scope, send)
                 return
             if method != "POST":
                 await self._send_json(send, 405, {"error": "actions require POST"})
@@ -697,6 +701,51 @@ class VirelASGIApp:
             send, 200, result.body(), result.content_type,
             extra=[(b"content-disposition",
                     f'attachment; filename="{filename}"'.encode("latin-1"))])
+
+    async def _serve_sse(self, action: Any, scope: Scope, send: Send) -> None:
+        """One-way live updates over server-sent events (SPEC 9.5). A
+        read-only GET: guards run, arguments come typed from the query."""
+        from .registry import ActionArgumentError, Deny, Redirect, to_jsonable
+        decision = await self._run_guards(scope, action.guard)
+        if isinstance(decision, (Redirect, Deny)):
+            status = 401 if isinstance(decision, Redirect) else decision.status
+            await self._send_text(send, status, "not authorized")
+            return
+        raw = _parse_query(scope.get("query_string", b""))
+        hints = action.type_hints()
+        args: dict[str, Any] = {}
+        for key, value in raw.items():
+            args[key] = _convert_query(value, hints.get(key, str), value)
+        try:
+            kwargs = action.prepare(args)
+        except ActionArgumentError as error:
+            await self._send_text(send, 400, str(error))
+            return
+        await send({
+            "type": "http.response.start",
+            "status": 200,
+            "headers": _headers("text/event-stream; charset=utf-8", extra=[
+                (b"cache-control", b"no-store"),
+                (b"x-accel-buffering", b"no"),
+            ]),
+        })
+        try:
+            async for chunk in _iterate_chunks(action.fn(**kwargs)):
+                if isinstance(chunk, (dict, list)):
+                    payload = json.dumps(to_jsonable(chunk))
+                else:
+                    payload = str(chunk)
+                lines = "".join(f"data: {line}\n"
+                                for line in payload.split("\n"))
+                await send({"type": "http.response.body",
+                            "body": (lines + "\n").encode("utf-8"),
+                            "more_body": True})
+        except Exception as error:
+            message = _safe_message(error, self.dev).replace("\n", " ")
+            await send({"type": "http.response.body",
+                        "body": f"event: error\ndata: {message}\n\n".encode("utf-8"),
+                        "more_body": True})
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
 
     async def _stream_action(self, action: Any, args: dict[str, Any], send: Send) -> None:
         await send({

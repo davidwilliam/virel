@@ -42,12 +42,23 @@ export function effect(fn) {
   run();
 }
 
+let disposers = [];
+
+// Register cleanup that runs when the page unmounts (client navigation).
+export function onDispose(fn) {
+  disposers.push(fn);
+}
+
 // Everything a page module binds belongs to its mount scope. Client
 // navigation disposes the scope before mounting the next page, so effects
 // from a previous page never fire against a swapped-out DOM.
 export function disposeMount() {
   for (const run of mountScope) run.disposed = true;
   mountScope = [];
+  for (const fn of disposers) {
+    try { fn(); } catch {}
+  }
+  disposers = [];
   for (const key in resourceRegistry) delete resourceRegistry[key];
 }
 
@@ -919,6 +930,40 @@ export async function action(name, args, options) {
     throw error;
   }
   return payload.result;
+}
+
+// Live one-way updates over server-sent events. The browser reconnects
+// automatically; changing reactive parameters reopens the stream, and
+// client navigation closes it.
+export function sse(name, argsFn, opts) {
+  let source = null;
+  const open = (args) => {
+    source?.close();
+    const query = new URLSearchParams();
+    for (const key in args) query.set(key, String(args[key]));
+    const suffix = query.toString() ? "?" + query.toString() : "";
+    source = new EventSource(`/_virel/action/${name}${suffix}`);
+    source.onmessage = (ev) => {
+      if (opts.events) {
+        try {
+          opts.events.set([...(opts.events.get() || []), JSON.parse(ev.data)]);
+        } catch {}
+      } else if (opts.into) {
+        opts.into.set((opts.into.get() || "") + ev.data + "\n");
+      }
+    };
+  };
+  effect(() => {
+    const args = argsFn ? argsFn() : {};
+    const previous = activeEffect;
+    activeEffect = null;
+    try {
+      open(args);
+    } finally {
+      activeEffect = previous;
+    }
+  });
+  onDispose(() => source?.close());
 }
 
 // Structured streams: the server emits JSON lines; parsed events append

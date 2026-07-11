@@ -75,6 +75,7 @@ class TestView:
                 self.derived = dict(ctx.derived)
                 self.resources = dict(ctx.resources)
                 self.effects = list(ctx.effects)
+                self.subscriptions = list(ctx.subscriptions)
             self.env: dict[str, Any] = {
                 name: state.initial for name, state in self.states.items()
             }
@@ -86,6 +87,8 @@ class TestView:
                 for res in self.resources.values():
                     if not res.server_render:
                         res.fetch_into(self.env)
+                for sub in self.subscriptions:
+                    sub.drain_into(self.env)
 
     # -- state environment ------------------------------------------------------
 

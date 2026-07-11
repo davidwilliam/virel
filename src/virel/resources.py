@@ -193,6 +193,68 @@ class Resource:
         }
 
 
+class Subscription:
+    """A live one-way feed from a streaming action over server-sent
+    events (SPEC 9.5). Text chunks append into a string state, or JSON
+    events append into a list state; the browser reconnects automatically
+    and reopens when reactive parameters change."""
+
+    def __init__(self, action: Any, *, params: dict[str, Any] | None = None,
+                 into: State | None = None,
+                 into_events: State | None = None) -> None:
+        from .registry import ServerAction
+        if not isinstance(action, ServerAction) or not action.stream_response:
+            raise VirelCompileError(
+                "ui.subscribe takes a @ui.server(stream=True) action."
+            )
+        if (into is None) == (into_events is None):
+            raise VirelCompileError(
+                "ui.subscribe takes exactly one of into= (text) or "
+                "into_events= (JSON events)."
+            )
+        ctx = current_context()
+        self.id = ctx.next_id("sub")
+        self.action = action
+        self.params = {k: lift(v) for k, v in (params or {}).items()}
+        action._check_args(self.params)
+        self.into = into
+        self.into_events = into_events
+        ctx.subscriptions.append(self)
+
+    def binding_js(self) -> str:
+        parts = [f'"{self.action.name}"']
+        if self.params:
+            parts.append(f"() => ({DictExpr(self.params).js()})")
+        else:
+            parts.append("null")
+        target = (f"{{ into: S.{self.into.name} }}" if self.into is not None
+                  else f"{{ events: S.{self.into_events.name} }}")
+        parts.append(target)
+        return f"$.sse({', '.join(parts)});"
+
+    def drain_into(self, env: dict[str, Any]) -> None:
+        """Test mode: collect the whole (finite) stream synchronously."""
+        from .expr import _collect_stream
+        from .registry import to_jsonable
+        args = {k: v.evaluate(env) for k, v in self.params.items()}
+        chunks = _collect_stream(self.action.fn(**args))
+        if self.into is not None:
+            env[self.into.name] = (env.get(self.into.name) or "") + "".join(
+                str(c) for c in chunks)
+        else:
+            events = [to_jsonable(c) for c in chunks
+                      if isinstance(c, (dict, list))]
+            env[self.into_events.name] = (env.get(self.into_events.name)
+                                          or []) + events
+
+
+def subscribe(action: Any, *, params: dict[str, Any] | None = None,
+              into: State | None = None,
+              into_events: State | None = None) -> Subscription:
+    return Subscription(action, params=params, into=into,
+                        into_events=into_events)
+
+
 def resource(action: Any, *, params: dict[str, Any] | None = None,
              server_render: bool = False,
              stale_for: float | None = None,

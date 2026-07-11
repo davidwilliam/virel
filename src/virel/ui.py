@@ -72,7 +72,7 @@ from .forms import Form, FormActions, SubmitButton, form
 from .i18n import messages, t
 from .icons import Icon, icon_names
 from .uploads import FileDownload, UploadFile
-from .resources import Resource, invalidate, resource
+from .resources import Resource, invalidate, resource, subscribe
 from .nodes import Node, When
 from .registry import (Request, build, client, component, deny, layout,
                        page,
@@ -119,7 +119,8 @@ __all__ = [
     "Heading", "Text", "Code", "Link", "LinkButton", "Image", "List", "Nav",
     "unsafe_html", "When",
     # data loading
-    "resource", "Resource", "invalidate", "Each", "Suspense", "Island",
+    "resource", "Resource", "invalidate", "subscribe", "Each",
+    "Suspense", "Island",
     "upload", "UploadFile", "FileDownload", "FileField", "DownloadButton",
     # forms
     "form", "Form", "FormActions", "SubmitButton",
