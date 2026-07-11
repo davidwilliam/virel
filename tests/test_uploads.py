@@ -176,3 +176,34 @@ def test_get_refused_for_non_download_actions():
 
     app = create_asgi_app(dev=True)
     assert asgi_request(app, "GET", "/_virel/action/mutate").status == 404
+
+
+def test_file_field_is_a_dropzone_and_batch_uploads_work():
+    @ui.server
+    async def import_batch(files: list[ui.UploadFile]) -> str:
+        return f"{len(files)} files, " \
+               f"{sum(len(f.data) for f in files)} bytes"
+
+    def page():
+        result = ui.state("")
+        batch = ui.FileField(label="Batch", multiple=True)
+
+        def start():
+            ui.upload(import_batch, files=batch, into=result)
+
+        return ui.Page(batch, ui.Button("Go", on_click=start),
+                       ui.Text(result))
+
+    ui.page("/")(page)
+    result = compile_page(active_registry().pages["/"])
+    assert "$.dropzone(" in result.js
+    assert 'class="v-dropzone"' in result.html
+    assert "data-file-summary" in result.html
+    assert "multiple" in result.html
+
+    view = ui.test.render(page)
+    field = view.get_by_label("Batch")
+    field.attach("a.csv", "1,2\n")
+    field.attach("b.csv", "3,4\n5,6\n")
+    view.get_by_role("button", name="Go").click()
+    assert "2 files, 12 bytes" in view.query_text()

@@ -303,17 +303,26 @@ def effect(fn: Callable[[], None], *, dependencies: list[Any],
 def FileField(*, label: str, accept: str | None = None,
               multiple: bool = False,
               description: str | None = None) -> Element:
-    """File picker for upload actions. Pass the returned element to
-    ui.upload(files=...) inside a handler."""
+    """File picker for upload actions: a drop zone that also accepts
+    dragged files, with a summary of the current selection. Pass the
+    returned element to ui.upload(files=...) inside a handler."""
     from .expr import current_context
     ref = current_context().next_id("f")
     control = Element("input", attrs={
         "class": "v-file", "type": "file", "data-vf": ref,
         "accept": accept, "multiple": multiple or None,
     })
+    prompt = ("Drop files here or browse" if multiple
+              else "Drop a file here or browse")
+    zone = Element("div", [
+        control,
+        Element("span", [TextNode(prompt)], attrs={"class": "v-hint"}),
+        Element("span", [], attrs={"class": "v-file-summary",
+                                   "data-file-summary": "true"}),
+    ], attrs={"class": "v-dropzone"}, runtime_binding="dropzone")
     children: list[Node] = [
         Element("span", [TextNode(label)], attrs={"class": "v-label"}),
-        control,
+        zone,
     ]
     if description:
         children.append(Element("span", [TextNode(description)],

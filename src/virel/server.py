@@ -194,6 +194,10 @@ class VirelASGIApp:
         try:
             with request_context():
                 await self._dispatch(path, method, scope, receive, send)
+        except (ConnectionResetError, BrokenPipeError):
+            # The client went away mid-response (closed a live stream,
+            # navigated off). Nothing to send to.
+            return
         except VirelCompileError as error:
             await self._send_text(send, 500, f"Virel compile error:\n\n{error}",
                                   content_type="text/plain; charset=utf-8")
@@ -821,8 +825,9 @@ class VirelASGIApp:
                 (b"x-accel-buffering", b"no"),
             ]),
         })
+        iterator = _iterate_chunks(action.fn(**kwargs))
         try:
-            async for chunk in _iterate_chunks(action.fn(**kwargs)):
+            async for chunk in iterator:
                 if isinstance(chunk, (dict, list)):
                     payload = json.dumps(to_jsonable(chunk))
                 else:
@@ -832,6 +837,14 @@ class VirelASGIApp:
                 await send({"type": "http.response.body",
                             "body": (lines + "\n").encode("utf-8"),
                             "more_body": True})
+            # A finished stream ends cleanly: the runtime closes the
+            # EventSource instead of letting it reconnect forever.
+            await send({"type": "http.response.body",
+                        "body": b"event: done\ndata: \n\n",
+                        "more_body": True})
+        except (ConnectionResetError, BrokenPipeError):
+            await iterator.aclose()
+            return
         except Exception as error:
             message = _safe_message(error, self.dev).replace("\n", " ")
             await send({"type": "http.response.body",
@@ -1184,7 +1197,8 @@ class DevHTTPServer:
             await self.app(scope, receive, send)
             if not started:
                 writer.write(b"HTTP/1.1 500 Internal Server Error\r\n\r\n")
-        except (asyncio.IncompleteReadError, ConnectionResetError):
+        except (asyncio.IncompleteReadError, ConnectionResetError,
+                BrokenPipeError):
             pass
         finally:
             try:

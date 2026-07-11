@@ -72,15 +72,31 @@ def _events_panel() -> ui.Node:
 
 def _sse_panel() -> ui.Node:
     ticks = ui.state([])
-    ui.subscribe(price_ticker, into_events=ticks)
+    status = ui.state("live")
+    feed = ui.subscribe(price_ticker, into_events=ticks,
+                        status_into=status)
+
+    def restart():
+        ticks.set([])
+        feed.restart()
+
     return ui.Card(
-        ui.Heading("Live ticker (server-sent events)", level=3),
-        ui.Text("A one-way EventSource subscription; the browser "
-                "reconnects on its own.", muted=True),
+        ui.Row(
+            ui.Heading("Live ticker (server-sent events)", level=3),
+            ui.Spacer(),
+            ui.Badge(status),
+            gap=3,
+        ),
+        ui.Text("A one-way EventSource subscription: it streams a fixed "
+                "window of ticks, ends cleanly, and can be restarted.",
+                muted=True),
         ui.Each(ticks, render=lambda t: ui.Row(
             ui.Text(t.symbol), ui.Spacer(),
             ui.Text(t.price), gap=3,
         ), gap=1),
+        ui.When(status == "done",
+                then=ui.Row(ui.Button("Restart feed", size="sm",
+                                      on_click=restart))),
         gap=4,
     )
 

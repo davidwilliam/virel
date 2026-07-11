@@ -322,6 +322,12 @@ class FnCompiler:
                     raise self.error(call, "Resources support .refresh() with "
                                            "no arguments in handlers.")
                 return OpStmt(RefreshOp(target))
+            from .resources import Subscription, SubscriptionRestartOp
+            if isinstance(target, Subscription):
+                if attr != "restart" or call.args or call.keywords:
+                    raise self.error(call, "Subscriptions support .restart() "
+                                           "with no arguments in handlers.")
+                return OpStmt(SubscriptionRestartOp(target))
             from .channels import ChannelSendOp, Connection
             if isinstance(target, Connection):
                 if attr != "send" or len(call.args) != 1 \

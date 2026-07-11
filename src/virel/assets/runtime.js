@@ -432,6 +432,45 @@ export function invalidate(actionName) {
   }
 }
 
+// Drag-and-drop file selection for a ui.FileField: dropping files
+// assigns them to the input, and the summary line lists what's queued.
+export function dropzone(id) {
+  const zone = el(id);
+  if (!zone) return;
+  const input = zone.querySelector('input[type="file"]');
+  const summary = zone.querySelector("[data-file-summary]");
+  if (!input) return;
+
+  const describe = () => {
+    if (!summary) return;
+    const files = [...(input.files || [])];
+    summary.textContent = files.length
+      ? files.map((f) => f.name).join(", ")
+      : "";
+  };
+  input.addEventListener("change", describe);
+  zone.addEventListener("dragover", (ev) => {
+    ev.preventDefault();
+    zone.classList.add("v-dropzone-over");
+  });
+  zone.addEventListener("dragleave", () => {
+    zone.classList.remove("v-dropzone-over");
+  });
+  zone.addEventListener("drop", (ev) => {
+    ev.preventDefault();
+    zone.classList.remove("v-dropzone-over");
+    if (!ev.dataTransfer?.files?.length) return;
+    if (input.multiple) {
+      input.files = ev.dataTransfer.files;
+    } else {
+      const single = new DataTransfer();
+      single.items.add(ev.dataTransfer.files[0]);
+      input.files = single.files;
+    }
+    describe();
+  });
+}
+
 // Send the files from a ui.FileField to an upload action as multipart,
 // reporting byte-level progress (0-100) into a signal.
 export function upload(name, fileRef, args, opts) {
@@ -949,9 +988,13 @@ export async function action(name, args, options) {
 }
 
 // Live one-way updates over server-sent events. The browser reconnects
-// automatically; changing reactive parameters reopens the stream, and
-// client navigation closes it.
-export function sse(name, argsFn, opts) {
+// on network failures; a finished stream sends a done event and closes
+// cleanly (no endless reconnect). Changing reactive parameters reopens
+// the stream, client navigation closes it, and $.sseRestart reopens a
+// finished subscription.
+const sseRegistry = {};
+
+export function sse(id, name, argsFn, opts) {
   let source = null;
   const open = (args) => {
     source?.close();
@@ -959,6 +1002,7 @@ export function sse(name, argsFn, opts) {
     for (const key in args) query.set(key, String(args[key]));
     const suffix = query.toString() ? "?" + query.toString() : "";
     source = new EventSource(`/_virel/action/${name}${suffix}`);
+    opts.status?.set("live");
     source.onmessage = (ev) => {
       if (opts.events) {
         try {
@@ -968,8 +1012,15 @@ export function sse(name, argsFn, opts) {
         opts.into.set((opts.into.get() || "") + ev.data + "\n");
       }
     };
+    source.addEventListener("done", () => {
+      source.close();
+      opts.status?.set("done");
+    });
+    source.addEventListener("error", (ev) => {
+      if (ev.data) opts.status?.set("error");
+    });
   };
-  effect(() => {
+  const reopen = () => {
     const args = argsFn ? argsFn() : {};
     const previous = activeEffect;
     activeEffect = null;
@@ -978,8 +1029,20 @@ export function sse(name, argsFn, opts) {
     } finally {
       activeEffect = previous;
     }
+  };
+  effect(() => {
+    if (argsFn) argsFn(); // subscribe to reactive params
+    reopen();
   });
-  onDispose(() => source?.close());
+  sseRegistry[id] = reopen;
+  onDispose(() => {
+    source?.close();
+    delete sseRegistry[id];
+  });
+}
+
+export function sseRestart(id) {
+  sseRegistry[id]?.();
 }
 
 /* ------------------------------------------------------------------ *

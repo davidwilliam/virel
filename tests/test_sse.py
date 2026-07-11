@@ -34,8 +34,10 @@ def test_sse_endpoint_emits_event_stream():
     assert response.headers["cache-control"] == "no-store"
     assert 'data: {"symbol": "VRL", "price": 100}' in response.text
     assert 'data: {"symbol": "VRL", "price": 101}' in response.text
-    # Typed query conversion applied to count.
-    assert response.text.count("data:") == 2
+    # Typed query conversion applied to count, and a clean end-of-stream
+    # marker so the browser does not reconnect a finished stream.
+    assert response.text.count('data: {"symbol"') == 2
+    assert "event: done" in response.text
 
 
 def test_sse_guarded():
@@ -71,7 +73,7 @@ def test_subscribe_emits_sse_binding():
         )
 
     result = compile_page(active_registry().pages["/"])
-    assert '$.sse("price_ticker", () => ({"symbol": S.s1.get()}), ' \
+    assert '$.sse("sub3", "price_ticker", () => ({"symbol": S.s1.get()}), ' \
            "{ events: S.s2 });" in result.js
 
 
@@ -111,3 +113,37 @@ def test_subscribe_requires_stream_action_and_one_target():
 
     with pytest.raises(VirelCompileError, match="exactly one"):
         ui.test.render(bad_targets)
+
+
+def test_subscription_status_and_restart():
+    ticker = _ticker()
+
+    def page():
+        ticks = ui.state([])
+        status = ui.state("live")
+        feed = ui.subscribe(ticker, params={"count": 2}, into_events=ticks,
+                            status_into=status)
+
+        def restart():
+            ticks.set([])
+            feed.restart()
+
+        return ui.Page(
+            ui.Badge(status),
+            ui.When(status == "done",
+                    then=ui.Button("Restart", on_click=restart)),
+            ui.Each(ticks, render=lambda t: ui.Text(t.price)),
+        )
+
+    ui.page("/")(page)
+    result = compile_page(active_registry().pages["/"])
+    assert "status: S.s2" in result.js
+    assert '$.sseRestart("sub3");' in result.js
+
+    view = ui.test.render(page)
+    # The finite stream drained and reported done.
+    assert "done" in view.query_text()
+    assert "100" in view.query_text()
+    view.get_by_role("button", name="Restart").click()
+    text = view.query_text()
+    assert "101" in text  # restarted feed repopulated

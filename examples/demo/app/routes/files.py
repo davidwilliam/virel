@@ -15,6 +15,13 @@ async def import_dataset(file: ui.UploadFile, label: str = "") -> str:
             + (f" as {label}" if label else ""))
 
 
+@ui.server
+async def import_batch(files: list[ui.UploadFile]) -> str:
+    total = sum(len(f.text().strip().splitlines()) for f in files)
+    names = ", ".join(f.filename for f in files)
+    return f"Imported {total} rows across {len(files)} files ({names})"
+
+
 @ui.server(download=True)
 def export_runs(fmt: str = "csv") -> ui.FileDownload:
     body = "name,dataset,score\natlas-small,qa-hard-v2,0.87\n" \
@@ -30,13 +37,25 @@ def files() -> ui.Node:
     error = ui.state("")
     label = ui.state("")
     dataset = ui.FileField(label="Dataset (CSV)", accept=".csv,text/csv",
-                           description="Uploaded as multipart/form-data with "
+                           description="Click to browse or drag a file onto "
+                                       "the zone; uploads are multipart with "
                                        "byte-level progress.")
+    batch_result = ui.state("")
+    batch_error = ui.state("")
+    batch = ui.FileField(label="Batch import", accept=".csv,text/csv",
+                         multiple=True,
+                         description="Multiple files upload together; the "
+                                     "action receives list[ui.UploadFile].")
 
     def start():
         error.set("")
         ui.upload(import_dataset, files=dataset, args={"label": label},
                   into=result, progress_into=progress, error_into=error)
+
+    def start_batch():
+        batch_error.set("")
+        ui.upload(import_batch, files=batch, into=batch_result,
+                  error_into=batch_error)
 
     return ui.Page(
         shell(
@@ -58,6 +77,17 @@ def files() -> ui.Node:
                                 then=ui.Alert(result, intent="success")),
                         ui.When(error != "",
                                 then=ui.Alert(error, intent="danger")),
+                        gap=4,
+                    ),
+                    ui.Card(
+                        ui.Heading("Batch upload", level=3),
+                        batch,
+                        ui.Row(ui.Button("Import all", on_click=start_batch),
+                               gap=3),
+                        ui.When(batch_result != "",
+                                then=ui.Alert(batch_result, intent="success")),
+                        ui.When(batch_error != "",
+                                then=ui.Alert(batch_error, intent="danger")),
                         gap=4,
                     ),
                     ui.Card(

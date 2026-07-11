@@ -216,7 +216,8 @@ class Subscription:
 
     def __init__(self, action: Any, *, params: dict[str, Any] | None = None,
                  into: State | None = None,
-                 into_events: State | None = None) -> None:
+                 into_events: State | None = None,
+                 status_into: State | None = None) -> None:
         from .registry import ServerAction
         if not isinstance(action, ServerAction) or not action.stream_response:
             raise VirelCompileError(
@@ -234,18 +235,25 @@ class Subscription:
         action._check_args(self.params)
         self.into = into
         self.into_events = into_events
+        self.status_into = status_into
         ctx.subscriptions.append(self)
 
+    def restart(self) -> None:
+        """Inside a handler: reopen a finished or failed subscription."""
+        current_recorder().ops.append(SubscriptionRestartOp(self))
+
     def binding_js(self) -> str:
-        parts = [f'"{self.action.name}"']
+        parts = [f'"{self.action.name}"']  # after the subscription id
         if self.params:
             parts.append(f"() => ({DictExpr(self.params).js()})")
         else:
             parts.append("null")
-        target = (f"{{ into: S.{self.into.name} }}" if self.into is not None
-                  else f"{{ events: S.{self.into_events.name} }}")
-        parts.append(target)
-        return f"$.sse({', '.join(parts)});"
+        opts = [f"into: S.{self.into.name}" if self.into is not None
+                else f"events: S.{self.into_events.name}"]
+        if self.status_into is not None:
+            opts.append(f"status: S.{self.status_into.name}")
+        parts.append("{ " + ", ".join(opts) + " }")
+        return f'$.sse("{self.id}", {", ".join(parts)});'
 
     def drain_into(self, env: dict[str, Any]) -> None:
         """Test mode: collect the whole (finite) stream synchronously."""
@@ -261,13 +269,32 @@ class Subscription:
                       if isinstance(c, (dict, list))]
             env[self.into_events.name] = (env.get(self.into_events.name)
                                           or []) + events
+        if self.status_into is not None:
+            env[self.status_into.name] = "done"
+
+
+class SubscriptionRestartOp:
+    def __init__(self, subscription: "Subscription") -> None:
+        self.subscription = subscription
+
+    def js(self) -> str:
+        return f'$.sseRestart("{self.subscription.id}");'
+
+    def execute(self, env: dict[str, Any], ev: Any = None) -> None:
+        self.subscription.drain_into(env)
+        if self.subscription.status_into is not None:
+            env[self.subscription.status_into.name] = "done"
+
+    def to_ir(self) -> dict[str, Any]:
+        return {"op": "sse_restart", "subscription": self.subscription.id}
 
 
 def subscribe(action: Any, *, params: dict[str, Any] | None = None,
               into: State | None = None,
-              into_events: State | None = None) -> Subscription:
+              into_events: State | None = None,
+              status_into: State | None = None) -> Subscription:
     return Subscription(action, params=params, into=into,
-                        into_events=into_events)
+                        into_events=into_events, status_into=status_into)
 
 
 def resource(action: Any, *, params: dict[str, Any] | None = None,

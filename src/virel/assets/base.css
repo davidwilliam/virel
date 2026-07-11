@@ -710,3 +710,22 @@ html[data-theme="dark"] .v-theme-toggle svg[data-icon="dark"] { display: inline;
   border-radius: var(--v-radius-lg);
 }
 .v-error-icon { color: var(--v-danger); }
+
+/* Drop zones */
+.v-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--v-space) * 2);
+  padding: calc(var(--v-space) * 5);
+  border: 1.5px dashed var(--v-border-strong);
+  border-radius: var(--v-radius-lg);
+  background: var(--v-surface-2);
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.v-dropzone-over {
+  border-color: var(--v-accent);
+  background: var(--v-accent-soft);
+}
+.v-file-summary { font-size: 0.85rem; font-weight: 550; }
+.v-file-summary:empty { display: none; }
