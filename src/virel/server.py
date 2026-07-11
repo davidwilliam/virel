@@ -363,6 +363,8 @@ class VirelASGIApp:
             token = self._watch_token()
             if token != self._cache_token:
                 self._page_cache.clear()
+                for build_fn in self.registry.build_functions.values():
+                    build_fn.invalidate()
                 self._cache_token = token
         cache_key = f"{path}|{locale}"
         if cache_key in self._page_cache:

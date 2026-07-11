@@ -343,6 +343,8 @@ class AppRegistry:
         self.default_locale = "en"
         # Guard applied to every page and action before specific guards.
         self.default_guard: Callable[..., Any] | None = None
+        # Build-time functions (@ui.build), memoized per build.
+        self.build_functions: dict[str, Any] = {}
 
     def match_page(self, path: str) -> tuple[Page, dict[str, str]] | None:
         page = self.pages.get(path)
@@ -416,6 +418,45 @@ def client(fn: Callable[..., Any]) -> ClientFunction:
     """Mark a pure function for ahead-of-time compilation to JavaScript."""
     wrapped = ClientFunction(fn)
     active_registry().client_functions[wrapped.name] = wrapped
+    return wrapped
+
+
+def shared(fn: Callable[..., Any]) -> ClientFunction:
+    """A pure function usable on both sides of the boundary (SPEC 8.4):
+    compiled to JavaScript for the browser and callable as ordinary Python
+    in server actions, server rendering, and tests. Shared functions must
+    be deterministic and side-effect free."""
+    return client(fn)
+
+
+class BuildFunction:
+    """A function that runs in CPython at build time (SPEC 8.4). Results
+    are memoized per build, so expensive work (loading content trees,
+    reading files) happens once no matter how many pages call it. The dev
+    server clears the memo when source files change."""
+
+    def __init__(self, fn: Callable[..., Any]) -> None:
+        self.fn = fn
+        self.name = fn.__name__
+        self._cache: dict[tuple, Any] = {}
+
+    def __call__(self, *args: Any) -> Any:
+        try:
+            key = args
+            if key not in self._cache:
+                self._cache[key] = self.fn(*args)
+            return self._cache[key]
+        except TypeError:
+            # Unhashable arguments: run without memoization.
+            return self.fn(*args)
+
+    def invalidate(self) -> None:
+        self._cache.clear()
+
+
+def build(fn: Callable[..., Any]) -> BuildFunction:
+    wrapped = BuildFunction(fn)
+    active_registry().build_functions[wrapped.name] = wrapped
     return wrapped
 
 
