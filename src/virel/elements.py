@@ -234,18 +234,35 @@ def _check_accessible_label(button: Element) -> None:
         )
 
 
-def TextField(state: State, *, label: str, placeholder: str = "",
-              kind: str = "text", description: str | None = None) -> Element:
-    """Labeled input with two-way binding to a state."""
-    if not isinstance(state, State):
-        raise VirelCompileError(
-            "TextField requires a ui.state(...) value as its first argument."
-        )
-    input_events = {"input": Handler([SetFromEventOp(state.name, "target.value")])}
+def _unwrap_field(value: Any, component: str) -> tuple[State, dict[str, Any], Node | None]:
+    """Field components accept either a plain state or a form FieldRef.
+
+    A FieldRef contributes model-derived input attributes (required,
+    type=email) and a bound per-field error node.
+    """
+    from .forms import FieldRef
+    if isinstance(value, FieldRef):
+        return value.state, value.input_attrs(), value.error_node()
+    if isinstance(value, State):
+        return value, {}, None
+    raise VirelCompileError(
+        f"{component} requires a ui.state(...) value or a form field "
+        "(form.<name>) as its first argument."
+    )
+
+
+def TextField(state: Any, *, label: str, placeholder: str = "",
+              kind: str | None = None, description: str | None = None) -> Element:
+    """Labeled input with two-way binding to a state or form field."""
+    state, extra_attrs, error_node = _unwrap_field(state, "TextField")
+    attrs: dict[str, Any] = {"class": "v-input",
+                             "placeholder": placeholder or None}
+    attrs.update(extra_attrs)
+    attrs["type"] = kind or extra_attrs.get("type", "text")
     input_el = Element(
         "input",
-        attrs={"class": "v-input", "type": kind, "placeholder": placeholder or None},
-        events=input_events,
+        attrs=attrs,
+        events={"input": Handler([SetFromEventOp(state.name, "target.value")])},
         bound_props={"value": state},
     )
     children: list[Node] = [
@@ -254,39 +271,52 @@ def TextField(state: State, *, label: str, placeholder: str = "",
     ]
     if description:
         children.append(Element("span", [TextNode(description)], attrs={"class": "v-hint"}))
+    if error_node is not None:
+        children.append(error_node)
     return Element("label", children, attrs={"class": "v-field"})
 
 
-def Select(state: State, *, label: str, options: list[str]) -> Element:
-    if not isinstance(state, State):
-        raise VirelCompileError("Select requires a ui.state(...) value as its first argument.")
+def Select(state: Any, *, label: str, options: list[str] | None = None) -> Element:
+    from .forms import FieldRef
+    if isinstance(state, FieldRef) and options is None:
+        options = state.spec.options
+    if not options:
+        raise VirelCompileError(
+            "Select requires options=[...], or a form field whose model type "
+            "is a Literal."
+        )
+    state, extra_attrs, error_node = _unwrap_field(state, "Select")
     option_nodes = [
         Element("option", [TextNode(opt)], attrs={"value": opt}) for opt in options
     ]
     select_el = Element(
         "select",
         option_nodes,
-        attrs={"class": "v-input"},
+        attrs={"class": "v-input", **extra_attrs},
         events={"change": Handler([SetFromEventOp(state.name, "target.value")])},
         bound_props={"value": state},
     )
-    return Element("label", [
+    children: list[Node] = [
         Element("span", [TextNode(label)], attrs={"class": "v-label"}),
         select_el,
-    ], attrs={"class": "v-field"})
+    ]
+    if error_node is not None:
+        children.append(error_node)
+    return Element("label", children, attrs={"class": "v-field"})
 
 
-def Checkbox(state: State, *, label: str) -> Element:
-    if not isinstance(state, State):
-        raise VirelCompileError("Checkbox requires a ui.state(...) value as its first argument.")
+def Checkbox(state: Any, *, label: str) -> Element:
+    state, _, error_node = _unwrap_field(state, "Checkbox")
     box = Element(
         "input",
         attrs={"class": "v-checkbox", "type": "checkbox"},
         events={"change": Handler([SetFromEventOp(state.name, "target.checked")])},
         bound_props={"checked": state},
     )
-    return Element("label", [box, Element("span", [TextNode(label)])],
-                   attrs={"class": "v-field-inline"})
+    children: list[Node] = [box, Element("span", [TextNode(label)])]
+    if error_node is not None:
+        children.append(error_node)
+    return Element("label", children, attrs={"class": "v-field-inline"})
 
 
 def Alert(content: Any, *, intent: str = "neutral") -> Element:
@@ -329,21 +359,24 @@ def Textarea(state: State, *, label: str, placeholder: str = "",
     ], attrs={"class": "v-field"})
 
 
-def NumberField(state: State, *, label: str, min: float | None = None,
+def NumberField(state: Any, *, label: str, min: float | None = None,
                 max: float | None = None, step: float | None = None) -> Element:
-    if not isinstance(state, State):
-        raise VirelCompileError("NumberField requires a ui.state(...) value.")
+    state, extra_attrs, error_node = _unwrap_field(state, "NumberField")
     field = Element(
         "input",
         attrs={"class": "v-input", "type": "number",
-               "min": min, "max": max, "step": step},
+               "min": min, "max": max, "step": step,
+               **{k: v for k, v in extra_attrs.items() if k != "type"}},
         events={"input": Handler([SetFromEventOp(state.name, "target.valueAsNumber")])},
         bound_props={"value": state},
     )
-    return Element("label", [
+    children: list[Node] = [
         Element("span", [TextNode(label)], attrs={"class": "v-label"}),
         field,
-    ], attrs={"class": "v-field"})
+    ]
+    if error_node is not None:
+        children.append(error_node)
+    return Element("label", children, attrs={"class": "v-field"})
 
 
 def Slider(state: State, *, label: str, min: float = 0, max: float = 100,
@@ -573,6 +606,27 @@ def Breadcrumbs(items: list[tuple[str, str | None]]) -> Element:
             )]))
     return Element("nav", [Element("ol", crumbs, attrs={"class": "v-breadcrumbs"})],
                    attrs={"aria-label": "Breadcrumb"})
+
+
+def ThemeToggle() -> Element:
+    """Cycles the color scheme between system, light, and dark.
+
+    The preference persists in localStorage and applies before first paint
+    on every page via the inline theme bootstrap.
+    """
+    from .icons import Icon
+    icons = []
+    for mode, name in (("system", "monitor"), ("light", "sun"), ("dark", "moon")):
+        icon = Icon(name, size=16)
+        icon.attrs["data-icon"] = mode
+        icons.append(icon)
+    return Element(
+        "button",
+        icons,
+        attrs={"class": "v-btn v-btn-neutral v-btn-sm v-theme-toggle",
+               "type": "button", "aria-label": "Color scheme: system"},
+        runtime_binding="themeToggle",
+    )
 
 
 # --------------------------------------------------------------------------

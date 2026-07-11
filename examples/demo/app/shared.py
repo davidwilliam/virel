@@ -18,5 +18,13 @@ def app_nav() -> ui.Node:
 
 
 @ui.component
-def shell(content: ui.Node) -> ui.Node:
-    return ui.AppShell(brand="Virel Demo", navigation=app_nav(), content=content)
+def shell(content: ui.Node, theme_toggle: bool = True) -> ui.Node:
+    """App shell with navigation. The home route passes theme_toggle=False
+    to stay completely JavaScript-free; it still follows the system color
+    scheme through CSS alone."""
+    navigation = ui.Row(app_nav(), gap=4, align="center")
+    if theme_toggle:
+        navigation = ui.Row(app_nav(), ui.Spacer(), ui.ThemeToggle(),
+                            gap=4, align="center")
+    return ui.AppShell(brand="Virel Demo", navigation=navigation,
+                       content=content)

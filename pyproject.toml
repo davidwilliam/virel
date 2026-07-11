@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "virel"
 version = "0.1.0a0"
-description = "Professional interfaces, written in Python. Phase 0 architecture-validation prototype."
+description = "Professional interfaces, written in Python. A compiler-first frontend framework."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -13,7 +13,7 @@ authors = [{ name = "David William Silva", email = "contact@davidwsilva.com" }]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pydantic>=2"]
 
 [project.scripts]
 virel = "virel.cli:main"

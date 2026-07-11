@@ -49,7 +49,12 @@ def test_static_page_emits_zero_javascript():
 
     result = compile_page(_page("/about"))
     assert result.js is None
-    assert "<script" not in result.html
+    # No framework modules; the only script allowed is the inline theme
+    # bootstrap that applies a stored color-scheme preference pre-paint.
+    assert "/_virel/runtime.js" not in result.html
+    assert "/_virel/page/" not in result.html
+    assert result.html.count("<script") == 1
+    assert "virel-theme" in result.html
     assert result.render_mode == "static"
 
 

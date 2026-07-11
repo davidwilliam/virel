@@ -101,6 +101,41 @@ export function on(id, event, handler) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Theme switching: system, light, dark. The stored preference is
+ * applied before first paint by the inline bootstrap in the document
+ * head; this binding just cycles and persists it.
+ * ------------------------------------------------------------------ */
+
+export function themeToggle(id) {
+  const node = el(id);
+  if (!node) return;
+  const modes = ["system", "light", "dark"];
+  const read = () => {
+    try {
+      const stored = localStorage.getItem("virel-theme");
+      return modes.includes(stored) ? stored : "system";
+    } catch {
+      return "system";
+    }
+  };
+  const apply = (mode) => {
+    const root = document.documentElement;
+    if (mode === "system") delete root.dataset.theme;
+    else root.dataset.theme = mode;
+    node.setAttribute("aria-label", `Color scheme: ${mode}`);
+  };
+  apply(read());
+  node.addEventListener("click", () => {
+    const next = modes[(modes.indexOf(read()) + 1) % modes.length];
+    try {
+      if (next === "system") localStorage.removeItem("virel-theme");
+      else localStorage.setItem("virel-theme", next);
+    } catch {}
+    apply(next);
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * Server actions: typed HTTP RPC (SPEC 8.8). JSON in, JSON out.
  * ------------------------------------------------------------------ */
 
@@ -112,7 +147,9 @@ export async function action(name, args) {
   });
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(payload.error || `action ${name} failed (${response.status})`);
+    const error = new Error(payload.error || `action ${name} failed (${response.status})`);
+    if (payload.field_errors) error.fieldErrors = payload.field_errors;
+    throw error;
   }
   return payload.result;
 }

@@ -54,6 +54,18 @@ class Page:
         return self.path.strip("/").replace("/", "__").replace("{", "").replace("}", "")
 
 
+class ActionArgumentError(Exception):
+    """The request payload does not match the action signature."""
+
+
+class ActionValidationError(Exception):
+    """Model validation failed; carries structured per-field errors."""
+
+    def __init__(self, field_errors: dict[str, str]) -> None:
+        super().__init__("validation failed")
+        self.field_errors = field_errors
+
+
 class ServerAction:
     """A typed remote procedure generated from a Python function (SPEC 8.8).
 
@@ -69,11 +81,53 @@ class ServerAction:
         self.signature = inspect.signature(fn)
         self.is_async = inspect.iscoroutinefunction(fn)
         self.is_async_gen = inspect.isasyncgenfunction(fn)
+        self._hints: dict[str, Any] | None = None
         if stream and not (self.is_async_gen or inspect.isgeneratorfunction(fn)):
             raise VirelCompileError(
                 f"@ui.server(stream=True) function {self.name!r} must be a "
                 "generator (use `yield` to emit chunks)."
             )
+
+    def type_hints(self) -> dict[str, Any]:
+        if self._hints is None:
+            import typing
+            try:
+                self._hints = typing.get_type_hints(self.fn)
+            except Exception:
+                self._hints = {}
+        return self._hints
+
+    def prepare(self, raw: dict[str, Any]) -> dict[str, Any]:
+        """Validate a JSON payload against the signature and convert any
+        model-annotated parameters. Every server action revalidates on the
+        server regardless of client checks (SPEC 8.9)."""
+        valid = set(self.signature.parameters)
+        unknown = set(raw) - valid
+        if unknown:
+            raise ActionArgumentError(
+                f"unknown argument(s): {', '.join(sorted(unknown))}")
+        missing = [
+            p.name for p in self.signature.parameters.values()
+            if p.default is inspect.Parameter.empty and p.name not in raw
+        ]
+        if missing:
+            raise ActionArgumentError(
+                f"missing argument(s): {', '.join(missing)}")
+
+        from .forms import is_model_type, validate_model
+        hints = self.type_hints()
+        kwargs: dict[str, Any] = {}
+        for name, value in raw.items():
+            annotation = hints.get(name)
+            if annotation is not None and is_model_type(annotation) \
+                    and isinstance(value, dict):
+                instance, field_errors = validate_model(annotation, value)
+                if field_errors:
+                    raise ActionValidationError(field_errors)
+                kwargs[name] = instance
+            else:
+                kwargs[name] = value
+        return kwargs
 
     def call(self, args: dict[str, Any] | None = None, *, into: State | None = None,
              error_into: State | None = None) -> None:
@@ -112,6 +166,23 @@ class ServerAction:
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Direct Python call (server-side use and tests)."""
         return self.fn(*args, **kwargs)
+
+
+def to_jsonable(value: Any) -> Any:
+    """Convert action results to JSON-compatible data. Never pickle
+    (SPEC 18.3)."""
+    import dataclasses
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {k: to_jsonable(v) for k, v in dataclasses.asdict(value).items()}
+    if hasattr(value, "model_dump"):  # pydantic BaseModel
+        return value.model_dump(mode="json")
+    if isinstance(value, dict):
+        return {str(k): to_jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [to_jsonable(v) for v in value]
+    return str(value)
 
 
 class ClientFunction:

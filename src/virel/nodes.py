@@ -97,6 +97,7 @@ class Element(Node):
         events: dict[str, Handler] | None = None,
         bound_props: dict[str, Expr] | None = None,
         component: str | None = None,
+        runtime_binding: str | None = None,
     ) -> None:
         self.tag = tag
         self.children = children or []
@@ -105,6 +106,9 @@ class Element(Node):
         self.bound_props = bound_props or {}
         self.component = component  # originating @ui.component, for inspection
         self.source: str | None = None  # file:line of the component function
+        # Name of a runtime function to bind this element to (e.g. a theme
+        # toggle). Compiles to $.name("<id>").
+        self.runtime_binding = runtime_binding
 
     def to_ir(self) -> dict[str, Any]:
         ir: dict[str, Any] = {"kind": "element", "tag": self.tag}
@@ -231,8 +235,10 @@ class Emitter:
         raise VirelCompileError(f"Unknown IR node: {type(node).__name__}")
 
     def _emit_element(self, node: Element) -> str:
-        needs_id = bool(node.events or node.bound_props)
+        needs_id = bool(node.events or node.bound_props or node.runtime_binding)
         vid = self.assign_id() if needs_id else None
+        if node.runtime_binding:
+            self.bindings.append(f'$.{node.runtime_binding}("{vid}");')
 
         parts = [f"<{node.tag}"]
         if vid:

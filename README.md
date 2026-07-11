@@ -9,8 +9,10 @@ stays on the server. The browser never downloads a Python interpreter.
 The project follows the roadmap in [SPEC.md](SPEC.md). The architecture
 validation phase is complete, and the current tree adds the first
 developer-preview features: an AST-based client compiler for event handlers
-and shared functions, a component library of around forty controls, component
-testing from pytest without a browser, and a development inspector.
+and shared functions, model-driven forms with Pydantic and dataclass support,
+a component library of around forty controls, system/light/dark theming by
+default, component testing from pytest without a browser, and a development
+inspector.
 
 ```python
 from virel import ui
@@ -65,10 +67,10 @@ virel dev
 
 | Route | What it shows |
 |---|---|
-| `/` | Static landing page, ships zero framework JavaScript |
+| `/` | Static landing page, no framework JavaScript modules |
 | `/counter` | Local state, derived values, conditional rendering |
 | `/search` | Two-way input binding, `ui.derived`, `ui.When` |
-| `/invite` | Form with a control-flow handler and a typed server action |
+| `/invite` | Model-driven form with server revalidation and field errors |
 | `/components` | Gallery: tabs, dialog, switches, tables, icons, and more |
 | `/stream` | Streaming server action rendered incrementally |
 | `/widgets` | Third-party web component through a typed binding |
@@ -164,6 +166,56 @@ Some consequences of this design:
   An image without alt text or an icon-only button without an accessible
   label will not compile.
 
+## Forms
+
+One model drives the whole form: field states, input types, native browser
+constraint attributes, server revalidation, and per-field error display.
+Pydantic models and plain dataclasses both work; Pydantic is optional and
+detected at runtime.
+
+```python
+from dataclasses import dataclass
+from typing import Literal
+from virel import ui
+
+@dataclass
+class InviteInput:
+    email: str
+    role: Literal["viewer", "editor", "admin"] = "viewer"
+
+@ui.server
+async def invite_member(data: InviteInput) -> str:
+    return f"Invitation sent to {data.email} as {data.role}."
+
+@ui.page("/invite")
+def invite() -> ui.Node:
+    form = ui.form(InviteInput, submit=invite_member)
+    return ui.Page(
+        ui.Form(
+            ui.TextField(form.email, label="Email"),
+            ui.Select(form.role, label="Role"),
+            ui.FormActions(ui.SubmitButton("Send invitation", form=form)),
+            ui.When(form.succeeded, then=ui.Alert(form.result, intent="success")),
+            form=form,
+        ),
+    )
+```
+
+The email field renders as `<input type="email" required>`, so the browser
+blocks bad submissions before any network traffic. The server validates the
+payload against the same model on every request and returns structured,
+field-scoped errors that appear under the matching inputs. Nothing is
+serialized except JSON.
+
+## Theming
+
+Every application supports three color-scheme modes out of the box: system
+(follow the OS), light, and dark. Design tokens compile to CSS custom
+properties for each mode, a tiny inline snippet applies the stored
+preference before first paint so switching never flashes, and
+`ui.ThemeToggle()` gives users a control that cycles the modes and persists
+the choice.
+
 ## Components
 
 The library covers the essentials in four groups, all with accessibility
@@ -225,10 +277,9 @@ builtins (`len`, `str`, `int`, `float`, `bool`, `abs`, `min`, `max`,
 `@ui.client` functions and server actions. Anything outside it is a build
 error that names the nearest replacement.
 
-Not implemented yet, in rough priority order: model-driven forms with
-Pydantic integration, the `ui.resource` data layer with caching and suspense,
-client-side routing and partial hydration, `virel bind` for npm packages, and
-internationalization.
+Not implemented yet, in rough priority order: the `ui.resource` data layer
+with caching and suspense, client-side routing and partial hydration,
+`virel bind` for npm packages, and internationalization.
 
 ## License
 

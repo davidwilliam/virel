@@ -281,32 +281,30 @@ class VirelASGIApp:
             return
 
         # Schema validation on every server action (SPEC 18.2): only declared
-        # parameters, all required parameters present. JSON only — never
-        # pickle (SPEC 18.3).
-        valid = set(action.signature.parameters)
-        unknown = set(args) - valid
-        if unknown:
-            await self._send_json(send, 400, {
-                "error": f"unknown argument(s): {', '.join(sorted(unknown))}"})
+        # parameters, required parameters present, model parameters validated.
+        # JSON only — never pickle (SPEC 18.3).
+        from .registry import ActionArgumentError, ActionValidationError, to_jsonable
+        try:
+            kwargs = action.prepare(args)
+        except ActionArgumentError as error:
+            await self._send_json(send, 400, {"error": str(error)})
             return
-        missing = [
-            p.name for p in action.signature.parameters.values()
-            if p.default is inspect.Parameter.empty and p.name not in args
-        ]
-        if missing:
+        except ActionValidationError as error:
             await self._send_json(send, 400, {
-                "error": f"missing argument(s): {', '.join(missing)}"})
+                "error": "validation failed",
+                "field_errors": error.field_errors,
+            })
             return
 
         if action.stream_response:
-            await self._stream_action(action, args, send)
+            await self._stream_action(action, kwargs, send)
             return
 
         try:
-            result = action.fn(**args)
+            result = action.fn(**kwargs)
             if inspect.isawaitable(result):
                 result = await result
-            payload = json.dumps({"result": result})
+            payload = json.dumps({"result": to_jsonable(result)})
         except Exception as error:
             await self._send_json(send, 500, {"error": _safe_message(error, self.dev)})
             return

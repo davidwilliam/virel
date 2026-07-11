@@ -48,10 +48,12 @@ from .elements import (
     Text,
     Textarea,
     TextField,
+    ThemeToggle,
     Tooltip,
     set_from_event,
     unsafe_html,
 )
+from .forms import Form, FormActions, SubmitButton, form
 from .icons import Icon, icon_names
 from .nodes import Node, When
 from .registry import client, component, page, server, web_component
@@ -87,9 +89,11 @@ __all__ = [
     # semantic elements
     "Heading", "Text", "Code", "Link", "Image", "List", "Nav",
     "unsafe_html", "When",
+    # forms
+    "form", "Form", "FormActions", "SubmitButton",
     # form controls
     "Button", "TextField", "Select", "Checkbox", "Textarea",
-    "NumberField", "Slider", "Switch", "RadioGroup",
+    "NumberField", "Slider", "Switch", "RadioGroup", "ThemeToggle",
     # interaction patterns
     "Tabs", "Dialog", "Accordion", "Tooltip",
     # data display and status

@@ -172,10 +172,19 @@ def _client_fn_definitions(ctx: TraceContext) -> list[str]:
 
 def _emit_document(root: PageNode, body_html: str, slug: str,
                    js: str | None, dev: bool, inline_js: bool = False) -> str:
+    # Applies a stored light/dark preference before first paint so theme
+    # switching never flashes. With no stored preference the CSS media
+    # query follows the system setting.
+    theme_bootstrap = (
+        "<script>(()=>{try{const t=localStorage.getItem(\"virel-theme\");"
+        "if(t===\"light\"||t===\"dark\")document.documentElement.dataset.theme=t}"
+        "catch{}})()</script>"
+    )
     head = [
         '<meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         f"<title>{_escape(root.title)}</title>",
+        theme_bootstrap,
         '<link rel="stylesheet" href="/_virel/app.css">',
     ]
     for name, content in root.meta.items():

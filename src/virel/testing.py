@@ -278,6 +278,13 @@ class TestElement:
             raise AssertionError(f"<{self.node.tag}> has no change handler.")
         self.view._run_handler(handler, ev={"target": {"value": value}})
 
+    def submit(self) -> None:
+        self._require_visible("submit")
+        handler = self.node.events.get("submit")
+        if handler is None:
+            raise AssertionError(f"<{self.node.tag}> has no submit handler.")
+        self.view._run_handler(handler, ev={"target": {}})
+
     def toggle(self) -> None:
         self._require_visible("toggle")
         handler = self.node.events.get("change")

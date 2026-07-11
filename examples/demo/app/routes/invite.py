@@ -1,64 +1,59 @@
-"""Form with a typed server action: browser validation UX, server
-revalidation, structured errors (SPEC 8.8, 8.9)."""
+"""Model-driven form: one class defines the fields, the browser constraint
+attributes, the server validation, and the error display (SPEC 8.9)."""
+
+from dataclasses import dataclass
+from typing import Literal
 
 from virel import ui
 
 from ..shared import shell
 
-_ROLES = ["viewer", "editor", "admin"]
-_members: list[dict] = []  # module-level demo store; a real app uses a DB
+
+@dataclass
+class InviteInput:
+    email: str
+    role: Literal["viewer", "editor", "admin"] = "viewer"
+
+
+_members: list[InviteInput] = []  # demo store; a real app uses a database
 
 
 @ui.server
-async def invite_member(email: str, role: str) -> str:
-    email = email.strip()
-    if "@" not in email or "." not in email.split("@")[-1]:
-        raise ValueError(f"{email!r} is not a valid email address")
-    if role not in _ROLES:
-        raise ValueError(f"unknown role {role!r}")
-    _members.append({"email": email, "role": role})
-    return f"Invitation sent to {email} as {role}."
+async def invite_member(data: InviteInput) -> str:
+    # The framework has already validated the payload against InviteInput;
+    # only domain rules remain.
+    if any(member.email == data.email for member in _members):
+        raise ValueError(f"{data.email} has already been invited")
+    _members.append(data)
+    return f"Invitation sent to {data.email} as {data.role}."
 
 
 @ui.page("/invite")
 def invite() -> ui.Node:
-    email = ui.state("")
-    role = ui.state("viewer")
-    result = ui.state("")
-    error = ui.state("")
-
-    # A named handler goes through the AST client compiler, so real Python
-    # control flow works and compiles to JavaScript.
-    def submit() -> None:
-        result.set("")
-        error.set("")
-        if len(email.strip()) < 3:
-            error.set("Enter an email address first.")
-        else:
-            invite_member.call({"email": email, "role": role},
-                               into=result, error_into=error)
+    form = ui.form(InviteInput, submit=invite_member)
 
     return ui.Page(
         shell(
             ui.Section(
                 ui.Heading("Invite a member", level=1),
                 ui.Card(
-                    ui.TextField(email, label="Email",
-                                 placeholder="person@example.com", kind="email"),
-                    ui.Select(role, label="Role", options=_ROLES),
-                    ui.Row(
-                        ui.Button("Send invitation", on_click=submit,
-                                  intent="primary",
-                                  disabled=ui.length(email.strip()) == 0),
+                    ui.Form(
+                        ui.TextField(form.email, label="Email",
+                                     placeholder="person@example.com"),
+                        ui.Select(form.role, label="Role"),
+                        ui.FormActions(
+                            ui.SubmitButton("Send invitation", form=form),
+                        ),
+                        ui.When(form.succeeded,
+                                then=ui.Alert(form.result, intent="success")),
+                        form=form,
                     ),
-                    ui.When(result != "",
-                            then=ui.Alert(result, intent="success")),
-                    ui.When(error != "",
-                            then=ui.Alert(error, intent="danger")),
                 ),
-                ui.Text("The button stays disabled until you type an email — "
-                        "that check runs in the browser. The server always "
-                        "revalidates.", muted=True, size="sm"),
+                ui.Text("The email field is required and typed from the "
+                        "model, so the browser blocks bad submissions "
+                        "immediately. The server revalidates against the "
+                        "same model and returns field-scoped errors.",
+                        muted=True, size="sm"),
             ),
         ),
         title="Invite — Virel Demo",

@@ -161,6 +161,7 @@ p { margin: 0; }
   gap: calc(var(--v-space) * 6);
   padding-block: calc(var(--v-space) * 3);
 }
+.v-shell-header-inner > .v-row { flex: 1; }
 .v-brand { font-weight: 700; letter-spacing: -0.01em; }
 .v-nav { display: flex; gap: calc(var(--v-space) * 4); flex-wrap: wrap; }
 .v-shell-main { flex: 1; padding-block: calc(var(--v-space) * 8); }
@@ -169,6 +170,19 @@ p { margin: 0; }
 
 /* Icons */
 .v-icon { flex-shrink: 0; vertical-align: -0.15em; }
+
+/* Forms */
+.v-form { gap: calc(var(--v-space) * 4); }
+.v-form-actions { gap: calc(var(--v-space) * 3); align-items: center; }
+.v-field-error { font-size: 0.8rem; color: var(--v-danger); min-height: 0; }
+.v-field-error:empty { display: none; }
+.v-input:user-invalid { border-color: var(--v-danger); }
+
+/* Theme toggle: show the icon for the active mode */
+.v-theme-toggle svg { display: none; }
+html:not([data-theme]) .v-theme-toggle svg[data-icon="system"] { display: inline; }
+html[data-theme="light"] .v-theme-toggle svg[data-icon="light"] { display: inline; }
+html[data-theme="dark"] .v-theme-toggle svg[data-icon="dark"] { display: inline; }
 
 /* Additional form controls */
 .v-fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: calc(var(--v-space) * 2); }

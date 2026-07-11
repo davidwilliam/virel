@@ -47,6 +47,7 @@ def home() -> ui.Node:
                     wrap=True,
                 ),
             ),
+            theme_toggle=False,
         ),
         title="Virel Demo",
         meta={"description": "Virel Phase 0 demonstration application."},

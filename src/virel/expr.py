@@ -408,7 +408,24 @@ class Index(Expr):
         return f"{self.operand.js()}[{self.key.js()}]"
 
     def evaluate(self, env: dict[str, Any]) -> Any:
-        return self.operand.evaluate(env)[self.key.evaluate(env)]
+        value = self.operand.evaluate(env)
+        key = self.key.evaluate(env)
+        if isinstance(value, dict):
+            # Match JS object indexing: a missing key is undefined, not an error.
+            return value.get(key)
+        return value[key]
+
+
+class DictExpr(Expr):
+    def __init__(self, pairs: dict[str, Expr]) -> None:
+        self.pairs = pairs
+
+    def js(self) -> str:
+        inner = ", ".join(f"{json.dumps(k)}: {v.js()}" for k, v in self.pairs.items())
+        return "{" + inner + "}"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return {k: v.evaluate(env) for k, v in self.pairs.items()}
 
 
 class ListExpr(Expr):
@@ -753,12 +770,14 @@ def record_handler(fn: Callable[[], None]) -> "Handler":
 
 
 class Handler:
-    def __init__(self, ops: list[Any]) -> None:
+    def __init__(self, ops: list[Any], prevent_default: bool = False) -> None:
         self.ops = ops
+        self.prevent_default = prevent_default
 
     def js(self) -> str:
         body = " ".join(op.js() for op in self.ops)
-        return f"(ev) => {{ {body} }}"
+        prefix = "ev.preventDefault(); " if self.prevent_default else ""
+        return f"(ev) => {{ {prefix}{body} }}"
 
     def execute(self, env: dict[str, Any], ev: Any = None) -> None:
         """Run the handler against a Python state environment (tests)."""

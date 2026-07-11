@@ -65,13 +65,17 @@ class Theme:
             **{f"--v-radius-{k}": f"{v}px" for k, v in self.radius.items()},
         }
 
-        def block(tokens: dict[str, str]) -> str:
-            return "\n".join(f"  {name}: {value};" for name, value in tokens.items())
+        def block(tokens: dict[str, str], indent: str = "  ") -> str:
+            return "\n".join(f"{indent}{name}: {value};" for name, value in tokens.items())
 
+        # Three modes by default: explicit light, explicit dark, and system.
+        # The inline bootstrap sets data-theme from the stored preference
+        # before first paint; with no preference the media query decides.
         return (
             ":root {\n" + block(shared | light) + "\n}\n\n"
+            ':root[data-theme="dark"] {\n' + block(dark) + "\n}\n\n"
             "@media (prefers-color-scheme: dark) {\n"
-            ":root {\n" + block(dark) + "\n}\n}\n"
+            '  :root:not([data-theme="light"]) {\n' + block(dark, "    ") + "\n  }\n}\n"
         )
 
 
