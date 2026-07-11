@@ -187,8 +187,10 @@ class VirelASGIApp:
 
         path = scope["path"]
         method = scope["method"]
+        from .context import request_context
         try:
-            await self._dispatch(path, method, scope, receive, send)
+            with request_context():
+                await self._dispatch(path, method, scope, receive, send)
         except VirelCompileError as error:
             await self._send_text(send, 500, f"Virel compile error:\n\n{error}",
                                   content_type="text/plain; charset=utf-8")

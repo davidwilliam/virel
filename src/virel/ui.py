@@ -24,7 +24,12 @@ from .elements import (
     Dialog,
     Divider,
     EmptyState,
+    Footer,
     Grid,
+    Hero,
+    Menu,
+    MenuDivider,
+    MenuItem,
     Heading,
     Image,
     Link,
@@ -55,6 +60,7 @@ from .elements import (
     set_from_event,
     unsafe_html,
 )
+from .context import Context, context
 from .elements import Each, Island, Suspense
 from .formatting import (format_currency, format_date, format_number,
                          format_percent)
@@ -89,14 +95,14 @@ def use_theme(theme: Theme) -> None:
 __all__ = [
     # programming model
     "page", "component", "server", "client", "web_component",
-    "use_guard", "redirect", "deny", "Request",
+    "use_guard", "redirect", "deny", "Request", "context", "Context",
     "state", "derived", "cond", "not_", "length", "set_from_event",
     "use_theme", "Theme", "FontFace", "GoogleFont", "Node", "VirelCompileError", "test",
     "messages", "t",
     "format_number", "format_currency", "format_percent", "format_date",
     # layout
     "Page", "Stack", "Row", "Grid", "Container", "Section", "Card",
-    "Divider", "Spacer", "AppShell",
+    "Divider", "Spacer", "AppShell", "Footer", "Hero",
     # semantic elements
     "Heading", "Text", "Code", "Link", "LinkButton", "Image", "List", "Nav",
     "unsafe_html", "When",
@@ -109,6 +115,7 @@ __all__ = [
     "NumberField", "Slider", "Switch", "RadioGroup", "ThemeToggle",
     # interaction patterns
     "Tabs", "Dialog", "Accordion", "Tooltip",
+    "Menu", "MenuItem", "MenuDivider",
     # data display and status
     "Table", "Stat", "Progress", "Spinner", "Skeleton", "Avatar",
     "Breadcrumbs", "Alert", "Badge", "EmptyState", "Icon", "icon_names",

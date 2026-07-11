@@ -22,6 +22,7 @@ import tomllib
 from pathlib import Path
 
 from .compiler import build_all, build_static, compile_page
+from .context import ContextMissingError
 from .expr import VirelCompileError
 from .registry import active_registry
 from .theme import Theme, build_stylesheet, runtime_js
@@ -193,6 +194,9 @@ def cmd_check(args: argparse.Namespace) -> None:
             params = {name: f"sample-{name}" for name in page.param_names}
             compiled = compile_page(page, params=params or None)
             print(f"ok    {page.path} [{compiled.render_mode}]")
+        except ContextMissingError as error:
+            print(f"ok    {page.path} [server] (needs request context, "
+                  f"provided by a guard)")
         except VirelCompileError as error:
             failures += 1
             if args.json:

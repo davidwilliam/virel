@@ -760,16 +760,142 @@ def ThemeToggle() -> Element:
 
 
 # --------------------------------------------------------------------------
+# Menus
+# --------------------------------------------------------------------------
+
+def Menu(*, trigger: Any, items: list[Any], align: str = "end") -> Element:
+    """Dropdown menu. The trigger is any button-like element; items are
+    MenuItem and MenuDivider entries. The runtime manages open state,
+    keyboard interaction, and flips the panel upward when space below is
+    insufficient."""
+    if align not in ("start", "end"):
+        raise VirelCompileError("Menu align must be 'start' or 'end'.")
+    panel = Element("div", normalize_children(tuple(items)),
+                    attrs={"class": "v-menu-list", "role": "menu"})
+    return Element("div", [*normalize_children((trigger,)), panel],
+                   attrs={"class": f"v-menu v-menu-{align}"},
+                   runtime_binding="menu")
+
+
+def MenuItem(label: Any, *, to: str | None = None,
+             on_click: Callable[[], None] | None = None,
+             icon: str | None = None,
+             intent: str = "neutral") -> Element:
+    if (to is None) == (on_click is None):
+        raise VirelCompileError(
+            "MenuItem takes exactly one of to= (a link) or on_click= (an "
+            "action)."
+        )
+    children: list[Node] = []
+    if icon:
+        from .icons import Icon
+        children.append(Icon(icon, size=15))
+    children.extend(normalize_children((label,)))
+    classes = "v-menu-item"
+    if intent == "danger":
+        classes += " v-menu-item-danger"
+    if to is not None:
+        from .security import is_safe_url
+        if not is_safe_url(to):
+            raise VirelCompileError(f"MenuItem target {to!r} uses a blocked "
+                                    "URL scheme.")
+        return Element("a", children,
+                       attrs={"href": to, "class": classes,
+                              "role": "menuitem"})
+    return Element("button", children,
+                   attrs={"class": classes, "type": "button",
+                          "role": "menuitem"},
+                   events={"click": _handler(on_click)})
+
+
+def MenuDivider() -> Element:
+    return Element("div", attrs={"class": "v-menu-divider",
+                                 "role": "separator"})
+
+
+# --------------------------------------------------------------------------
+# Marketing sections
+# --------------------------------------------------------------------------
+
+def Hero(*, title: Any, subtitle: Any = None, eyebrow: Any = None,
+         actions: list[Any] | tuple = (), media: Any = None,
+         align: str = "center") -> Element:
+    """Landing-page hero: eyebrow, display title, subtitle, action row,
+    and optional media below or beside the copy."""
+    if align not in ("center", "start"):
+        raise VirelCompileError("Hero align must be 'center' or 'start'.")
+    copy: list[Node] = []
+    if eyebrow is not None:
+        copy.append(Element("div", normalize_children((eyebrow,)),
+                            attrs={"class": "v-hero-eyebrow"}))
+    copy.append(Element("h1", normalize_children((title,)),
+                        attrs={"class": "v-hero-title"}))
+    if subtitle is not None:
+        copy.append(Element("p", normalize_children((subtitle,)),
+                            attrs={"class": "v-hero-subtitle"}))
+    if actions:
+        copy.append(Element("div", normalize_children(tuple(actions)),
+                            attrs={"class": "v-row v-hero-actions"}))
+    children: list[Node] = [Element("div", copy,
+                                    attrs={"class": "v-hero-copy"})]
+    if media is not None:
+        children.append(Element("div", normalize_children((media,)),
+                                attrs={"class": "v-hero-media"}))
+    return Element("section", children,
+                   attrs={"class": f"v-hero v-hero-{align}"})
+
+
+# --------------------------------------------------------------------------
 # App shell
 # --------------------------------------------------------------------------
 
-def AppShell(*, navigation: Node, content: Any, brand: str = "Virel") -> Element:
+def Footer(*children: Any) -> Element:
+    return Element("footer", [
+        Element("div", normalize_children(children),
+                attrs={"class": "v-footer-inner v-container v-container-lg"}),
+    ], attrs={"class": "v-footer"})
+
+
+def AppShell(*, navigation: Node, content: Any, brand: str = "Virel",
+             sidebar: Any = None, footer: Any = None) -> Element:
+    """Application frame: sticky header, optional sidebar, main content,
+    optional footer. With a sidebar, small screens get an off-canvas
+    drawer behind a header toggle."""
+    from .expr import Lit, Ternary, not_
+    header_children: list[Node] = []
+    shell_attrs: dict[str, Any] = {"class": "v-shell"}
+    if sidebar is not None:
+        from .icons import Icon
+        drawer_open = State(False)
+        shell_attrs["data-sidebar-open"] = Ternary(drawer_open, Lit("true"),
+                                                   Lit("false"))
+        header_children.append(Element(
+            "button",
+            [Icon("menu", label="Toggle navigation")],
+            attrs={"class": "v-btn v-btn-neutral v-btn-sm v-btn-ghost "
+                            "v-sidebar-toggle", "type": "button"},
+            events={"click": Handler([SetOp(drawer_open.name,
+                                            not_(drawer_open))])},
+        ))
+    header_children.append(Element("span", [TextNode(brand)],
+                                   attrs={"class": "v-brand"}))
+    header_children.append(navigation)
     header = Element("header", [
-        Element("div", [
-            Element("span", [TextNode(brand)], attrs={"class": "v-brand"}),
-            navigation,
-        ], attrs={"class": "v-shell-header-inner v-container v-container-lg"}),
+        Element("div", header_children,
+                attrs={"class": "v-shell-header-inner v-container "
+                                "v-container-lg"}),
     ], attrs={"class": "v-shell-header"})
+
     main = Element("main", normalize_children((content,)),
                    attrs={"class": "v-shell-main v-container v-container-lg"})
-    return Element("div", [header, main], attrs={"class": "v-shell"})
+    if sidebar is not None:
+        aside = Element("aside", normalize_children((sidebar,)),
+                        attrs={"class": "v-sidebar"})
+        body = Element("div", [aside, main], attrs={"class": "v-shell-body"})
+    else:
+        body = main
+
+    children: list[Node] = [header, body]
+    if footer is not None:
+        children.extend(normalize_children((footer,)))
+    return Element("div", children, attrs=shell_attrs)

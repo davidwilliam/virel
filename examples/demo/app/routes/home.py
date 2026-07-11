@@ -30,26 +30,20 @@ def home() -> ui.Node:
     return ui.Page(
         shell(
             ui.Section(
-                ui.Stack(
-                    ui.Badge("Developer preview", intent="primary"),
-                    ui.Heading("Professional interfaces, written in Python",
-                               level=1),
-                    ui.Text(
-                        "Typed, declarative Python in; fast, accessible, "
-                        "browser-native HTML, CSS, and JavaScript out. "
-                        "No Node.js, no second language, no virtual DOM.",
-                        size="lg", muted=True),
-                    ui.Row(
+                ui.Hero(
+                    eyebrow=ui.Badge("Developer preview", intent="primary"),
+                    title="Professional interfaces, written in Python",
+                    subtitle="Typed, declarative Python in; fast, accessible, "
+                             "browser-native HTML, CSS, and JavaScript out. "
+                             "No Node.js, no second language, no virtual DOM.",
+                    actions=[
                         ui.LinkButton("Explore the components",
                                       to="/components", intent="primary",
                                       size="lg"),
                         ui.LinkButton("See live data", to="/runs", size="lg"),
-                        gap=3, wrap=True,
-                    ),
-                    gap=5,
-                    align="start",
+                    ],
+                    media=ui.Code(_SNIPPET, block=True, language="python"),
                 ),
-                ui.Code(_SNIPPET, block=True, language="python"),
                 ui.Grid(
                     _feature("play", "Local interaction",
                              "State lives in the browser. Clicking a button "

@@ -551,3 +551,124 @@ html[data-theme="dark"] .v-theme-toggle svg[data-icon="dark"] { display: inline;
   -webkit-mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>') center / contain no-repeat;
   mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>') center / contain no-repeat;
 }
+
+/* Dropdown menus */
+.v-menu { position: relative; display: inline-flex; }
+.v-menu-list {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 60;
+  min-width: 200px;
+  padding: calc(var(--v-space) * 1);
+  background: var(--v-surface-1);
+  border: 1px solid var(--v-border);
+  border-radius: var(--v-radius-md);
+  box-shadow: var(--v-shadow-md);
+}
+.v-menu-end .v-menu-list { right: 0; }
+.v-menu-start .v-menu-list { left: 0; }
+.v-menu-open .v-menu-list { display: block; }
+.v-menu-up .v-menu-list { top: auto; bottom: calc(100% + 6px); }
+.v-menu-item {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--v-space) * 2);
+  width: 100%;
+  padding: calc(var(--v-space) * 2) calc(var(--v-space) * 2.5);
+  border: 0;
+  border-radius: var(--v-radius-sm);
+  background: none;
+  color: var(--v-fg);
+  font: inherit;
+  font-size: 0.925rem;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 500;
+}
+.v-menu-item:hover, .v-menu-item:focus-visible {
+  background: var(--v-surface-2);
+  outline: none;
+  text-decoration: none;
+  color: var(--v-fg);
+}
+.v-menu-item .v-icon { color: var(--v-fg-muted); }
+.v-menu-item-danger, .v-menu-item-danger .v-icon { color: var(--v-danger); }
+.v-menu-item-danger:hover, .v-menu-item-danger:focus-visible {
+  background: var(--v-danger-soft);
+  color: var(--v-danger-strong);
+}
+.v-menu-divider {
+  height: 1px;
+  margin: calc(var(--v-space) * 1) calc(var(--v-space) * 1.5);
+  background: var(--v-border);
+}
+
+/* Sidebar shell */
+.v-shell-body { display: flex; flex: 1; align-items: stretch; }
+.v-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  padding: calc(var(--v-space) * 6) calc(var(--v-space) * 4);
+  border-right: 1px solid var(--v-border);
+  background: var(--v-surface-1);
+}
+.v-sidebar .v-nav { flex-direction: column; gap: calc(var(--v-space) * 0.5); }
+.v-sidebar .v-nav .v-link { display: block; }
+.v-sidebar-toggle { display: none; }
+@media (max-width: 900px) {
+  .v-sidebar-toggle { display: inline-flex; }
+  .v-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 180ms ease;
+    box-shadow: var(--v-shadow-lg);
+    padding-top: calc(var(--v-space) * 16);
+  }
+  [data-sidebar-open="true"] .v-sidebar { transform: translateX(0); }
+}
+
+/* Footer */
+.v-footer {
+  border-top: 1px solid var(--v-border);
+  background: var(--v-surface-1);
+  margin-top: auto;
+}
+.v-footer-inner {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--v-space) * 4);
+  padding-block: calc(var(--v-space) * 5);
+  font-size: 0.875rem;
+  color: var(--v-fg-muted);
+  flex-wrap: wrap;
+}
+
+/* Hero */
+.v-hero {
+  padding-block: calc(var(--v-space) * 12) calc(var(--v-space) * 10);
+  background:
+    radial-gradient(60% 50% at 50% 0%,
+      color-mix(in srgb, var(--v-accent) 9%, transparent), transparent);
+}
+.v-hero-copy { display: flex; flex-direction: column; gap: calc(var(--v-space) * 5); }
+.v-hero-center .v-hero-copy { align-items: center; text-align: center; }
+.v-hero-start .v-hero-copy { align-items: flex-start; }
+.v-hero-eyebrow { display: inline-flex; }
+.v-hero-title {
+  font-size: clamp(2.2rem, 1.5rem + 3.2vw, 3.4rem);
+  max-width: 21ch;
+}
+.v-hero-subtitle {
+  font-size: 1.15rem;
+  color: var(--v-fg-muted);
+  max-width: 58ch;
+  text-wrap: balance;
+}
+.v-hero-actions { gap: calc(var(--v-space) * 3); flex-wrap: wrap; }
+.v-hero-media { margin-top: calc(var(--v-space) * 10); }

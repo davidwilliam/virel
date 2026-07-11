@@ -84,8 +84,10 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
         for res in ctx.resources.values():
             if res.action.name not in actions_used:
                 actions_used.append(res.action.name)
-        needs_request_render = any(
-            r.server_render for r in ctx.resources.values())
+        needs_request_render = (
+            any(r.server_render for r in ctx.resources.values())
+            or ctx.uses_request_context
+        )
         render_mode = _resolve_render_mode(page, js, actions_used)
         if needs_request_render:
             render_mode = "server"
@@ -338,6 +340,7 @@ def build_all(dev: bool = False) -> BuildReport:
 
     Dynamic routes are rendered per request by the server.
     """
+    from .context import ContextMissingError
     registry = active_registry()
     compiled = []
     skipped = []
@@ -345,7 +348,11 @@ def build_all(dev: bool = False) -> BuildReport:
         if page.is_dynamic:
             skipped.append(page.path)
             continue
-        result = compile_page(page, dev=dev)
+        try:
+            result = compile_page(page, dev=dev)
+        except ContextMissingError:
+            skipped.append(page.path)
+            continue
         if result.needs_request_render:
             skipped.append(page.path)
             continue

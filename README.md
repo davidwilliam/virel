@@ -77,6 +77,7 @@ virel dev
 | `/runs` | Resource-backed list: loading states, filtering, refresh |
 | `/stream` | Streaming server action rendered incrementally |
 | `/widgets` | Web component bound via a generated typed binding |
+| `/settings` | Sidebar shell, request context from a guard |
 | `/projects/{id}` | Server-rendered dynamic route with query parameters |
 
 The invite button stays disabled until you type an email address. That check
@@ -216,6 +217,27 @@ one. Guards see the method, path, headers, query, and cookies. For JSON
 action calls a redirect decision becomes a 401 with the redirect target in
 the body, and guarded routes are reported as server dependencies by the
 static build.
+
+Guards hand values to pages through typed request context:
+
+```python
+current_user = ui.context("current_user")
+
+def load_session(request: ui.Request):
+    user = sessions.lookup(request.cookies.get("session"))
+    if user is None:
+        return ui.redirect("/login")
+    current_user.provide(user)
+
+@ui.page("/dashboard", guard=load_session)
+def dashboard() -> ui.Node:
+    user = current_user.get()
+    return ui.Page(ui.Text(f"Hello {user['name']}"))
+```
+
+A page reading a request-provided value compiles per request and is never
+cached; reading a declared default keeps the page static-friendly. Tests
+supply values with `ui.test.render(page, context={...})`.
 
 ## Forms
 
@@ -370,12 +392,16 @@ the browser with full locale data.
 The library covers the essentials in four groups, all with accessibility
 built in:
 
-- Layout: `Stack`, `Row`, `Container`, `Section`, `Card`, `AppShell`,
-  `Divider`, `Spacer`
+- Layout and chrome: `Stack`, `Row`, `Grid`, `Container`, `Section`,
+  `Card`, `AppShell` (with optional sidebar that becomes an off-canvas
+  drawer on small screens, and footer), `Footer`, `Hero`, `Divider`,
+  `Spacer`
 - Form controls: `Button`, `TextField`, `Textarea`, `NumberField`, `Select`,
   `Checkbox`, `Switch`, `RadioGroup`, `Slider`
 - Interaction patterns: `Tabs`, `Dialog` (on the native dialog element),
-  `Accordion` (on details/summary), `Tooltip`, `When`
+  `Menu`/`MenuItem`/`MenuDivider` (accessible dropdowns with keyboard
+  navigation and flip-up placement), `Accordion` (on details/summary),
+  `Tooltip`, `When`
 - Data display and status: `Table`, `Stat`, `Progress`, `Spinner`,
   `Skeleton`, `Avatar`, `Badge`, `Alert`, `Breadcrumbs`, `EmptyState`,
   `Icon` (a built-in inline SVG set)

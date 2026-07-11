@@ -56,28 +56,33 @@ class TestView:
     __test__ = False  # keep pytest from collecting this class
 
     def __init__(self, fn: Callable[..., Any], params: dict[str, Any] | None = None,
-                 fetch_resources: bool = True) -> None:
-        with TraceContext() as ctx:
-            root = fn(**(params or {}))
-            if not isinstance(root, (PageNode, Element)):
-                raise VirelCompileError(
-                    "ui.test.render expects a page or component function that "
-                    "returns ui.Page(...) or a component node."
-                )
-            self.root = root
-            self.states = dict(ctx.states)
-            self.derived = dict(ctx.derived)
-            self.resources = dict(ctx.resources)
-        self.env: dict[str, Any] = {
-            name: state.initial for name, state in self.states.items()
-        }
-        if fetch_resources:
-            # Simulate the browser's initial load: every resource fetches
-            # (running the real server action) unless server rendering
-            # already populated it.
-            for res in self.resources.values():
-                if not res.server_render:
-                    res.fetch_into(self.env)
+                 fetch_resources: bool = True,
+                 context: dict[str, Any] | None = None) -> None:
+        from .context import request_context
+        # Context values are read while the page function traces; scope the
+        # store to construction so it never leaks between tests.
+        with request_context(context):
+            with TraceContext() as ctx:
+                root = fn(**(params or {}))
+                if not isinstance(root, (PageNode, Element)):
+                    raise VirelCompileError(
+                        "ui.test.render expects a page or component function "
+                        "that returns ui.Page(...) or a component node."
+                    )
+                self.root = root
+                self.states = dict(ctx.states)
+                self.derived = dict(ctx.derived)
+                self.resources = dict(ctx.resources)
+            self.env: dict[str, Any] = {
+                name: state.initial for name, state in self.states.items()
+            }
+            if fetch_resources:
+                # Simulate the browser's initial load: every resource fetches
+                # (running the real server action) unless server rendering
+                # already populated it.
+                for res in self.resources.values():
+                    if not res.server_render:
+                        res.fetch_into(self.env)
 
     # -- state environment ------------------------------------------------------
 
@@ -419,11 +424,14 @@ def _as_number(value: Any) -> float | None:
 
 
 def render(fn: Callable[..., Any], *, fetch_resources: bool = True,
+           context: dict[str, Any] | None = None,
            **params: Any) -> TestView:
     """Compile a page or component function and return a queryable view.
 
     Resources fetch eagerly (running their real server actions) so the view
     reflects the loaded page. Pass ``fetch_resources=False`` to assert on
-    loading states instead.
+    loading states instead, and ``context={...}`` to provide request-context
+    values normally supplied by guards.
     """
-    return TestView(fn, params or None, fetch_resources=fetch_resources)
+    return TestView(fn, params or None, fetch_resources=fetch_resources,
+                    context=context)

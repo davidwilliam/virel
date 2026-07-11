@@ -430,6 +430,75 @@ export function select(id) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Dropdown menu: trigger plus popup panel. Items are ordinary anchors
+ * and buttons whose handlers bind normally; this helper manages open
+ * state, keyboard interaction, click-outside, and flip-up placement.
+ * ------------------------------------------------------------------ */
+
+export function menu(id) {
+  const wrap = el(id);
+  if (!wrap || wrap.__virelMenu) return;
+  wrap.__virelMenu = true;
+  const trigger = wrap.firstElementChild;
+  const panel = wrap.querySelector(".v-menu-list");
+  if (!trigger || !panel) return;
+  trigger.setAttribute("aria-haspopup", "menu");
+  trigger.setAttribute("aria-expanded", "false");
+
+  const items = () => [...panel.querySelectorAll('[role="menuitem"]')];
+  const isOpen = () => wrap.classList.contains("v-menu-open");
+
+  const openMenu = (focusFirst) => {
+    wrap.classList.add("v-menu-open");
+    trigger.setAttribute("aria-expanded", "true");
+    const rect = trigger.getBoundingClientRect();
+    const height = panel.offsetHeight;
+    const fitsBelow = window.innerHeight - rect.bottom >= height + 12;
+    const fitsAbove = rect.top >= height + 12;
+    wrap.classList.toggle("v-menu-up", !fitsBelow && fitsAbove);
+    if (focusFirst) items()[0]?.focus();
+  };
+
+  const closeMenu = (refocus) => {
+    wrap.classList.remove("v-menu-open", "v-menu-up");
+    trigger.setAttribute("aria-expanded", "false");
+    if (refocus) trigger.focus();
+  };
+
+  trigger.addEventListener("click", () => {
+    isOpen() ? closeMenu(false) : openMenu(false);
+  });
+  trigger.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowDown" || ev.key === "Enter" || ev.key === " ") {
+      ev.preventDefault();
+      openMenu(true);
+    }
+  });
+  panel.addEventListener("keydown", (ev) => {
+    const list = items();
+    const index = list.indexOf(document.activeElement);
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      list[Math.min(index + 1, list.length - 1)]?.focus();
+    } else if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      list[Math.max(index - 1, 0)]?.focus();
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      closeMenu(true);
+    } else if (ev.key === "Tab") {
+      closeMenu(false);
+    }
+  });
+  panel.addEventListener("click", (ev) => {
+    if (ev.target.closest('[role="menuitem"]')) closeMenu(false);
+  });
+  document.addEventListener("click", (ev) => {
+    if (isOpen() && !wrap.contains(ev.target)) closeMenu(false);
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * Islands: deferred hydration boundaries (SPEC 9.7). The HTML is
  * already server-rendered; bind() activates the subtree's reactivity
  * according to the load strategy.
