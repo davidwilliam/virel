@@ -165,3 +165,27 @@ def test_resource_requires_server_action():
 
     with pytest.raises(VirelCompileError, match="@ui.server"):
         ui.test.render(page)
+
+
+def test_stale_for_emits_cache_policy():
+    action = _list_action()
+
+    def page():
+        items = ui.resource(action, stale_for=30)
+        return ui.Page(ui.Each(items.value,
+                               render=lambda item: ui.Text(item.name)))
+
+    ui.page("/")(page)
+    result = compile_page(active_registry().pages["/"])
+    assert "staleFor: 30" in result.js
+
+
+def test_stale_for_rejects_negative_values():
+    action = _list_action()
+
+    def page():
+        ui.resource(action, stale_for=-1)
+        return ui.Page(ui.Text("x"))
+
+    with pytest.raises(VirelCompileError, match="non-negative"):
+        ui.test.render(page)

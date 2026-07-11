@@ -51,7 +51,8 @@ class RefreshOp:
 
 class Resource:
     def __init__(self, action: Any, *, params: dict[str, Any] | None = None,
-                 server_render: bool = False) -> None:
+                 server_render: bool = False,
+                 stale_for: float | None = None) -> None:
         from .registry import ServerAction
         if not isinstance(action, ServerAction):
             raise VirelCompileError(
@@ -71,6 +72,10 @@ class Resource:
         }
         action._check_args(self.params)
         self.server_render = server_render
+        if stale_for is not None and stale_for < 0:
+            raise VirelCompileError("stale_for must be a non-negative number "
+                                    "of seconds.")
+        self.stale_for = stale_for
 
         initial_value: Any = None
         initial_error: Any = None
@@ -128,6 +133,8 @@ class Resource:
             f"error: S.{self.error.name}",
             f"initial: {'true' if self.server_render else 'false'}",
         ]
+        if self.stale_for is not None:
+            parts.append(f"staleFor: {self.stale_for}")
         if self.params:
             parts.append(f"params: () => ({DictExpr(self.params).js()})")
         return f'$.resource("{self.id}", {{ {", ".join(parts)} }});'
@@ -143,5 +150,7 @@ class Resource:
 
 
 def resource(action: Any, *, params: dict[str, Any] | None = None,
-             server_render: bool = False) -> Resource:
-    return Resource(action, params=params, server_render=server_render)
+             server_render: bool = False,
+             stale_for: float | None = None) -> Resource:
+    return Resource(action, params=params, server_render=server_render,
+                    stale_for=stale_for)

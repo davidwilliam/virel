@@ -271,6 +271,12 @@ def runs_page() -> ui.Node:
     )
 ```
 
+Fetched values are cached by action and arguments, and the cache survives
+soft navigation: returning to a page shows its data instantly. With
+`stale_for=30`, entries younger than 30 seconds skip the network entirely,
+and older entries render immediately while revalidating in the background,
+so lists update without loading flashes.
+
 Pass `server_render=True` and the initial data is fetched during server
 rendering instead: the page arrives populated, the browser skips the first
 fetch, and the route is compiled per request. Item data is HTML-escaped on
@@ -353,9 +359,9 @@ builtins (`len`, `str`, `int`, `float`, `bool`, `abs`, `min`, `max`,
 `@ui.client` functions and server actions. Anything outside it is a build
 error that names the nearest replacement.
 
-Not implemented yet, in rough priority order: resource caching policies
-(stale-while-revalidate, optimistic mutation), `virel bind` for
-web-component manifests, and internationalization.
+Not implemented yet, in rough priority order: optimistic mutation with
+rollback, `virel bind` for web-component manifests, and
+internationalization.
 
 ## License
 

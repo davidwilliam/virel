@@ -205,21 +205,45 @@ export function bindList(id, items, renderItem, keyFn, handlers) {
  * ------------------------------------------------------------------ */
 
 const resourceRegistry = {};
+// Fetched values persist across navigations, keyed by action plus
+// arguments, so returning to a page shows data instantly. staleFor
+// controls revalidation: fresh entries skip the network, stale entries
+// render immediately and revalidate in the background.
+const resourceCache = new Map();
 
 export function resource(id, spec) {
   const state = { key: null, inflight: false };
   let hydrated = spec.initial;
+  const cacheKey = (key) => spec.action + "|" + key;
 
   const run = (args, force) => {
     const key = JSON.stringify(args);
     if (!force && state.inflight && state.key === key) return;
     state.key = key;
+
+    let background = false;
+    const cached = resourceCache.get(cacheKey(key));
+    if (!force && cached !== undefined) {
+      spec.value.set(cached.value);
+      spec.error.set(null);
+      spec.loading.set(false);
+      const maxAge = (spec.staleFor ?? 0) * 1000;
+      if (Date.now() - cached.time < maxAge) return; // fresh: no request
+      background = true; // stale: revalidate without a loading flash
+    }
+
     state.inflight = true;
-    spec.loading.set(true);
-    spec.error.set(null);
+    if (!background) {
+      spec.loading.set(true);
+      spec.error.set(null);
+    }
     action(spec.action, args)
       .then((result) => {
-        if (state.key === key) spec.value.set(result);
+        resourceCache.set(cacheKey(key), { value: result, time: Date.now() });
+        if (state.key === key) {
+          spec.value.set(result);
+          spec.error.set(null);
+        }
       })
       .catch((err) => {
         if (state.key === key) spec.error.set(String(err.message || err));
@@ -233,6 +257,15 @@ export function resource(id, spec) {
   };
 
   const currentArgs = () => (spec.params ? spec.params() : {});
+  // Seed the cache from server-rendered data outside the effect: reads
+  // here must not subscribe, or setting the value would retrigger the
+  // effect and loop.
+  if (hydrated) {
+    const key = JSON.stringify(currentArgs());
+    state.key = key;
+    resourceCache.set(cacheKey(key),
+                      { value: spec.value.get(), time: Date.now() });
+  }
   // The effect subscribes to every signal the params read, so a parameter
   // change triggers a refetch. The first run is the initial load, skipped
   // when the server already rendered the data.
@@ -240,7 +273,6 @@ export function resource(id, spec) {
     const args = currentArgs();
     if (hydrated) {
       hydrated = false;
-      state.key = JSON.stringify(args);
       return;
     }
     run(args, false);
