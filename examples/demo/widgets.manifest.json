@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1.0.0",
+  "modules": [
+    {
+      "kind": "javascript-module",
+      "path": "public/widgets.js",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "SparkLine",
+          "customElement": true,
+          "tagName": "spark-line",
+          "summary": "Inline SVG sparkline driven by a comma-separated values attribute.",
+          "attributes": [
+            { "name": "values", "type": { "text": "string" } },
+            { "name": "stroke", "type": { "text": "string" } }
+          ]
+        },
+        {
+          "kind": "class",
+          "name": "RelativeTime",
+          "customElement": true,
+          "tagName": "relative-time",
+          "summary": "Self-updating relative timestamp.",
+          "attributes": [
+            { "name": "datetime", "type": { "text": "string" } }
+          ]
+        }
+      ]
+    }
+  ]
+}
