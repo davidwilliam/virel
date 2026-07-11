@@ -11,6 +11,49 @@ from importlib import resources
 
 
 @dataclass
+class FontFace:
+    """A self-hosted font: a file the project serves (e.g. from public/).
+
+        ui.Theme(fonts=[ui.FontFace("Recursive", "/public/fonts/Recursive.woff2")],
+                 font_body="'Recursive', sans-serif")
+    """
+    family: str
+    src: str
+    weight: str = "100 900"
+    style: str = "normal"
+
+    def css(self) -> str:
+        return (
+            "@font-face {\n"
+            f"  font-family: '{self.family}';\n"
+            f"  font-style: {self.style};\n"
+            f"  font-weight: {self.weight};\n"
+            "  font-display: swap;\n"
+            f"  src: url('{self.src}') format('woff2');\n"
+            "}"
+        )
+
+
+@dataclass
+class GoogleFont:
+    """A font loaded from Google Fonts. The stylesheet link is added to
+    every page and the content security policy is extended to allow the
+    Google Fonts origins.
+
+        ui.Theme(fonts=[ui.GoogleFont("Manrope")],
+                 font_body="'Manrope', sans-serif")
+    """
+    family: str
+    weights: tuple = (400, 500, 600, 700)
+
+    def css_url(self) -> str:
+        family = self.family.replace(" ", "+")
+        weights = ";".join(str(w) for w in sorted(set(self.weights)))
+        return (f"https://fonts.googleapis.com/css2?"
+                f"family={family}:wght@{weights}&display=swap")
+
+
+@dataclass
 class Theme:
     accent: str = "#4f46e5"
     accent_strong: str = "#4338ca"
@@ -24,8 +67,10 @@ class Theme:
         "'InterVariable', ui-sans-serif, system-ui, -apple-system, "
         "'Segoe UI', Roboto, sans-serif"
     )
-    font_heading: str = "'Space Grotesk', 'InterVariable', ui-sans-serif, system-ui, sans-serif"
+    font_heading: str = "inherit"
     font_mono: str = "ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
+    # Additional fonts: FontFace (self-hosted files) and GoogleFont entries.
+    fonts: list = field(default_factory=list)
 
     def css_tokens(self) -> str:
         light = {
@@ -126,20 +171,21 @@ _FONT_FACE = """\
   font-display: swap;
   src: url('/_virel/fonts/InterVariable.woff2') format('woff2');
 }
-@font-face {
-  font-family: 'Space Grotesk';
-  font-style: normal;
-  font-weight: 300 700;
-  font-display: swap;
-  src: url('/_virel/fonts/SpaceGrotesk.woff2') format('woff2');
-}
 """
+
+
+def google_fonts(theme: "Theme | None") -> list[GoogleFont]:
+    if theme is None:
+        return []
+    return [f for f in theme.fonts if isinstance(f, GoogleFont)]
 
 
 def build_stylesheet(theme: Theme | None = None) -> str:
     theme = theme or Theme()
+    faces = [_FONT_FACE.rstrip()]
+    faces.extend(f.css() for f in theme.fonts if isinstance(f, FontFace))
     base = resources.files("virel.assets").joinpath("base.css").read_text("utf-8")
-    return _FONT_FACE + "\n" + theme.css_tokens() + "\n" + base
+    return "\n".join(faces) + "\n\n" + theme.css_tokens() + "\n" + base
 
 
 def runtime_js() -> str:

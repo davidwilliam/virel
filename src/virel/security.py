@@ -40,22 +40,30 @@ def script_hash(source: str) -> str:
     return "sha256-" + base64.b64encode(digest).decode("ascii")
 
 
-def content_security_policy(inline_scripts: list[str]) -> str:
+def content_security_policy(inline_scripts: list[str],
+                            google_fonts: bool = False) -> str:
     """The default policy for HTML responses.
 
     Scripts run only from same-origin files plus the specific inline
     scripts the compiler emitted (matched by hash). Styles allow inline
     attributes because layout primitives compile to style attributes.
+    Configuring Google Fonts extends the style and font sources to the
+    Google Fonts origins.
     """
     script_src = "'self'"
     for source in inline_scripts:
         script_src += f" '{script_hash(source)}'"
+    style_src = "'self' 'unsafe-inline'"
+    font_src = "'self'"
+    if google_fonts:
+        style_src += " https://fonts.googleapis.com"
+        font_src += " https://fonts.gstatic.com"
     return (
         "default-src 'self'; "
         f"script-src {script_src}; "
-        "style-src 'self' 'unsafe-inline'; "
+        f"style-src {style_src}; "
         "img-src 'self' data:; "
-        "font-src 'self'; "
+        f"font-src {font_src}; "
         "connect-src 'self'; "
         "object-src 'none'; "
         "base-uri 'self'; "

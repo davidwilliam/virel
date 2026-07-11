@@ -63,3 +63,52 @@ def test_font_served_with_immutable_caching():
     # Path traversal on the fonts route is refused.
     assert asgi_request(app, "GET",
                         "/_virel/fonts/../app.css").status == 404
+
+
+def test_custom_font_face_from_project_files():
+    from virel.theme import FontFace
+    theme = Theme(
+        fonts=[FontFace("Recursive", "/public/fonts/Recursive.woff2",
+                        weight="300 900")],
+        font_body="'Recursive', sans-serif",
+    )
+    css = build_stylesheet(theme)
+    assert "font-family: 'Recursive';" in css
+    assert "url('/public/fonts/Recursive.woff2')" in css
+    assert "font-weight: 300 900;" in css
+
+
+def test_google_font_adds_links_and_csp_origins():
+    from virel.server import create_asgi_app
+    from virel.theme import GoogleFont
+    from conftest import asgi_request
+
+    ui.use_theme(ui.Theme(fonts=[GoogleFont("Manrope", weights=(400, 700))],
+                          font_body="'Manrope', sans-serif"))
+
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("x"))
+
+    app = create_asgi_app(dev=True)
+    response = asgi_request(app, "GET", "/")
+    assert ("https://fonts.googleapis.com/css2?family=Manrope:wght@400;700"
+            "&amp;display=swap") in response.text
+    assert 'rel="preconnect" href="https://fonts.gstatic.com"' in response.text
+    csp = response.headers["content-security-policy"]
+    assert "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com" in csp
+    assert "font-src 'self' https://fonts.gstatic.com" in csp
+
+
+def test_default_csp_has_no_external_font_origins():
+    from virel.server import create_asgi_app
+    from conftest import asgi_request
+
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("x"))
+
+    response = asgi_request(create_asgi_app(dev=True), "GET", "/")
+    csp = response.headers["content-security-policy"]
+    assert "googleapis" not in csp
+    assert "font-src 'self';" in csp

@@ -71,7 +71,6 @@ def _forms_tab() -> ui.Node:
         ),
         ui.Stack(
             ui.Slider(volume, label="Volume", min=0, max=100),
-            ui.Progress(volume, max=100, label="Volume level"),
             ui.Switch(notify, label="Email notifications"),
             ui.Checkbox(terms, label="Accept the terms"),
             ui.RadioGroup(plan, label="Plan",
@@ -126,6 +125,7 @@ def _feedback_tab() -> ui.Node:
                 ui.Text("Loading", muted=True, size="sm"),
                 ui.Row(ui.Spinner(), ui.Text("Fetching results…", muted=True),
                        gap=3),
+                ui.Progress(64, max=100, label="Upload progress"),
                 ui.Skeleton(lines=3),
                 gap=4,
             ),

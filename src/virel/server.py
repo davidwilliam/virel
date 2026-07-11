@@ -222,7 +222,7 @@ class VirelASGIApp:
         if path.startswith("/_virel/fonts/"):
             from importlib import resources as _resources
             name = path.removeprefix("/_virel/fonts/")
-            if "/" in name or name not in ("InterVariable.woff2", "SpaceGrotesk.woff2"):
+            if "/" in name or name not in ("InterVariable.woff2",):
                 await self._send_text(send, 404, "not found")
                 return
             # Single-segment joins only: multi-segment joinpath needs 3.12.
@@ -352,7 +352,10 @@ class VirelASGIApp:
                 result = compile_page(page, dev=self.dev, inline_js=True,
                                       locale=locale)
         from .security import content_security_policy
-        csp = content_security_policy(result.inline_scripts)
+        from .theme import google_fonts
+        csp = content_security_policy(
+            result.inline_scripts,
+            google_fonts=bool(google_fonts(self.registry.theme)))
         headers = [(b"content-security-policy", csp.encode("latin-1"))]
         if locale is not None:
             headers.append((b"vary", b"accept-language"))

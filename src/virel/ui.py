@@ -62,7 +62,7 @@ from .icons import Icon, icon_names
 from .resources import Resource, resource
 from .nodes import Node, When
 from .registry import client, component, page, server, web_component
-from .theme import Theme
+from .theme import FontFace, GoogleFont, Theme
 from . import testing as test
 
 
@@ -87,7 +87,7 @@ __all__ = [
     # programming model
     "page", "component", "server", "client", "web_component",
     "state", "derived", "cond", "not_", "length", "set_from_event",
-    "use_theme", "Theme", "Node", "VirelCompileError", "test",
+    "use_theme", "Theme", "FontFace", "GoogleFont", "Node", "VirelCompileError", "test",
     "messages", "t",
     # layout
     "Page", "Stack", "Row", "Grid", "Container", "Section", "Card",

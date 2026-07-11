@@ -237,8 +237,16 @@ def _emit_document(root: PageNode, body_html: str, js_module: str,
         f"<script>{bootstrap_source}</script>",
         '<link rel="preload" href="/_virel/fonts/InterVariable.woff2" '
         'as="font" type="font/woff2" crossorigin>',
-        '<link rel="stylesheet" href="/_virel/app.css">',
     ]
+    from .registry import active_registry as _reg
+    from .theme import google_fonts
+    fonts = google_fonts(_reg().theme)
+    if fonts:
+        head.append('<link rel="preconnect" href="https://fonts.googleapis.com">')
+        head.append('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>')
+        for font in fonts:
+            head.append(f'<link rel="stylesheet" href="{_escape(font.css_url())}">')
+    head.append('<link rel="stylesheet" href="/_virel/app.css">')
     for name, content in root.meta.items():
         head.append(f'<meta name="{_escape(name)}" content="{_escape(content)}">')
     for module in root.head_modules:

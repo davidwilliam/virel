@@ -15,9 +15,9 @@ body { margin: 0; min-height: 100vh; line-height: 1.55; }
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--v-font-heading);
   line-height: 1.12;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.022em;
   margin: 0;
-  font-weight: 600;
+  font-weight: 680;
   text-wrap: balance;
 }
 h1 { font-size: clamp(1.9rem, 1.4rem + 2vw, 2.6rem); }
@@ -36,6 +36,7 @@ p { margin: 0; }
   .v-grid { grid-template-columns: repeat(var(--v-cols-xl, var(--v-cols-md, var(--v-cols, 1))), minmax(0, 1fr)); }
 }
 .v-row { display: flex; flex-direction: row; }
+.v-each { display: flex; flex-direction: column; }
 .v-spacer { flex: 1; }
 .v-section { padding-block: calc(var(--v-space) * 6); }
 
@@ -225,12 +226,7 @@ a.v-btn { text-decoration: none; }
   padding-block: calc(var(--v-space) * 3);
 }
 .v-shell-header-inner > .v-row { flex: 1; }
-.v-brand {
-  font-family: var(--v-font-heading);
-  font-weight: 640;
-  letter-spacing: -0.01em;
-  font-size: 1.05rem;
-}
+.v-brand { font-weight: 700; letter-spacing: -0.02em; font-size: 1.02rem; }
 .v-nav { display: flex; gap: calc(var(--v-space) * 1); flex-wrap: wrap; }
 .v-nav .v-link {
   color: var(--v-fg-muted);

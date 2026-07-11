@@ -242,6 +242,20 @@ preference before first paint so switching never flashes, and
 `ui.ThemeToggle()` gives users a control that cycles the modes and persists
 the choice.
 
+The default typeface is Inter (bundled, self-hosted). Applications can use
+any font: `ui.GoogleFont` loads from Google Fonts with the stylesheet link
+and content security policy handled automatically, and `ui.FontFace`
+registers font files the project serves itself:
+
+```python
+ui.use_theme(ui.Theme(
+    fonts=[ui.GoogleFont("Manrope"),
+           ui.FontFace("Berkeley Mono", "/public/fonts/BerkeleyMono.woff2")],
+    font_heading="'Manrope', sans-serif",
+    font_mono="'Berkeley Mono', monospace",
+))
+```
+
 ## Loading data
 
 `ui.resource` turns a server action into a reactive value with loading and
