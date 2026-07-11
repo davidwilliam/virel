@@ -634,11 +634,12 @@ async function navigate(url, push) {
 function markCurrentPage() {
   for (const anchor of document.querySelectorAll("nav a[href]")) {
     const url = new URL(anchor.href, location.href);
-    if (url.pathname === location.pathname) {
-      anchor.setAttribute("aria-current", "page");
-    } else {
-      anchor.removeAttribute("aria-current");
-    }
+    // A link with its own query string is current only when the query
+    // matches too (sidebar tabs); plain links match on pathname alone.
+    const current = url.pathname === location.pathname &&
+      (url.search === "" ? true : url.search === location.search);
+    if (current) anchor.setAttribute("aria-current", "page");
+    else anchor.removeAttribute("aria-current");
   }
 }
 

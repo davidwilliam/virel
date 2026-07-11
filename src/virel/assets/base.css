@@ -651,10 +651,18 @@ html[data-theme="dark"] .v-theme-toggle svg[data-icon="dark"] { display: inline;
 
 /* Hero */
 .v-hero {
-  padding-block: calc(var(--v-space) * 12) calc(var(--v-space) * 10);
+  padding-block: calc(var(--v-space) * 14) calc(var(--v-space) * 10);
+  margin-inline: calc(50% - 50vw);
+  padding-inline: max(calc(50vw - 50%), calc(var(--v-space) * 5));
   background:
-    radial-gradient(60% 50% at 50% 0%,
+    radial-gradient(70% 60% at 50% 0%,
       color-mix(in srgb, var(--v-accent) 9%, transparent), transparent);
+}
+/* A hero leading the page swallows the shell's top padding so the glow
+   starts at the header. */
+.v-shell-main > .v-hero:first-child,
+.v-shell-main > :first-child > .v-hero:first-child {
+  margin-top: calc(var(--v-space) * -8);
 }
 .v-hero-copy { display: flex; flex-direction: column; gap: calc(var(--v-space) * 5); }
 .v-hero-center .v-hero-copy { align-items: center; text-align: center; }

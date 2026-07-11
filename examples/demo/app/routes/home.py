@@ -29,7 +29,7 @@ def _feature(icon: str, title: str, text: str, link_text: str,
 def home() -> ui.Node:
     return ui.Page(
         shell(
-            ui.Section(
+            ui.Stack(
                 ui.Hero(
                     eyebrow=ui.Badge("Developer preview", intent="primary"),
                     title="Professional interfaces, written in Python",
@@ -44,7 +44,8 @@ def home() -> ui.Node:
                     ],
                     media=ui.Code(_SNIPPET, block=True, language="python"),
                 ),
-                ui.Grid(
+                ui.Section(
+                    ui.Grid(
                     _feature("play", "Local interaction",
                              "State lives in the browser. Clicking a button "
                              "updates exactly the DOM nodes that depend on "
@@ -60,15 +61,17 @@ def home() -> ui.Node:
                              "Python generated from their manifests. The "
                              "output is inspectable, standard markup.",
                              "See the widget", "/widgets"),
-                    columns={"base": 1, "md": 3},
-                    gap=4,
+                        columns={"base": 1, "md": 3},
+                        gap=4,
+                    ),
+                    ui.Text(
+                        "This landing page is a static route: the content "
+                        "and the highlighted snippet above are plain "
+                        "server-rendered HTML. View source.",
+                        muted=True, size="sm"),
+                    gap=8,
                 ),
-                ui.Text(
-                    "This landing page is a static route: the content and "
-                    "the highlighted snippet above are plain server-rendered "
-                    "HTML. View source.",
-                    muted=True, size="sm"),
-                gap=10,
+                gap=0,
             ),
         ),
         title="Virel Demo",

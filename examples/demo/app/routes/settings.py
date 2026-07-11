@@ -13,16 +13,21 @@ def load_session(request: ui.Request) -> None:
                           "email": f"{name.split()[0].lower()}@example.com"})
 
 
+_TABS = ("profile", "workspace", "billing")
+
+
 @ui.page("/settings", guard=load_session)
-def settings() -> ui.Node:
+def settings(tab: str = "profile") -> ui.Node:
+    if tab not in _TABS:
+        tab = "profile"
     user = current_user.get()
     display_name = ui.state(user["name"])
     saved = ui.state("")
 
     sidebar = ui.Nav(
         ui.Link("Profile", to="/settings"),
-        ui.Link("Workspace", to="/settings"),
-        ui.Link("Billing", to="/settings"),
+        ui.Link("Workspace", to="/settings?tab=workspace"),
+        ui.Link("Billing", to="/settings?tab=billing"),
         ui.Link("Members", to="/invite"),
         label="Settings",
     )
@@ -30,7 +35,7 @@ def settings() -> ui.Node:
     return ui.Page(
         shell(
             ui.Section(
-                ui.Heading("Profile", level=1),
+                ui.Heading(tab.title(), level=1),
                 ui.Text(f"Signed in as {user['name']} ({user['email']}). "
                         "This page is server-rendered per request: the guard "
                         "reads the session and provides the user through "
