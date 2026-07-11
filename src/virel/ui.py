@@ -64,6 +64,7 @@ from .elements import (
     set_from_event,
     unsafe_html,
 )
+from .channels import Channel, ChannelClosed, channel, connect
 from .context import Context, context
 from .elements import Each, Island, Suspense, effect, upload
 from .formatting import (format_currency, format_date, format_number,
@@ -107,6 +108,7 @@ __all__ = [
     "page", "layout", "component", "server", "client", "shared", "build",
     "web_component",
     "use_guard", "use_middleware", "redirect", "deny", "Request",
+    "channel", "connect", "Channel", "ChannelClosed",
     "context", "Context",
     "state", "derived", "effect", "cond", "not_", "length", "set_from_event",
     "use_theme", "Theme", "FontFace", "GoogleFont", "Node", "VirelCompileError", "test",

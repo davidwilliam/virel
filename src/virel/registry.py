@@ -381,6 +381,8 @@ class AppRegistry:
         self.layouts: dict[str, Callable[..., Any]] = {}
         # ASGI middleware wrappers (app -> app), outermost first.
         self.middleware: list[Callable[[Any], Any]] = []
+        # WebSocket channels (@ui.channel).
+        self.channels: dict[str, Any] = {}
 
     def match_page(self, path: str) -> tuple[Page, dict[str, str]] | None:
         page = self.pages.get(path)

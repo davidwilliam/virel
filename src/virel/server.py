@@ -182,6 +182,9 @@ class VirelASGIApp:
         if scope["type"] == "lifespan":
             await self._lifespan(receive, send)
             return
+        if scope["type"] == "websocket":
+            await self._serve_websocket(scope, receive, send)
+            return
         if scope["type"] != "http":
             raise RuntimeError(f"Unsupported ASGI scope type: {scope['type']}")
 
@@ -315,7 +318,8 @@ class VirelASGIApp:
             except Exception:
                 cookies = {}
         return Request(
-            method=scope.get("method", "GET"),
+            method=scope.get("method", "WEBSOCKET"
+                             if scope.get("type") == "websocket" else "GET"),
             path=scope.get("path", "/"),
             headers=headers,
             query=_parse_query(scope.get("query_string", b"")),
@@ -739,6 +743,55 @@ class VirelASGIApp:
             extra=[(b"content-disposition",
                     f'attachment; filename="{filename}"'.encode("latin-1"))])
 
+    async def _serve_websocket(self, scope: Scope, receive: Receive,
+                               send: Send) -> None:
+        """Bidirectional channels (SPEC 9.5). Browsers do not enforce the
+        same-origin policy on WebSocket, so the Origin header is validated
+        before accepting (cross-site hijacking protection)."""
+        from .channels import Channel, ChannelClosed
+        path = scope.get("path", "")
+        handler = None
+        if path.startswith("/_virel/channel/"):
+            handler = self.registry.channels.get(
+                path.removeprefix("/_virel/channel/"))
+        message = await receive()
+        if message["type"] != "websocket.connect" or handler is None:
+            await send({"type": "websocket.close", "code": 4404})
+            return
+
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1")
+                   for k, v in scope.get("headers", [])}
+        origin = headers.get("origin")
+        if origin and origin != "null":
+            from .security import same_origin
+            if not same_origin(origin, headers.get("host", ""),
+                               self.allowed_origins):
+                await send({"type": "websocket.close", "code": 4403})
+                return
+        elif origin == "null":
+            await send({"type": "websocket.close", "code": 4403})
+            return
+
+        from .registry import Deny, Redirect
+        decision = await self._run_guards(scope, handler.guard)
+        if isinstance(decision, (Redirect, Deny)):
+            await send({"type": "websocket.close", "code": 4401})
+            return
+
+        await send({"type": "websocket.accept"})
+        channel = Channel(receive, send)
+        try:
+            await handler.fn(channel)
+        except ChannelClosed:
+            return
+        except Exception:
+            if self.dev:
+                traceback.print_exc()
+        try:
+            await send({"type": "websocket.close", "code": 1000})
+        except Exception:
+            pass
+
     async def _serve_sse(self, action: Any, scope: Scope, send: Send) -> None:
         """One-way live updates over server-sent events (SPEC 9.5). A
         read-only GET: guards run, arguments come typed from the query."""
@@ -1004,6 +1057,50 @@ def create_asgi_app(registry: AppRegistry | None = None, *, dev: bool = False,
 # Built-in development HTTP server (zero dependencies).
 # ---------------------------------------------------------------------------
 
+_WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+
+def _ws_accept_key(client_key: str) -> str:
+    import base64
+    import hashlib
+    digest = hashlib.sha1((client_key + _WS_GUID).encode("latin-1")).digest()
+    return base64.b64encode(digest).decode("latin-1")
+
+
+def _ws_encode_frame(opcode: int, payload: bytes) -> bytes:
+    """Server-to-client frame (unmasked, FIN set)."""
+    header = bytes([0x80 | opcode])
+    length = len(payload)
+    if length < 126:
+        header += bytes([length])
+    elif length < 65536:
+        header += bytes([126]) + length.to_bytes(2, "big")
+    else:
+        header += bytes([127]) + length.to_bytes(8, "big")
+    return header + payload
+
+
+async def _ws_read_frame(reader: asyncio.StreamReader) -> tuple[int, bytes]:
+    """Read one client frame; client frames must be masked (RFC 6455)."""
+    first = await reader.readexactly(2)
+    opcode = first[0] & 0x0F
+    masked = first[1] & 0x80
+    length = first[1] & 0x7F
+    if length == 126:
+        length = int.from_bytes(await reader.readexactly(2), "big")
+    elif length == 127:
+        length = int.from_bytes(await reader.readexactly(8), "big")
+    if length > 1_000_000:
+        raise ValueError("frame too large")
+    if not masked:
+        raise ValueError("client frames must be masked")
+    mask = await reader.readexactly(4)
+    data = bytearray(await reader.readexactly(length))
+    for index in range(length):
+        data[index] ^= mask[index % 4]
+    return opcode, bytes(data)
+
+
 class DevHTTPServer:
     """Minimal HTTP/1.1 bridge onto the ASGI app.
 
@@ -1044,6 +1141,12 @@ class DevHTTPServer:
 
             from urllib.parse import unquote
             path, _, query = target.partition("?")
+
+            if headers.get("upgrade", "").lower() == "websocket":
+                await self._handle_websocket(reader, writer, method,
+                                             unquote(path), query, headers)
+                return
+
             scope = {
                 "type": "http",
                 "http_version": "1.1",
@@ -1090,6 +1193,74 @@ class DevHTTPServer:
                 await writer.wait_closed()
             except (ConnectionResetError, BrokenPipeError):
                 pass
+
+    async def _handle_websocket(self, reader, writer, method, path, query,
+                                headers) -> None:
+        key = headers.get("sec-websocket-key")
+        if method != "GET" or not key:
+            writer.write(b"HTTP/1.1 400 Bad Request\r\n\r\n")
+            return
+        scope = {
+            "type": "websocket",
+            "path": path,
+            "query_string": query.encode("latin-1"),
+            "headers": [(k.encode(), v.encode()) for k, v in headers.items()],
+        }
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put({"type": "websocket.connect"})
+        accepted = False
+        closed = False
+
+        async def receive():
+            return await queue.get()
+
+        async def send(message):
+            nonlocal accepted, closed
+            if message["type"] == "websocket.accept":
+                writer.write(
+                    b"HTTP/1.1 101 Switching Protocols\r\n"
+                    b"Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                    b"Sec-WebSocket-Accept: "
+                    + _ws_accept_key(key).encode("latin-1") + b"\r\n\r\n")
+                await writer.drain()
+                accepted = True
+            elif message["type"] == "websocket.send":
+                payload = message.get("text", "").encode("utf-8")
+                writer.write(_ws_encode_frame(0x1, payload))
+                await writer.drain()
+            elif message["type"] == "websocket.close":
+                if not accepted:
+                    writer.write(b"HTTP/1.1 403 Forbidden\r\n\r\n")
+                else:
+                    writer.write(_ws_encode_frame(
+                        0x8, message.get("code", 1000).to_bytes(2, "big")))
+                await writer.drain()
+                closed = True
+
+        async def pump_frames():
+            try:
+                while not closed:
+                    opcode, payload = await _ws_read_frame(reader)
+                    if opcode == 0x8:  # close
+                        await queue.put({"type": "websocket.disconnect"})
+                        return
+                    if opcode == 0x9:  # ping -> pong
+                        writer.write(_ws_encode_frame(0xA, payload))
+                        await writer.drain()
+                        continue
+                    if opcode in (0x1, 0x2):
+                        await queue.put({"type": "websocket.receive",
+                                         "text": payload.decode("utf-8",
+                                                                "replace")})
+            except (asyncio.IncompleteReadError, ValueError,
+                    ConnectionResetError):
+                await queue.put({"type": "websocket.disconnect"})
+
+        pump = asyncio.create_task(pump_frames())
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            pump.cancel()
 
     async def serve(self) -> None:
         server = await asyncio.start_server(self.handle, self.host, self.port)

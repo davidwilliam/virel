@@ -50,6 +50,7 @@ class TraceContext:
         self.effects: list[Any] = []           # ui.effect registrations
         self.subscriptions: list[Any] = []      # ui.subscribe registrations
         self.stream_ssr = False                 # render="stream" page
+        self.connections: list[Any] = []        # ui.connect registrations
         self._counter = 0
 
     def next_id(self, prefix: str) -> str:

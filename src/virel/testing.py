@@ -76,10 +76,12 @@ class TestView:
                 self.resources = dict(ctx.resources)
                 self.effects = list(ctx.effects)
                 self.subscriptions = list(ctx.subscriptions)
+                self.connections = list(ctx.connections)
             self.env: dict[str, Any] = {
                 name: state.initial for name, state in self.states.items()
             }
             self._files: dict[str, list[Any]] = {}
+            self.channel_sends: list[tuple[str, dict]] = []
             if fetch_resources:
                 # Simulate the browser's initial load: every resource fetches
                 # (running the real server action) unless server rendering
@@ -112,6 +114,7 @@ class TestView:
         working["__files__"] = self._files
         handler.execute(working, ev)
         working.pop("__files__", None)
+        self.channel_sends.extend(working.pop("__channel_sends__", []))
         for action_name in working.pop("__invalidated__", []):
             for res in self.resources.values():
                 if res.action.name == action_name:

@@ -322,6 +322,22 @@ class FnCompiler:
                     raise self.error(call, "Resources support .refresh() with "
                                            "no arguments in handlers.")
                 return OpStmt(RefreshOp(target))
+            from .channels import ChannelSendOp, Connection
+            if isinstance(target, Connection):
+                if attr != "send" or len(call.args) != 1 \
+                        or not isinstance(call.args[0], ast.Dict):
+                    raise self.error(call, "Connections support "
+                                           '.send({"key": value}) with a '
+                                           "dict literal.")
+                args = {}
+                for key, value in zip(call.args[0].keys, call.args[0].values):
+                    if not isinstance(key, ast.Constant):
+                        raise self.error(call, "message keys must be string "
+                                               "literals.")
+                    args[key.value] = self.expr(value)
+                op = ChannelSendOp(target.name, {})
+                op.args = args
+                return OpStmt(op)
         # A bare client-function call is allowed only for its value being
         # discarded intentionally; that is almost always a mistake.
         raise self.error(

@@ -982,6 +982,65 @@ export function sse(name, argsFn, opts) {
   onDispose(() => source?.close());
 }
 
+/* ------------------------------------------------------------------ *
+ * WebSocket channels: bidirectional real-time messaging, opened only
+ * when a page connects to a declared channel (SPEC 9.5). Incoming JSON
+ * messages append into a list state; sends queue until the socket is
+ * open; reconnection backs off and navigation closes the socket.
+ * ------------------------------------------------------------------ */
+
+const channels = {};
+
+export function channel(name, opts) {
+  const entry = { socket: null, queue: [], attempts: 0, disposed: false };
+  channels[name] = entry;
+
+  const open = () => {
+    if (entry.disposed) return;
+    const scheme = location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(
+      `${scheme}://${location.host}/_virel/channel/${name}`);
+    entry.socket = socket;
+    socket.addEventListener("open", () => {
+      entry.attempts = 0;
+      opts.status?.set("open");
+      for (const payload of entry.queue.splice(0)) socket.send(payload);
+    });
+    socket.addEventListener("message", (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        opts.events.set([...(opts.events.get() || []), data]);
+      } catch {}
+    });
+    socket.addEventListener("close", () => {
+      opts.status?.set("closed");
+      if (entry.disposed || entry.attempts >= 5) return;
+      entry.attempts += 1;
+      setTimeout(open, Math.min(500 * 2 ** entry.attempts, 8000));
+    });
+  };
+  open();
+  onDispose(() => {
+    entry.disposed = true;
+    entry.socket?.close();
+    delete channels[name];
+  });
+}
+
+export function channelSend(name, data) {
+  const entry = channels[name];
+  if (!entry) {
+    console.warn(`virel: no connection to channel ${name}`);
+    return;
+  }
+  const payload = JSON.stringify(data);
+  if (entry.socket && entry.socket.readyState === WebSocket.OPEN) {
+    entry.socket.send(payload);
+  } else {
+    entry.queue.push(payload);
+  }
+}
+
 // Structured streams: the server emits JSON lines; parsed events append
 // into a list signal so ui.Each renders them as they arrive.
 export async function streamEvents(name, args, listSignal, onDone) {

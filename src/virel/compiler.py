@@ -225,6 +225,8 @@ def _emit_page_js(ctx: TraceContext, emitter: Emitter, dev: bool = False,
         body.append(res.binding_js())
     for sub in ctx.subscriptions:
         body.append(sub.binding_js())
+    for conn in ctx.connections:
+        body.append(conn.binding_js())
     body.extend(emitter.bindings)
     for eff in ctx.effects:
         deps = ", ".join(f"() => {d.js()}" for d in eff.dependencies)
