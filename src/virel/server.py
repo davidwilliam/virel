@@ -690,9 +690,14 @@ class VirelASGIApp:
         })
         try:
             async for chunk in _iterate_chunks(action.fn(**args)):
+                if isinstance(chunk, (dict, list)):
+                    from .registry import to_jsonable
+                    encoded = json.dumps(to_jsonable(chunk)) + "\n"
+                else:
+                    encoded = str(chunk)
                 await send({
                     "type": "http.response.body",
-                    "body": str(chunk).encode("utf-8"),
+                    "body": encoded.encode("utf-8"),
                     "more_body": True,
                 })
         except Exception as error:

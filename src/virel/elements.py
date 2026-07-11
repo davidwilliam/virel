@@ -847,6 +847,36 @@ def Suspense(resource: Any, *, content: Any, fallback: Any = None,
     return When(resource.loading, then=fallback_node, otherwise=settled)
 
 
+def ErrorState(*, title: str = "Something went wrong",
+               retry: bool = True) -> Element:
+    """Default fallback content for an ErrorBoundary: the error message
+    lands in the message slot and the retry button re-binds the content."""
+    from .icons import Icon
+    children: list[Node] = [
+        Element("div", [Icon("alert-triangle", size=20)],
+                attrs={"class": "v-error-icon"}),
+        Element("p", [TextNode(title)], attrs={"class": "v-empty-title"}),
+        Element("p", [], attrs={"class": "v-muted v-text-sm",
+                                "data-error-message": "true"}),
+    ]
+    if retry:
+        children.append(Element(
+            "button", [TextNode("Try again")],
+            attrs={"class": "v-btn v-btn-neutral v-btn-sm",
+                   "type": "button", "data-retry": "true"}))
+    return Element("div", children, attrs={"class": "v-error-state",
+                                           "role": "alert"})
+
+
+def ErrorBoundary(*children: Any, fallback: Any = None) -> Node:
+    """Isolate runtime errors in a subtree: if its bindings throw, the
+    fallback renders instead of a broken page region."""
+    from .nodes import ErrorBoundaryNode
+    fallback_nodes = normalize_children(
+        (fallback if fallback is not None else ErrorState(),))
+    return ErrorBoundaryNode(normalize_children(children), fallback_nodes)
+
+
 def Island(*children: Any, load: str = "visible") -> Node:
     """Defer hydration of a subtree. The content is server-rendered and
     visible immediately; its interactivity activates per the load strategy:

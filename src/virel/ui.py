@@ -25,6 +25,8 @@ from .elements import (
     Divider,
     DownloadButton,
     EmptyState,
+    ErrorBoundary,
+    ErrorState,
     FileField,
     Footer,
     Grid,
@@ -128,5 +130,6 @@ __all__ = [
     "Menu", "MenuItem", "MenuDivider",
     # data display and status
     "Table", "Stat", "Progress", "Spinner", "Skeleton", "Avatar",
-    "Breadcrumbs", "Alert", "Badge", "EmptyState", "Icon", "icon_names",
+    "Breadcrumbs", "Alert", "Badge", "EmptyState", "ErrorBoundary",
+    "ErrorState", "Icon", "icon_names",
 ]

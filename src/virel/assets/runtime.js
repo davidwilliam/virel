@@ -641,6 +641,35 @@ export function menu(id) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Error boundaries: if binding a subtree throws, show its fallback
+ * with the error message and a retry that re-binds the content.
+ * ------------------------------------------------------------------ */
+
+export function boundary(id, bind) {
+  const wrap = el(id);
+  if (!wrap) return;
+  const content = wrap.querySelector(":scope > .v-boundary-content");
+  const fallback = wrap.querySelector(":scope > .v-boundary-fallback");
+
+  const attempt = () => {
+    try {
+      bind();
+      content.style.display = "contents";
+      fallback.style.display = "none";
+    } catch (err) {
+      console.error("virel boundary:", err);
+      content.style.display = "none";
+      fallback.style.display = "contents";
+      const slot = fallback.querySelector("[data-error-message]");
+      if (slot) slot.textContent = String(err.message || err);
+    }
+  };
+  fallback.querySelector("[data-retry]")
+    ?.addEventListener("click", attempt);
+  attempt();
+}
+
+/* ------------------------------------------------------------------ *
  * Islands: deferred hydration boundaries (SPEC 9.7). The HTML is
  * already server-rendered; bind() activates the subtree's reactivity
  * according to the load strategy.
@@ -875,6 +904,25 @@ export async function action(name, args, options) {
     throw error;
   }
   return payload.result;
+}
+
+// Structured streams: the server emits JSON lines; parsed events append
+// into a list signal so ui.Each renders them as they arrive.
+export async function streamEvents(name, args, listSignal, onDone) {
+  let buffer = "";
+  await stream(name, args, (chunk) => {
+    buffer += chunk;
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+    const parsed = [];
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        parsed.push(JSON.parse(line));
+      } catch {}
+    }
+    if (parsed.length) listSignal.set([...(listSignal.get() || []), ...parsed]);
+  }, onDone);
 }
 
 export async function stream(name, args, onChunk, onDone, options) {

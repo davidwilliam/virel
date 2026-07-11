@@ -421,9 +421,12 @@ class FnCompiler:
         into = error_into = None
         done_set = None
         optimistic = None
+        into_events = None
         for keyword in call.keywords:
             if keyword.arg == "into":
                 into = self._resolve_state_kw(call, keyword)
+            elif keyword.arg == "into_events" and attr == "stream":
+                into_events = self._resolve_state_kw(call, keyword)
             elif keyword.arg == "error_into":
                 error_into = self._resolve_state_kw(call, keyword)
             elif keyword.arg == "optimistic" and attr == "call":
@@ -450,9 +453,12 @@ class FnCompiler:
         if attr == "call":
             return CallOp(action.name, args, into, error_into,
                           optimistic=optimistic)
-        if into is None:
-            raise self.error(call, "action.stream(...) requires into=<state>.")
-        return StreamOp(action.name, args, into, done_set)
+        if (into is None) == (into_events is None):
+            raise self.error(call, "action.stream(...) requires exactly one "
+                                   "of into= or into_events=.")
+        target = into if into is not None else into_events
+        return StreamOp(action.name, args, target, done_set,
+                        events=into_events is not None)
 
     def _resolve_state_kw(self, call: ast.Call, keyword: ast.keyword) -> Any:
         state = self._try_resolve_node(keyword.value)

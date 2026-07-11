@@ -697,3 +697,16 @@ html[data-theme="dark"] .v-theme-toggle svg[data-icon="dark"] { display: inline;
   cursor: pointer;
 }
 .v-file::file-selector-button:hover { background: var(--v-surface-2); }
+
+/* Error boundaries */
+.v-error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--v-space) * 2);
+  text-align: center;
+  padding: calc(var(--v-space) * 8);
+  border: 1px dashed var(--v-border);
+  border-radius: var(--v-radius-lg);
+}
+.v-error-icon { color: var(--v-danger); }

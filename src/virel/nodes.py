@@ -312,6 +312,23 @@ def template_html(nodes: list[Node], env: dict[str, Any]) -> str:
     return "".join(parts)
 
 
+class ErrorBoundaryNode(Node):
+    """Isolates runtime errors in a subtree (SPEC 8.11). If binding the
+    content throws, the fallback is shown instead, with the error message
+    and an optional retry that re-binds the content."""
+
+    def __init__(self, content: list[Node], fallback: list[Node]) -> None:
+        self.content = content
+        self.fallback = fallback
+
+    def to_ir(self) -> dict[str, Any]:
+        return {
+            "kind": "error_boundary",
+            "content": [c.to_ir() for c in self.content],
+            "fallback": [f.to_ir() for f in self.fallback],
+        }
+
+
 _ISLAND_STRATEGIES = ("immediate", "idle", "visible", "interaction")
 
 
@@ -411,6 +428,25 @@ class Emitter:
             return (
                 f'<div data-v="{then_id}" class="v-when"{then_style}>{then_html}</div>'
                 f'<div data-v="{else_id}" class="v-when"{else_style}>{else_html}</div>'
+            )
+
+        if isinstance(node, ErrorBoundaryNode):
+            vid = self.assign_id()
+            outer = self.bindings
+            self.bindings = []
+            content_html = self.emit_children(node.content)
+            captured = self.bindings
+            self.bindings = outer
+            fallback_html = self.emit_children(node.fallback)
+            body = " ".join(captured)
+            self.bindings.append(
+                f'$.boundary("{vid}", () => {{ {body} }});')
+            return (
+                f'<div data-v="{vid}" class="v-boundary" style="display:contents">'
+                f'<div class="v-boundary-content" style="display:contents">'
+                f"{content_html}</div>"
+                f'<div class="v-boundary-fallback" style="display:none">'
+                f"{fallback_html}</div></div>"
             )
 
         if isinstance(node, IslandNode):

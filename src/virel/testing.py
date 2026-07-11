@@ -21,6 +21,7 @@ from .nodes import (
     BindText,
     EachNode,
     Element,
+    ErrorBoundaryNode,
     IslandNode,
     Node,
     PageNode,
@@ -218,6 +219,9 @@ class TestView:
                         visit(child, conditions, label, scope | {"item": item})
             elif isinstance(node, (PageNode, IslandNode)):
                 for child in node.children:
+                    visit(child, conditions, label, scope)
+            elif isinstance(node, ErrorBoundaryNode):
+                for child in node.content:
                     visit(child, conditions, label, scope)
 
         visit(self.root, [], None, {})
@@ -450,6 +454,11 @@ def _node_text(node: Node, env: dict[str, Any], visible_only: bool = False,
     if isinstance(node, (Element, PageNode, IslandNode)):
         out = []
         for child in node.children:
+            out.extend(_node_text(child, env, visible_only, view))
+        return out
+    if isinstance(node, ErrorBoundaryNode):
+        out = []
+        for child in node.content:
             out.extend(_node_text(child, env, visible_only, view))
         return out
     return []

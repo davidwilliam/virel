@@ -802,30 +802,41 @@ class UploadOp:
 
 
 class StreamOp:
-    """Invoke a streaming server action, appending chunks into a state."""
+    """Invoke a streaming server action: text chunks append into a string
+    state, or with events=True, JSON events append into a list state."""
 
     def __init__(self, action: str, args: dict[str, Expr], into: State,
-                 done_set: tuple[State, Expr] | None) -> None:
+                 done_set: tuple[State, Expr] | None,
+                 events: bool = False) -> None:
         self.action, self.args, self.into, self.done_set = action, args, into, done_set
+        self.events = events
 
     def js(self) -> str:
         js_args = "{" + ", ".join(f"{k}: {v.js()}" for k, v in self.args.items()) + "}"
-        on_chunk = f"(c) => S.{self.into.name}.set(S.{self.into.name}.get() + c)"
         if self.done_set:
             state, value = self.done_set
             on_done = f"() => S.{state.name}.set({value.js()})"
         else:
             on_done = "null"
+        if self.events:
+            return (f'$.streamEvents("{self.action}", {js_args}, '
+                    f"S.{self.into.name}, {on_done});")
+        on_chunk = f"(c) => S.{self.into.name}.set(S.{self.into.name}.get() + c)"
         return f'$.stream("{self.action}", {js_args}, {on_chunk}, {on_done});'
 
     def execute(self, env: dict[str, Any], ev: Any = None) -> None:
         """Test-mode execution: drain the stream synchronously."""
-        from .registry import active_registry
+        from .registry import active_registry, to_jsonable
         action = active_registry().actions[self.action]
         args = {k: v.evaluate(env) for k, v in self.args.items()}
         chunks = _collect_stream(action.fn(**args))
-        env[self.into.name] = env.get(self.into.name, "") + "".join(
-            str(c) for c in chunks)
+        if self.events:
+            events = [to_jsonable(c) for c in chunks
+                      if isinstance(c, (dict, list))]
+            env[self.into.name] = (env.get(self.into.name) or []) + events
+        else:
+            env[self.into.name] = env.get(self.into.name, "") + "".join(
+                str(c) for c in chunks)
         if self.done_set:
             state, value = self.done_set
             env[state.name] = value.evaluate(env)

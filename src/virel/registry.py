@@ -216,18 +216,28 @@ class ServerAction:
                                    optimistic=lifted_optimistic,
                                    idempotent=self.idempotent))
 
-    def stream(self, args: dict[str, Any] | None = None, *, into: State,
+    def stream(self, args: dict[str, Any] | None = None, *,
+               into: State | None = None,
+               into_events: State | None = None,
                done_set: tuple[State, Any] | None = None) -> None:
         if not self.stream_response:
             raise VirelCompileError(
                 f"Server action {self.name!r} is not declared with "
                 "@ui.server(stream=True); use .call() instead of .stream()."
             )
+        if (into is None) == (into_events is None):
+            raise VirelCompileError(
+                "stream() takes exactly one of into= (text chunks into a "
+                "string state) or into_events= (JSON events into a list "
+                "state)."
+            )
         recorder = current_recorder()
         lifted = {k: lift(v) for k, v in (args or {}).items()}
         self._check_args(lifted)
         done = (done_set[0], lift(done_set[1])) if done_set else None
-        recorder.ops.append(StreamOp(self.name, lifted, into, done))
+        target = into if into is not None else into_events
+        recorder.ops.append(StreamOp(self.name, lifted, target, done,
+                                     events=into_events is not None))
 
     def _check_args(self, args: dict[str, Expr]) -> None:
         valid = set(self.signature.parameters)
