@@ -445,6 +445,18 @@ ui.Code(snippet, block=True, language="python")
 
 Run `virel schema <Name>` for the machine-readable schema of any component.
 
+Accessibility is checked at compile time (SPEC 11.2). Much of it is
+enforced by construction: images require alt text, inputs require labels,
+icons are hidden from assistive technology unless labeled, and there is no
+way to attach a click handler to a noninteractive element. The audit
+covers the rest when a page compiles: an icon-only button or link with no
+accessible name and focusable content inside aria-hidden are compile
+errors; heading-progression skips, multiple h1 elements, and vague link
+text ("click here") are warnings printed by `virel check`, promoted to
+errors under `ui.use_accessibility(strict=True)`. Headings decouple
+semantics from size with `Heading(level=2, size=3)`, so a correct outline
+never forces the wrong visual scale.
+
 Reusable styles are typed objects compiled to shared classes in the
 application stylesheet. Spacing takes theme space units and colors,
 radii, and shadows take token names, so a style follows the theme,

@@ -68,7 +68,7 @@ def _appearance() -> ui.Node:
     contrast switch instantly, persist across reloads, and are applied
     before first paint. Brands are registered on the theme in app.py."""
     return ui.Card(
-        ui.Heading("Appearance", level=3),
+        ui.Heading("Appearance", level=2, size=3),
         ui.Text("Preferences apply instantly, persist in this browser, "
                 "and never flash on reload.", muted=True, size="sm"),
         ui.Row(

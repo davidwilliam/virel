@@ -392,6 +392,8 @@ class AppRegistry:
         self.keyframes: dict[str, str] = {}
         # Raw CSS registered with ui.use_css (SPEC 10.5).
         self.custom_css: list[str] = []
+        # Strict accessibility: audit warnings become compile errors.
+        self.strict_accessibility = False
 
     def match_page(self, path: str) -> tuple[Page, dict[str, str]] | None:
         page = self.pages.get(path)
@@ -490,6 +492,13 @@ def use_guard(fn: Callable[..., Any]) -> None:
     """Install a guard that runs before every page and server action,
     ahead of any route-specific guard."""
     active_registry().default_guard = fn
+
+
+def use_accessibility(*, strict: bool = True) -> None:
+    """Promote accessibility audit warnings (heading progression, vague
+    link text) to compile errors (SPEC 11.2 strict mode). Hard failures
+    like unnamed icon-only buttons are always errors."""
+    active_registry().strict_accessibility = strict
 
 
 def use_css(source: str) -> None:

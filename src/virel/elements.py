@@ -380,10 +380,19 @@ def Spacer() -> Element:
 # Semantic elements
 # --------------------------------------------------------------------------
 
-def Heading(text: Any, level: int = 2) -> Element:
+def Heading(text: Any, level: int = 2, size: int | None = None) -> Element:
+    """A heading. ``level`` is the document-outline semantics; ``size``
+    optionally decouples the visual size, so a card title can stay an h2
+    in the outline while looking like an h3."""
     if level not in (1, 2, 3, 4, 5, 6):
         raise VirelCompileError(f"Heading level must be 1-6, got {level!r}.")
-    return Element(f"h{level}", normalize_children((text,)), attrs={"class": "v-heading"})
+    classes = "v-heading"
+    if size is not None:
+        if size not in (1, 2, 3, 4, 5, 6):
+            raise VirelCompileError(f"Heading size must be 1-6, got {size!r}.")
+        classes += f" v-h{size}"
+    return Element(f"h{level}", normalize_children((text,)),
+                   attrs={"class": classes})
 
 
 def Text(content: Any, *, muted: bool = False, size: str = "md") -> Element:

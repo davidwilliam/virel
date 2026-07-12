@@ -216,6 +216,8 @@ def cmd_check(args: argparse.Namespace) -> None:
             params = {name: f"sample-{name}" for name in page.param_names}
             compiled = compile_page(page, params=params or None)
             print(f"ok    {page.path} [{compiled.render_mode}]")
+            for warning in compiled.warnings:
+                print(f"warn  {warning}")
         except ContextMissingError as error:
             print(f"ok    {page.path} [server] (needs request context, "
                   f"provided by a guard)")

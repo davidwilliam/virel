@@ -39,7 +39,7 @@ def widgets() -> ui.Node:
                         muted=True),
                 ui.Grid(
                     ui.Card(
-                        ui.Heading("Events out", level=3),
+                        ui.Heading("Events out", level=2, size=3),
                         ui.Text("star-rating dispatches rating-changed; the "
                                 "handler writes the detail into state.",
                                 muted=True, size="sm"),
@@ -60,7 +60,7 @@ def widgets() -> ui.Node:
                         gap=3,
                     ),
                     ui.Card(
-                        ui.Heading("Reactive attributes in", level=3),
+                        ui.Heading("Reactive attributes in", level=2, size=3),
                         ui.Text("spark-line re-renders whenever its bound "
                                 "values attribute changes.",
                                 muted=True, size="sm"),
@@ -75,7 +75,7 @@ def widgets() -> ui.Node:
                         gap=3,
                     ),
                     ui.Card(
-                        ui.Heading("Self-contained display", level=3),
+                        ui.Heading("Self-contained display", level=2, size=3),
                         ui.Text("relative-time keeps itself current with no "
                                 "help from the framework.",
                                 muted=True, size="sm"),

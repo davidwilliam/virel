@@ -189,7 +189,7 @@ def _patterns_tab() -> ui.Node:
             ui.Popover(
                 trigger=ui.Button("Popover"),
                 content=ui.Stack(
-                    ui.Heading("Anchored panel", level=4),
+                    ui.Heading("Anchored panel", level=2, size=4),
                     ui.Text("Escape or a click outside closes this and "
                             "returns focus to the trigger.",
                             muted=True, size="sm"),
@@ -200,7 +200,7 @@ def _patterns_tab() -> ui.Node:
             gap=4,
         ),
         ui.Card(
-            ui.Heading("Pagination", level=3),
+            ui.Heading("Pagination", level=2, size=3),
             ui.Text("State-driven page controls; disabled edges, "
                     "aria-current on the active page.",
                     muted=True, size="sm"),
@@ -227,7 +227,7 @@ def _patterns_tab() -> ui.Node:
                 "In the browser. The server holds no per-user objects."),
         }),
         ui.Card(
-            ui.Heading("Error boundary", level=3),
+            ui.Heading("Error boundary", level=2, size=3),
             ui.Text("The left panel renders cleanly; the right panel's "
                     "content fails, so its fallback renders instead of a "
                     "broken region.", muted=True),
@@ -241,7 +241,7 @@ def _patterns_tab() -> ui.Node:
             gap=3,
         ),
         ui.Card(
-            ui.Heading("Hydration island", level=3),
+            ui.Heading("Hydration island", level=2, size=3),
             ui.Text("This block server-renders like everything else, but its "
                     "JavaScript activates only when it scrolls into view.",
                     muted=True),
@@ -271,20 +271,20 @@ def _layout_tab() -> ui.Node:
     last_action = ui.state("")
     return ui.Stack(
         ui.Card(
-            ui.Heading("Splitter", level=3),
+            ui.Heading("Splitter", level=2, size=3),
             ui.Text("Drag the divider, or focus it and use the arrow "
                     "keys; double-click resets.", muted=True, size="sm"),
             ui.Splitter(
-                ui.Stack(ui.Heading("Navigator", level=4),
+                ui.Stack(ui.Heading("Navigator", level=3, size=4),
                          ui.Text(lorem, muted=True, size="sm"), gap=2),
-                ui.Stack(ui.Heading("Editor", level=4),
+                ui.Stack(ui.Heading("Editor", level=3, size=4),
                          ui.Text(lorem * 3, muted=True, size="sm"), gap=2),
                 initial=35, min_size=20, max_size=70,
             ),
             gap=3,
         ),
         ui.Card(
-            ui.Heading("Sidebar pattern", level=3),
+            ui.Heading("Sidebar pattern", level=2, size=3),
             ui.Text("The aside keeps its width while the content stays "
                     "fluid; both stack when space runs out, with no media "
                     "query.", muted=True, size="sm"),
@@ -297,14 +297,14 @@ def _layout_tab() -> ui.Node:
         ),
         ui.Grid(
             ui.Card(
-                ui.Heading("Center", level=3),
+                ui.Heading("Center", level=2, size=3),
                 ui.Center(ui.Badge("Centered on both axes",
                                    intent="primary"),
                           min_height="8rem"),
                 gap=3,
             ),
             ui.Card(
-                ui.Heading("AspectRatio", level=3),
+                ui.Heading("AspectRatio", level=2, size=3),
                 ui.AspectRatio(
                     ui.Box(
                         ui.Icon("play", size=28),
@@ -318,7 +318,7 @@ def _layout_tab() -> ui.Node:
                 gap=3,
             ),
             ui.Card(
-                ui.Heading("Resizable", level=3),
+                ui.Heading("Resizable", level=2, size=3),
                 ui.Resizable(
                     ui.Text("Drag the corner to resize this box.",
                             muted=True, size="sm"),
@@ -330,7 +330,7 @@ def _layout_tab() -> ui.Node:
         ),
         ui.Grid(
             ui.Card(
-                ui.Heading("ScrollArea", level=3),
+                ui.Heading("ScrollArea", level=2, size=3),
                 ui.ScrollArea(
                     ui.Stack(*[ui.Text(f"Row {i + 1}", size="sm")
                                for i in range(20)], gap=2),
@@ -339,7 +339,7 @@ def _layout_tab() -> ui.Node:
                 gap=3,
             ),
             ui.Card(
-                ui.Heading("Wrap and Cluster", level=3),
+                ui.Heading("Wrap and Cluster", level=2, size=3),
                 ui.Wrap(*[ui.Badge(name) for name in
                           ("alpha", "bravo", "charlie", "delta", "echo",
                            "foxtrot", "golf", "hotel")], gap=2),
@@ -381,7 +381,7 @@ _STATUS_INTENT = {"active": "primary", "paused": "neutral",
 
 def _status_card(name: str, status: str, blurb: str) -> ui.Node:
     return _ProjectCard(
-        ui.Row(ui.Heading(name, level=4), ui.Spacer(),
+        ui.Row(ui.Heading(name, level=3, size=4), ui.Spacer(),
                ui.Badge(status, intent=_STATUS_INTENT[status])),
         ui.Text(blurb, muted=True, size="sm"),
         status=status,
@@ -399,7 +399,7 @@ def _styling_tab() -> ui.Node:
     )
     return ui.Stack(
         ui.Card(
-            ui.Heading("Style objects", level=3),
+            ui.Heading("Style objects", level=2, size=3),
             ui.Text("ui.style() compiles typed properties to a shared "
                     "class: spacing in theme units, colors and shadows as "
                     "tokens, with hover, focus, and active variants. Hover "
@@ -418,7 +418,7 @@ def _styling_tab() -> ui.Node:
             gap=3,
         ),
         ui.Card(
-            ui.Heading("Adaptive styles", level=3),
+            ui.Heading("Adaptive styles", level=2, size=3),
             ui.Text("This tile is a query container: drag the corner and "
                     "it restyles itself by its own width, not the "
                     "viewport. Styles can also vary by breakpoint and "
@@ -451,7 +451,7 @@ def _styling_tab() -> ui.Node:
             gap=3,
         ),
         ui.Card(
-            ui.Heading("Recipes", level=3),
+            ui.Heading("Recipes", level=2, size=3),
             ui.Text("ui.recipe() defines a component with named variants; "
                     "each axis becomes a typed keyword argument.",
                     muted=True, size="sm"),
@@ -472,7 +472,7 @@ def _styling_tab() -> ui.Node:
             gap=3,
         ),
         ui.Card(
-            ui.Heading("CSS escape hatch", level=3),
+            ui.Heading("CSS escape hatch", level=2, size=3),
             ui.Text("Two levels below the typed API: ui.Box takes raw "
                     "inline declarations, and ui.use_css registers full "
                     "rules in app.css for what inline styles cannot say. "
@@ -533,7 +533,7 @@ def _motion_tab() -> ui.Node:
     return ui.Stack(
         ui.Grid(
             ui.Card(
-                ui.Heading("Enter and exit", level=3),
+                ui.Heading("Enter and exit", level=2, size=3),
                 ui.Text("ui.When with animate= runs enter and exit "
                         "animations as the condition flips.",
                         muted=True, size="sm"),
@@ -550,7 +550,7 @@ def _motion_tab() -> ui.Node:
                 gap=3,
             ),
             ui.Card(
-                ui.Heading("Springs, compiled", level=3),
+                ui.Heading("Springs, compiled", level=2, size=3),
                 ui.Text("Spring physics simulated in Python at compile "
                         "time and emitted as a CSS linear() curve. Zero "
                         "JavaScript per frame. Hover the chip.",
@@ -575,7 +575,7 @@ def _motion_tab() -> ui.Node:
             gap=5,
         ),
         ui.Card(
-            ui.Heading("List choreography", level=3),
+            ui.Heading("List choreography", level=2, size=3),
             ui.Text("New items animate in, removed items animate out, and "
                     "layout=True FLIPs survivors to their new positions "
                     "when the list reorders.", muted=True, size="sm"),
@@ -596,7 +596,7 @@ def _motion_tab() -> ui.Node:
             gap=4,
         ),
         ui.Card(
-            ui.Heading("Gestures", level=3),
+            ui.Heading("Gestures", level=2, size=3),
             ui.Text("Drag the note sideways past the threshold to dismiss "
                     "it (or focus it and press Delete). Below the "
                     "threshold it springs back.", muted=True, size="sm"),

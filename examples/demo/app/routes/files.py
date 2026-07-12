@@ -63,7 +63,7 @@ def files() -> ui.Node:
                 ui.Heading("File transfer", level=1),
                 ui.Grid(
                     ui.Card(
-                        ui.Heading("Upload", level=3),
+                        ui.Heading("Upload", level=2, size=3),
                         dataset,
                         ui.TextField(label, label="Label",
                                      placeholder="optional"),
@@ -80,7 +80,7 @@ def files() -> ui.Node:
                         gap=4,
                     ),
                     ui.Card(
-                        ui.Heading("Batch upload", level=3),
+                        ui.Heading("Batch upload", level=2, size=3),
                         batch,
                         ui.Row(ui.Button("Import all", on_click=start_batch),
                                gap=3),
@@ -91,7 +91,7 @@ def files() -> ui.Node:
                         gap=4,
                     ),
                     ui.Card(
-                        ui.Heading("Download", level=3),
+                        ui.Heading("Download", level=2, size=3),
                         ui.Text("Download actions answer GET requests and "
                                 "must not change state; guards still run.",
                                 muted=True),

@@ -172,9 +172,9 @@ def test_dynamic_urls_in_each_templates_are_sanitized_both_sides():
 def test_bound_url_attributes_are_sanitized():
     def page():
         target = ui.state("javascript:alert(1)")
-        from virel.nodes import Element
+        from virel.nodes import Element, TextNode
         return ui.Page(Element("a", attrs={"href": target, "class": "v-link"},
-                               children=[]))
+                               children=[TextNode("profile")]))
 
     result = compile_page(_page(page))
     assert 'href="#"' in result.html

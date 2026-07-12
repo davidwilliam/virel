@@ -39,6 +39,8 @@ class CompiledPage:
     js_module: str = ""
     # render="stream" pages: resources whose data flushes after the shell.
     streamed_resources: list = field(default_factory=list)
+    # Accessibility audit warnings (SPEC 11.2), printed by `virel check`.
+    warnings: list[str] = field(default_factory=list)
 
 
 def compile_page(page: Page, params: dict[str, Any] | None = None,
@@ -83,6 +85,16 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
                 content = registry_layouts[prefix](content)
             from .nodes import normalize_children
             root.children = normalize_children((content,))
+
+        # Accessibility audit (SPEC 11.2): hard failures raise here;
+        # warnings surface on the compiled page and in `virel check`.
+        from .a11y import audit_page
+        try:
+            a11y_warnings = audit_page(
+                page.path, root.children,
+                strict=active_registry().strict_accessibility)
+        except VirelCompileError as error:
+            raise VirelCompileError(str(error)) from None
 
         env = {name: state.initial for name, state in ctx.states.items()}
         # Derived values participate in the initial environment in
@@ -151,6 +163,7 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
                 {"id": r.id, "action": r.action.name, "args": r.stream_args}
                 for r in ctx.resources.values() if r.streamed_ssr
             ],
+            warnings=a11y_warnings,
         )
 
 

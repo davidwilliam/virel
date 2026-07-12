@@ -23,7 +23,7 @@ def home() -> ui.Node:
 def _feature(icon: str, title: str, text: str, link_text: str,
              to: str) -> ui.Node:
     return ui.Card(
-        ui.Row(ui.Icon(icon, size=20), ui.Heading(title, level=3), gap=3),
+        ui.Row(ui.Icon(icon, size=20), ui.Heading(title, level=2, size=3), gap=3),
         ui.Text(text, muted=True),
         ui.Spacer(),
         ui.Link(link_text, to=to),

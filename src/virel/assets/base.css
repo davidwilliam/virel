@@ -24,9 +24,12 @@ h1, h2, h3, h4, h5, h6 {
 }
 /* Responsive type scale: headings track the viewport within bounds, so
  * type stays proportionate from phones to wide desktops. */
-h1 { font-size: clamp(1.9rem, 1.4rem + 2vw, 2.6rem); }
-h2 { font-size: clamp(1.35rem, 1.2rem + 0.6vw, 1.6rem); }
-h3 { font-size: clamp(1.08rem, 1rem + 0.35vw, 1.22rem); }
+h1, .v-h1 { font-size: clamp(1.9rem, 1.4rem + 2vw, 2.6rem); }
+h2, .v-h2 { font-size: clamp(1.35rem, 1.2rem + 0.6vw, 1.6rem); }
+h3, .v-h3 { font-size: clamp(1.08rem, 1rem + 0.35vw, 1.22rem); }
+h4, .v-h4 { font-size: 1rem; }
+h5, .v-h5 { font-size: 0.925rem; }
+h6, .v-h6 { font-size: 0.85rem; }
 
 p { margin: 0; }
 

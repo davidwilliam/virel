@@ -54,7 +54,7 @@ def _events_panel() -> ui.Node:
                         done_set=(running, False))
 
     return ui.Card(
-        ui.Heading("Structured events", level=3),
+        ui.Heading("Structured events", level=2, size=3),
         ui.Text("The server yields dicts; they arrive as JSON lines and "
                 "render as they land.", muted=True),
         ui.Row(ui.Button("Run evaluation", on_click=start, disabled=running),
@@ -82,7 +82,7 @@ def _sse_panel() -> ui.Node:
 
     return ui.Card(
         ui.Row(
-            ui.Heading("Live ticker (server-sent events)", level=3),
+            ui.Heading("Live ticker (server-sent events)", level=2, size=3),
             ui.Spacer(),
             ui.Badge(status),
             gap=3,
@@ -111,7 +111,7 @@ def _channel_panel() -> ui.Node:
         draft.set("")
 
     return ui.Card(
-        ui.Heading("Bidirectional channel (WebSocket)", level=3),
+        ui.Heading("Bidirectional channel (WebSocket)", level=2, size=3),
         ui.Text("Messages go up the socket; the server echoes them back "
                 "with metadata.", muted=True),
         ui.Row(
@@ -141,7 +141,7 @@ def stream_page() -> ui.Node:
             ui.Section(
                 ui.Heading("Streaming", level=1),
                 ui.Card(
-                    ui.Heading("Text stream", level=3),
+                    ui.Heading("Text stream", level=2, size=3),
                     ui.Row(
                         ui.Button("Run job", on_click=start, intent="primary",
                                   disabled=running),

@@ -90,7 +90,8 @@ from .resources import Resource, invalidate, resource, subscribe
 from .nodes import Node, When
 from .registry import (Request, build, client, component, deny, layout,
                        page,
-                       redirect, server, shared, use_css, use_guard,
+                       redirect, server, shared, use_accessibility,
+                       use_css, use_guard,
                        use_middleware, use_static, web_component)
 from .notifications import notify
 from .motion import (Easing, Keyframes, Motion, animation, keyframes,
@@ -125,7 +126,8 @@ __all__ = [
     # programming model
     "page", "layout", "component", "server", "client", "shared", "build",
     "web_component",
-    "use_guard", "use_middleware", "use_static", "use_css", "redirect", "deny",
+    "use_guard", "use_middleware", "use_static", "use_css",
+    "use_accessibility", "redirect", "deny",
     "Request",
     "channel", "connect", "Channel", "ChannelClosed",
     "context", "Context",
