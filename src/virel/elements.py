@@ -149,11 +149,12 @@ def Section(*children: Any, gap: int = 6,
                           "style": _gap_style(gap)})
 
 
-def Card(*children: Any, gap: int = 3,
+def Card(*children: Any, gap: int = 3, align: str = "stretch",
          class_name: str | None = None) -> Element:
     return Element("div", normalize_children(children),
                    attrs={"class": _classes("v-card v-stack", class_name),
-                          "style": _gap_style(gap)})
+                          "style": _gap_style(gap,
+                                              f"align-items: {_ALIGN[align]}")})
 
 
 def Divider() -> Element:

@@ -214,12 +214,11 @@ def _broken_panel() -> ui.Node:
 
 def _icons_tab() -> ui.Node:
     tiles = [
-        ui.Stack(
+        ui.Card(
             ui.Icon(name, size=20),
             ui.Text(name, muted=True, size="sm"),
             gap=2,
             align="center",
-            class_name="v-card",
         )
         for name in ui.icon_names()
     ]

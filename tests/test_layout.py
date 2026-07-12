@@ -32,6 +32,11 @@ def test_class_name_escape_hatch():
     assert card.attrs["class"] == "v-card v-stack marketing-hero"
 
 
+def test_card_alignment():
+    card = ui.Card(ui.Icon("check"), gap=2, align="center")
+    assert "align-items: center" in card.attrs["style"]
+
+
 def test_link_button_is_an_anchor_with_button_classes():
     cta = ui.LinkButton("Start", to="/docs", intent="primary", size="lg")
     assert cta.tag == "a"
