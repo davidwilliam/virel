@@ -96,6 +96,7 @@ virel routes           list routes and rendering modes
 virel inspect <route>  print the intermediate representation as JSON
 virel schema <name>    print a component schema as JSON
 virel bind <manifest>  generate typed bindings from custom-elements.json
+virel messages         extract ui.t keys and audit catalogs per locale
 ```
 
 `virel build --target static` fails with a precise, per-route report if
@@ -397,6 +398,15 @@ ui.messages("pt", {"greeting": "Ola {name}",
 ui.Text(ui.t("greeting", name=user_name))
 ui.Text(ui.t("runs", count=total))
 ```
+
+Right-to-left locales set the document direction automatically (Arabic,
+Hebrew, Farsi, and friends; `ui.messages(..., direction=)` overrides the
+inference), and component CSS uses logical properties, so layouts mirror
+without extra rules. Page titles translate like any other message
+(`title=ui.t(...)`), `ui.locale_sorted` orders text the way the locale
+expects (accent-insensitive in German, Nordic letters after z in
+Swedish), and `virel messages` extracts every `ui.t` key from the app
+and reports missing and unused entries per catalog.
 
 Placeholders accept reactive values, in which case the translation compiles
 to a reactive expression (plurals become a ternary over the count) and

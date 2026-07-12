@@ -80,8 +80,8 @@ from .elements import (
 from .channels import Channel, ChannelClosed, channel, connect
 from .context import Context, context
 from .elements import Each, Island, Suspense, effect, upload
-from .formatting import (format_currency, format_date, format_number,
-                         format_percent)
+from .formatting import (collation_key, format_currency, format_date,
+                         format_number, format_percent, locale_sorted)
 from .forms import Form, FormActions, SubmitButton, form
 from .i18n import messages, t
 from .icons import Icon, icon_names
@@ -140,6 +140,7 @@ __all__ = [
     "Node", "VirelCompileError", "test",
     "messages", "t",
     "format_number", "format_currency", "format_percent", "format_date",
+    "locale_sorted", "collation_key",
     # layout
     "Page", "Stack", "Row", "Grid", "Container", "Section", "Card",
     "Wrap", "Cluster", "Center", "Sidebar", "AspectRatio", "ScrollArea",

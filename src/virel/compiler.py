@@ -345,9 +345,14 @@ def _emit_document(root: PageNode, body_html: str, js_module: str,
         head.append('<script type="module" src="/_virel/dev.js"></script>')
 
     head_html = "\n    ".join(head)
+    # Right-to-left locales set the document direction; component CSS
+    # uses logical properties, so layouts mirror without extra rules.
+    from .i18n import text_direction
+    direction = text_direction(lang)
+    dir_attr = ' dir="rtl"' if direction == "rtl" else ""
     document = (
         "<!doctype html>\n"
-        f'<html lang="{_escape(lang)}">\n'
+        f'<html lang="{_escape(lang)}"{dir_attr}>\n'
         f"  <head>\n    {head_html}\n  </head>\n"
         f"  <body>\n{body_html}\n  </body>\n"
         "</html>\n"

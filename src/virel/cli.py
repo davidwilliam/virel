@@ -295,6 +295,67 @@ def cmd_schema(args: argparse.Namespace) -> None:
     print(json.dumps(schema, indent=2))
 
 
+def extract_message_keys(package_dir: Path) -> tuple[set[str], list[str]]:
+    """Scan Python sources for ui.t("key", ...) calls. Returns the
+    literal keys plus locations whose key is dynamic (not extractable)."""
+    import ast as _ast
+    keys: set[str] = set()
+    dynamic: list[str] = []
+    for path in sorted(package_dir.rglob("*.py")):
+        tree = _ast.parse(path.read_text("utf-8"), filename=str(path))
+        for node in _ast.walk(tree):
+            if not isinstance(node, _ast.Call):
+                continue
+            fn = node.func
+            named_t = (isinstance(fn, _ast.Attribute) and fn.attr == "t"
+                       and isinstance(fn.value, _ast.Name)
+                       and fn.value.id == "ui")
+            if not named_t or not node.args:
+                continue
+            first = node.args[0]
+            if isinstance(first, _ast.Constant) and isinstance(first.value, str):
+                keys.add(first.value)
+            else:
+                dynamic.append(f"{path}:{node.lineno}")
+    return keys, dynamic
+
+
+def cmd_messages(args: argparse.Namespace) -> None:
+    """Extraction tooling (SPEC 11.3): compare the message keys the app
+    uses against every registered catalog."""
+    root = Path.cwd()
+    _load_app(root)
+    registry = active_registry()
+    app_dir = root / "app" if (root / "app").is_dir() else root
+    used, dynamic = extract_message_keys(app_dir)
+    report: dict[str, Any] = {"used": sorted(used), "dynamic": dynamic,
+                              "locales": {}}
+    missing_total = 0
+    for locale in sorted(registry.catalogs):
+        catalog = set(registry.catalogs[locale])
+        missing = sorted(used - catalog)
+        unused = sorted(catalog - used)
+        missing_total += len(missing)
+        report["locales"][locale] = {"missing": missing, "unused": unused}
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print(f"{len(used)} message key(s) in use")
+        for location in dynamic:
+            print(f"  dynamic key (not extractable): {location}")
+        if not registry.catalogs:
+            print("No catalogs registered (ui.messages).")
+        for locale, entry in report["locales"].items():
+            status = "ok" if not entry["missing"] else "MISSING"
+            print(f"{locale}: {status}")
+            for key in entry["missing"]:
+                print(f"  missing: {key}")
+            for key in entry["unused"]:
+                print(f"  unused:  {key}")
+    if missing_total:
+        raise SystemExit(1)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="virel",
@@ -338,6 +399,11 @@ def main(argv: list[str] | None = None) -> None:
     p_schema = sub.add_parser("schema", help="print a component schema as JSON")
     p_schema.add_argument("component")
     p_schema.set_defaults(fn=cmd_schema)
+
+    p_messages = sub.add_parser(
+        "messages", help="extract ui.t keys and audit catalogs per locale")
+    p_messages.add_argument("--json", action="store_true")
+    p_messages.set_defaults(fn=cmd_messages)
 
     args = parser.parse_args(argv)
     args.fn(args)

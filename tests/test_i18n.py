@@ -132,3 +132,83 @@ def test_single_locale_apps_keep_plain_module_urls():
 def test_plural_requires_both_forms():
     with pytest.raises(VirelCompileError, match="'one' and 'other'"):
         ui.messages("en", {"bad": {"one": "x"}})
+
+
+def test_rtl_locales_set_the_document_direction():
+    ui.messages("ar", {"greeting": "مرحبا {name}"})
+    ui.messages("en", {"greeting": "Hello {name}"})
+
+    @ui.page("/dir")
+    def dir_page():
+        return ui.Page(ui.Text(ui.t("greeting", name="Ada")))
+
+    from virel.compiler import compile_page
+    from virel.registry import active_registry
+    arabic = compile_page(active_registry().pages["/dir"], locale="ar")
+    english = compile_page(active_registry().pages["/dir"], locale="en")
+    assert '<html lang="ar" dir="rtl">' in arabic.html
+    assert 'dir="rtl"' not in english.html
+
+
+def test_direction_override_and_validation():
+    import pytest
+    from virel.expr import VirelCompileError
+    from virel.i18n import text_direction
+
+    ui.messages("dev-mirror", {"x": "x"}, direction="rtl")
+    assert text_direction("dev-mirror") == "rtl"
+    assert text_direction("he") == "rtl"
+    assert text_direction("pt-BR") == "ltr"
+    with pytest.raises(VirelCompileError, match="direction"):
+        ui.messages("xx", {"x": "x"}, direction="sideways")
+
+
+def test_component_css_uses_logical_properties():
+    from virel.theme import build_stylesheet
+    css = build_stylesheet()
+    assert "text-align: start" in css
+    assert "inset-inline-end" in css
+    assert '[dir="rtl"] .v-sidebar' in css
+    assert "text-align: left" not in css
+
+
+def test_route_metadata_translates_per_locale():
+    ui.messages("en", {"settings.title": "Settings"})
+    ui.messages("pt", {"settings.title": "Configuracoes"})
+
+    @ui.page("/meta")
+    def meta_page():
+        return ui.Page(ui.Heading(ui.t("settings.title"), level=1),
+                       title=ui.t("settings.title"))
+
+    from virel.compiler import compile_page
+    from virel.registry import active_registry
+    portuguese = compile_page(active_registry().pages["/meta"], locale="pt")
+    assert "<title>Configuracoes</title>" in portuguese.html
+
+
+def test_locale_aware_sorting():
+    names = ["Östlund", "Andersson", "Zetterberg", "Ärling"]
+    assert ui.locale_sorted(names, locale="sv") == [
+        "Andersson", "Zetterberg", "Ärling", "Östlund"]
+    assert ui.locale_sorted(names, locale="de") == [
+        "Andersson", "Ärling", "Östlund", "Zetterberg"]
+    people = [{"name": "Ö"}, {"name": "A"}]
+    assert ui.locale_sorted(people, key=lambda p: p["name"],
+                            locale="de")[0]["name"] == "A"
+
+
+def test_message_key_extraction(tmp_path):
+    from virel.cli import extract_message_keys
+
+    (tmp_path / "routes.py").write_text(
+        'from virel import ui\n'
+        'def page():\n'
+        '    ui.t("greeting", name="x")\n'
+        '    ui.t("runs", count=2)\n'
+        '    key = "dyn"\n'
+        '    ui.t(key)\n'
+    )
+    keys, dynamic = extract_message_keys(tmp_path)
+    assert keys == {"greeting", "runs"}
+    assert len(dynamic) == 1 and dynamic[0].endswith(":6")

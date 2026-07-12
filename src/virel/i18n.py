@@ -41,10 +41,35 @@ from .expr import (
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 
-def messages(locale: str, catalog: dict[str, Any]) -> None:
-    """Register (or extend) the message catalog for a locale."""
+# Languages written right to left. The document direction follows the
+# locale automatically; ``messages(..., direction=)`` overrides it.
+_RTL_LANGUAGES = frozenset(
+    ("ar", "he", "fa", "ur", "ps", "sd", "ug", "yi", "dv", "ku"))
+
+
+def text_direction(locale: str) -> str:
+    """The writing direction for a locale: explicit registration wins,
+    then the language subtag decides."""
+    from .registry import active_registry
+    override = active_registry().locale_directions.get(locale)
+    if override:
+        return override
+    language = locale.split("-")[0].split("_")[0].lower()
+    return "rtl" if language in _RTL_LANGUAGES else "ltr"
+
+
+def messages(locale: str, catalog: dict[str, Any],
+             direction: str | None = None) -> None:
+    """Register (or extend) the message catalog for a locale. The
+    document direction follows the language automatically (Arabic,
+    Hebrew, Farsi, and friends are right-to-left); direction= overrides
+    the inference."""
     from .registry import active_registry
     registry = active_registry()
+    if direction is not None:
+        if direction not in ("ltr", "rtl"):
+            raise VirelCompileError("direction must be 'ltr' or 'rtl'.")
+        registry.locale_directions[locale] = direction
     for key, value in catalog.items():
         if isinstance(value, dict):
             missing = {"one", "other"} - set(value)

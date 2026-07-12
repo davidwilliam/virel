@@ -374,6 +374,9 @@ class AppRegistry:
         # Message catalogs per locale (ui.messages) and the fallback locale.
         self.catalogs: dict[str, dict] = {}
         self.default_locale = "en"
+        # Explicit writing-direction overrides per locale (ui.messages
+        # direction=); unlisted locales infer from the language subtag.
+        self.locale_directions: dict[str, str] = {}
         # Guard applied to every page and action before specific guards.
         self.default_guard: Callable[..., Any] | None = None
         # Build-time functions (@ui.build), memoized per build.

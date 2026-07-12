@@ -252,3 +252,51 @@ def format_date(value: Any, *, style: str = "medium") -> str | Expr:
     if isinstance(value, Expr):
         return _IntlDate(value, style, locale)
     return _py_date(value, style, locale)
+
+
+# --------------------------------------------------------------------------
+# Locale-aware sorting (SPEC 11.3)
+# --------------------------------------------------------------------------
+
+# Collation tailoring per language: characters that sort as their own
+# letters after z, rather than as accented variants of a/o. The
+# replacement strings order after "z" and preserve the tailored order.
+_COLLATION_TAILORING: dict[str, dict[str, str]] = {
+    "sv": {"å": "z{", "ä": "z|", "ö": "z}"},
+    "fi": {"å": "z{", "ä": "z|", "ö": "z}"},
+    "da": {"æ": "z{", "ø": "z|", "å": "z}"},
+    "nb": {"æ": "z{", "ø": "z|", "å": "z}"},
+    "nn": {"æ": "z{", "ø": "z|", "å": "z}"},
+    "no": {"æ": "z{", "ø": "z|", "å": "z}"},
+}
+
+
+def collation_key(value: Any, locale: str | None = None):
+    """A sort key matching how the locale orders text: case- and
+    accent-insensitive at the primary level (so 'Ärger' sorts with
+    'Arger' in German), with Nordic letters ordered after z where the
+    language treats them as distinct letters. Original text breaks ties
+    so unequal strings never compare equal."""
+    locale = locale or active_locale()
+    text = str(value).casefold()
+    tailoring = _COLLATION_TAILORING.get(locale.split("-")[0].split("_")[0])
+    if tailoring:
+        for char, replacement in tailoring.items():
+            text = text.replace(char, replacement)
+    import unicodedata
+    decomposed = unicodedata.normalize("NFKD", text)
+    primary = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return (primary, text)
+
+
+def locale_sorted(items, *, key=None, locale: str | None = None,
+                  reverse: bool = False) -> list:
+    """``sorted`` with locale-aware text collation (SPEC 11.3):
+
+        ui.locale_sorted(names)                       # active locale
+        ui.locale_sorted(users, key=lambda u: u.name, locale="sv")
+    """
+    extract = key or (lambda item: item)
+    return sorted(items,
+                  key=lambda item: collation_key(extract(item), locale),
+                  reverse=reverse)
