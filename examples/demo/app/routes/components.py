@@ -215,6 +215,7 @@ def _broken_panel() -> ui.Node:
 def _layout_tab() -> ui.Node:
     lorem = ("Composable layout primitives cover the space between a "
              "single flex row and a full app shell. ")
+    last_action = ui.state("")
     return ui.Stack(
         ui.Card(
             ui.Heading("Splitter", level=3),
@@ -252,7 +253,13 @@ def _layout_tab() -> ui.Node:
             ui.Card(
                 ui.Heading("AspectRatio", level=3),
                 ui.AspectRatio(
-                    ui.Center(ui.Icon("play", size=28)),
+                    ui.Box(
+                        ui.Icon("play", size=28),
+                        css={"display": "grid", "place-items": "center",
+                             "background": "var(--v-accent-soft)",
+                             "color": "var(--v-accent)",
+                             "border-radius": "10px"},
+                    ),
                     ratio="16/9",
                 ),
                 gap=3,
@@ -284,9 +291,16 @@ def _layout_tab() -> ui.Node:
                           ("alpha", "bravo", "charlie", "delta", "echo",
                            "foxtrot", "golf", "hotel")], gap=2),
                 ui.Cluster(
-                    ui.Button("Save", intent="primary", size="sm"),
-                    ui.Button("Preview", size="sm"),
-                    ui.Button("Discard", emphasis="ghost", size="sm"),
+                    ui.Button("Save", intent="primary", size="sm",
+                              on_click=lambda: last_action.set("Saved")),
+                    ui.Button("Preview", size="sm",
+                              on_click=lambda: last_action.set(
+                                  "Preview opened")),
+                    ui.Button("Discard", emphasis="ghost", size="sm",
+                              on_click=lambda: last_action.set(
+                                  "Draft discarded")),
+                    ui.When(last_action != "",
+                            then=ui.Badge(last_action, intent="primary")),
                     gap=2,
                 ),
                 gap=4,

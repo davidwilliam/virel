@@ -104,6 +104,15 @@ def test_design_preferences_switch_and_persist(page, server_url):
     assert page.evaluate(accent) == before
 
 
+def test_cluster_buttons_update_state(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Layout").click()
+    page.get_by_role("button", name="Save", exact=True).click()
+    page.get_by_text("Saved", exact=True).wait_for()
+    page.get_by_role("button", name="Discard").click()
+    page.get_by_text("Draft discarded").wait_for()
+
+
 def test_splitter_divider_moves_with_the_keyboard(page, server_url):
     page.goto(f"{server_url}/components")
     page.get_by_role("tab", name="Layout").click()
