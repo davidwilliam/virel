@@ -637,6 +637,18 @@ into a shadow root with the compiled stylesheet adopted, and dispose
 cleanly on disconnect. Islands cover the in-page form, and route-level
 mounting goes through `virel.integrations` (PathMount, ASGI).
 
+## Plugins
+
+Plugins extend the toolchain under a capability contract (SPEC 13.5):
+subclass `ui.Plugin`, declare capabilities, implement the matching
+hooks, and register with `ui.use_plugin`. Capabilities cover compiler
+passes, lint warnings (joining `virel check` output), component and
+route registration, build configuration, asset transformation,
+post-build deployment, test observation, and inspector panels. A hook
+without its declared capability is a registration error, an undeclared
+hook never runs, and `ui.use_policy(plugin_capabilities={...})` limits
+what plugins may do at all.
+
 ## Notebooks
 
 `ui.preview(fn)` renders a page or component inline in Jupyter through

@@ -130,6 +130,9 @@ def cmd_build(args: argparse.Namespace) -> None:
     dist = root / "dist"
     ir_dir = root / ".virel" / "ir"
 
+    from .plugins import (run_asset_transforms, run_build_config,
+                          run_post_build)
+    run_build_config(config)
     try:
         if args.target == "static":
             report = build_static(hashed=True)
@@ -147,7 +150,8 @@ def cmd_build(args: argparse.Namespace) -> None:
     from .theme import compact
     framework_dir = dist / "_virel"
     (framework_dir / "page").mkdir(parents=True)
-    (framework_dir / "runtime.js").write_text(compact(runtime_js()))
+    (framework_dir / "runtime.js").write_text(
+        run_asset_transforms("_virel/runtime.js", compact(runtime_js())))
     from importlib import resources as _resources
     fonts_dir = framework_dir / "fonts"
     fonts_dir.mkdir()
@@ -155,7 +159,9 @@ def cmd_build(args: argparse.Namespace) -> None:
     for font in fonts.iterdir():
         (fonts_dir / font.name).write_bytes(font.read_bytes())
     theme = registry.theme or Theme()
-    (framework_dir / "app.css").write_text(compact(build_stylesheet(theme)))
+    (framework_dir / "app.css").write_text(
+        run_asset_transforms("_virel/app.css",
+                             compact(build_stylesheet(theme))))
 
     for compiled in report.pages:
         if compiled.route == "/":
@@ -165,7 +171,9 @@ def cmd_build(args: argparse.Namespace) -> None:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(compiled.html)
         if compiled.js:
-            (framework_dir / "page" / compiled.js_module).write_text(compiled.js)
+            (framework_dir / "page" / compiled.js_module).write_text(
+                run_asset_transforms(f"_virel/page/{compiled.js_module}",
+                                     compiled.js))
         (ir_dir / f"{compiled.slug}.json").write_text(
             json.dumps(compiled.ir, indent=2))
 
@@ -203,6 +211,7 @@ def cmd_build(args: argparse.Namespace) -> None:
         for name, action in registry.actions.items()
     }
     (ir_dir.parent / "actions.json").write_text(json.dumps(manifest, indent=2))
+    run_post_build(dist)
     print(f"UI IR written to {ir_dir}")
     print(f"Server action manifest written to {ir_dir.parent / 'actions.json'}")
 

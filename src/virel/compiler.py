@@ -89,6 +89,10 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
             from .nodes import normalize_children
             root.children = normalize_children((content,))
 
+        # Plugin compiler passes (SPEC 13.5) see the tree first.
+        from .plugins import run_compiler_passes, run_lints
+        run_compiler_passes(root, page.path)
+
         # Accessibility audit (SPEC 11.2): hard failures raise here;
         # warnings surface on the compiled page and in `virel check`.
         from .a11y import audit_page
@@ -150,7 +154,7 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
             root, body_html, js_module, js, dev=dev,
             inline_js=inline_js or needs_request_render, lang=lang,
             versioned=hashed)
-        return CompiledPage(
+        result = CompiledPage(
             route=page.path,
             slug=page.slug,
             title=root.title,
@@ -169,6 +173,8 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
             warnings=a11y_warnings,
             body_html=body_html,
         )
+        result.warnings.extend(run_lints(result))
+        return result
 
 
 def _resolve_render_mode(page: Page, js: str | None, actions: list[str]) -> str:

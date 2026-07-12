@@ -517,5 +517,8 @@ def render(fn: Callable[..., Any], *, fetch_resources: bool = True,
     loading states instead, and ``context={...}`` to provide request-context
     values normally supplied by guards.
     """
-    return TestView(fn, params or None, fetch_resources=fetch_resources,
+    view = TestView(fn, params or None, fetch_resources=fetch_resources,
                     context=context)
+    from .plugins import run_test_hooks
+    run_test_hooks(view)
+    return view

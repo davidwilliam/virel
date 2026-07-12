@@ -274,7 +274,12 @@ class VirelASGIApp:
             page, params = matched
             result = compile_page(page, params=params or None, dev=True,
                                   inline_js=page.is_dynamic)
-            await self._send_json(send, 200, result.ir)
+            from .plugins import inspector_panels
+            payload = dict(result.ir)
+            panels = inspector_panels()
+            if panels:
+                payload["plugins"] = panels
+            await self._send_json(send, 200, payload)
             return
         if path.startswith("/_virel/page/") and path.endswith(".js"):
             await self._serve_page_js(path, send)

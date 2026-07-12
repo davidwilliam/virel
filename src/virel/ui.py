@@ -111,6 +111,7 @@ from .registry import (Request, build, client, component, deny, layout,
 from .embed import Fragment, as_custom_element, render_fragment
 from .notebook import Preview, preview
 from .notifications import notify
+from .plugins import Plugin, use_plugin
 from .motion import (Easing, Keyframes, Motion, animation, keyframes,
                      spring, transition)
 from .styles import Style, recipe, style
@@ -147,6 +148,7 @@ __all__ = [
     "web_component",
     "use_guard", "use_middleware", "use_static", "use_css",
     "use_accessibility", "use_policy", "unsafe", "redirect", "deny",
+    "Plugin", "use_plugin",
     "Request",
     "channel", "connect", "Channel", "ChannelClosed",
     "context", "Context",
