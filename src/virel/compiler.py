@@ -41,6 +41,9 @@ class CompiledPage:
     streamed_resources: list = field(default_factory=list)
     # Accessibility audit warnings (SPEC 11.2), printed by `virel check`.
     warnings: list[str] = field(default_factory=list)
+    # The rendered body alone, for embedding outside the standard
+    # document (notebook preview, SPEC 12.5).
+    body_html: str = ""
 
 
 def compile_page(page: Page, params: dict[str, Any] | None = None,
@@ -164,6 +167,7 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
                 for r in ctx.resources.values() if r.streamed_ssr
             ],
             warnings=a11y_warnings,
+            body_html=body_html,
         )
 
 

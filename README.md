@@ -622,6 +622,16 @@ a streaming action. Everything wires to the same states and server
 actions as the rest of the framework, so swapping the model behind an
 action changes nothing in the UI.
 
+## Notebooks
+
+`ui.preview(fn)` renders a page or component inline in Jupyter through
+the production compiler: the same trace, emitter, accessibility audit,
+and runtime, packaged as a self-contained sandboxed document, so
+browser-local interactivity works with no server and whatever previews
+ships unchanged. There is no notebook-only API. Server actions need
+`virel dev`, and the preview says so inline. `preview(...).save(path)`
+writes the standalone document for sharing.
+
 ## Testing
 
 Component tests run from pytest without a browser. Queries follow

@@ -108,6 +108,7 @@ from .registry import (Request, build, client, component, deny, layout,
                        redirect, server, shared, use_accessibility,
                        use_css, use_guard,
                        use_middleware, use_static, web_component)
+from .notebook import Preview, preview
 from .notifications import notify
 from .motion import (Easing, Keyframes, Motion, animation, keyframes,
                      spring, transition)
@@ -153,7 +154,7 @@ __all__ = [
     "Motion", "keyframes", "Keyframes", "animation", "transition",
     "spring", "Easing", "Swipeable",
     "FontFace", "GoogleFont", "set_preference",
-    "Node", "VirelCompileError", "test", "ai",
+    "Node", "VirelCompileError", "test", "ai", "preview", "Preview",
     "messages", "t",
     "format_number", "format_currency", "format_percent", "format_date",
     "locale_sorted", "collation_key", "records",

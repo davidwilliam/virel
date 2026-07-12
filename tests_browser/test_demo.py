@@ -596,3 +596,28 @@ def test_ai_job_progress_updates(page, server_url):
         page.wait_for_timeout(25)
     assert "done" in page.locator(
         ".v-ai-job .v-badge:visible").first.text_content()
+
+
+def test_notebook_preview_bundle_is_interactive(page, server_url):
+    # The preview document is fully self-contained: loaded with no
+    # server at all, its compiled handlers still run.
+    import subprocess
+    import sys
+    document = subprocess.run(
+        [sys.executable, "-c", (
+            "from virel import ui\n"
+            "def playground():\n"
+            "    count = ui.state(0)\n"
+            "    return ui.Stack(\n"
+            "        ui.Text(f'Count: {count}'),\n"
+            "        ui.Button('Increment',\n"
+            "                  on_click=lambda: count.update(\n"
+            "                      lambda c: c + 1)),\n"
+            "    )\n"
+            "print(ui.preview(playground).document)\n")],
+        capture_output=True, text=True, check=True).stdout
+    page.set_content(document)
+    page.get_by_text("Count: 0").wait_for()
+    page.get_by_role("button", name="Increment").click()
+    page.get_by_role("button", name="Increment").click()
+    page.get_by_text("Count: 2").wait_for()
