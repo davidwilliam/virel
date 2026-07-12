@@ -158,3 +158,72 @@ def test_container_query_restyles_by_container_width(page, server_url):
     wide = settle("30rem", lambda value: value != narrow)
     assert wide != narrow
     assert settle("15rem", lambda value: value == narrow) == narrow
+
+
+def _motion_tab(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Motion").click()
+
+
+def test_when_animates_enter_and_exit(page, server_url):
+    _motion_tab(page, server_url)
+    panel = page.get_by_text("This panel fades and rises in")
+    panel.wait_for()
+    toggle = page.get_by_role("button", name="Toggle panel")
+
+    toggle.click()  # exit: stays visible while animating, then hides
+    hidden = False
+    for _ in range(40):
+        if not panel.is_visible():
+            hidden = True
+            break
+        page.wait_for_timeout(25)
+    assert hidden
+
+    toggle.click()  # enter
+    panel.wait_for(state="visible")
+
+
+def test_list_items_animate_in_and_flip_on_reorder(page, server_url):
+    _motion_tab(page, server_url)
+    page.get_by_text("Design review").wait_for()
+
+    page.get_by_role("button", name="Add task").click()
+    page.get_by_text("Task 4").wait_for()
+
+    head = ("document.querySelectorAll('.v-each .v-card')[0].textContent")
+    before = page.evaluate(head)
+    page.get_by_role("button", name="Rotate").click()
+    after = before
+    for _ in range(40):
+        after = page.evaluate(head)
+        if after != before:
+            break
+        page.wait_for_timeout(25)
+    assert after != before  # the last item rotated to the front
+
+
+def test_swipeable_dismisses_from_the_keyboard(page, server_url):
+    _motion_tab(page, server_url)
+    note = page.get_by_text("Swipe me away.")
+    note.wait_for()
+    page.locator(".v-swipeable").focus()
+    page.keyboard.press("Delete")
+    page.get_by_text("Dismissed.").wait_for()
+    page.get_by_role("button", name="Bring it back").click()
+    page.get_by_text("Swipe me away.").wait_for()
+
+
+def test_reduced_motion_still_completes_exit(page, server_url):
+    page.emulate_media(reduced_motion="reduce")
+    _motion_tab(page, server_url)
+    panel = page.get_by_text("This panel fades and rises in")
+    panel.wait_for()
+    page.get_by_role("button", name="Toggle panel").click()
+    hidden = False
+    for _ in range(40):
+        if not panel.is_visible():
+            hidden = True
+            break
+        page.wait_for_timeout(25)
+    assert hidden

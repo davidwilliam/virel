@@ -442,7 +442,10 @@ class FnCompiler:
             raise self.error(call, "The update lambda takes exactly one parameter.")
         param = lam.args.args[0].arg
         # Substitute the lambda parameter with the current state value.
-        value = _SubstitutingCompiler(self, {param: StateRead(state.name)}).expr(lam.body)
+        read = StateRead(state.name,
+                         holds_list=isinstance(getattr(state, "initial", None),
+                                               list))
+        value = _SubstitutingCompiler(self, {param: read}).expr(lam.body)
         return SetOp(state.name, value)
 
     def _compile_action_call(self, call: ast.Call, action: Any, attr: str) -> Any:
@@ -591,7 +594,9 @@ class FnCompiler:
                 "state.set(...) to change reactive state.",
             )
         if _is_reactive(resolved):
-            return StateRead(resolved.name)
+            return StateRead(resolved.name,
+                             holds_list=isinstance(
+                                 getattr(resolved, "initial", None), list))
         if isinstance(resolved, Expr):
             # e.g. the symbolic item of a ui.Each template captured by a
             # named handler defined inside the render function.

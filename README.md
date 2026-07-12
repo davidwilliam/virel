@@ -491,6 +491,40 @@ raw CSS compiled into `app.css` after everything else, so it can express
 what inline declarations cannot (pseudo-elements, container queries,
 keyframes) and override any default.
 
+## Animation
+
+Everything compiles to real CSS animations and transitions: no animation
+loop ships in the runtime, the compositor does the work, and the
+browser's native Animations devtools panel inspects every timeline.
+Spring physics is simulated in Python at compile time and emitted as a
+CSS `linear()` easing curve, so springs cost zero JavaScript per frame:
+
+```python
+pulse = ui.keyframes({"0%": {"opacity": 1}, "50%": {"opacity": 0.4},
+                      "100%": {"opacity": 1}})
+ui.style(animation=ui.animation(pulse, duration=1200, iterations="infinite"),
+         transition=ui.transition("transform",
+                                  easing=ui.spring(stiffness=280, damping=14)))
+```
+
+Enter and exit animation attaches to conditional content and lists;
+`layout=True` adds FLIP animation, so reordered items glide to their new
+positions while removed items freeze in place and fade out:
+
+```python
+ui.When(show, then=panel, animate=ui.Motion(enter="fade-up", exit="fade"))
+ui.Each(tasks, render=row, key=..., animate=ui.Motion(
+    enter="slide-right", exit="fade", layout=True))
+```
+
+`ui.Swipeable` adds gestures: content follows the pointer, springs back
+below the threshold, and slides away firing `on_dismiss` past it, with
+Delete-key parity for keyboard users. Reduced motion collapses every
+animation to instant by default; `ui.animation(..., essential=True)`
+exempts motion that conveys state (progress, live indicators), and
+`ui.Motion(reduced="none")` removes an animation entirely for those
+users. Animations run in the browser and generate no server traffic.
+
 Third-party web components integrate through typed bindings generated from
 their custom elements manifests (`virel bind`), and static assets that live
 outside the project's public directory, such as a vendored package or files

@@ -331,6 +331,19 @@ class TestElement:
                 )
         self.view._run_handler(handler, ev={"target": {}}, scope=self.scope)
 
+    def emit(self, event: str, detail: Any = None) -> None:
+        """Dispatch a named event: gesture events (virel-dismiss) and
+        custom element events both flow through the same handlers."""
+        self._require_visible("emit")
+        handler = self.node.events.get(event)
+        if handler is None:
+            raise AssertionError(
+                f"<{self.node.tag}> has no {event!r} handler."
+            )
+        self.view._run_handler(handler,
+                               ev={"target": {}, "detail": detail or {}},
+                               scope=self.scope)
+
     def fill(self, value: Any) -> None:
         self._require_visible("fill")
         handler = self.node.events.get("input") or self.node.events.get("change")

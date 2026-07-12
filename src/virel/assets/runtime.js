@@ -137,11 +137,60 @@ export function bindText(id, fn) {
   });
 }
 
-export function bindShow(id, fn) {
+/* Enter/exit animation (SPEC 10.8): a class carrying a CSS animation
+ * is applied for one run. Real CSS animations mean the browser's
+ * Animations devtools panel inspects every timeline. A run counter
+ * guards against rapid toggles: a stale animation's completion never
+ * applies an outdated end state. */
+let motionRun = 0;
+function animateClass(node, cls, done) {
+  const token = ++motionRun;
+  node.__vmRun = token;
+  node.classList.remove(cls);
+  void node.offsetWidth; // restart the animation if it was mid-flight
+  node.classList.add(cls);
+  const style = getComputedStyle(node);
+  if (style.animationName === "none" || style.display === "none") {
+    node.classList.remove(cls);
+    if (done) done();
+    return;
+  }
+  const finish = (ev) => {
+    if (ev.target !== node) return;
+    node.removeEventListener("animationend", finish);
+    node.removeEventListener("animationcancel", finish);
+    node.classList.remove(cls);
+    if (done && node.__vmRun === token) done();
+  };
+  node.addEventListener("animationend", finish);
+  node.addEventListener("animationcancel", finish);
+}
+
+export function bindShow(id, fn, motion) {
   const node = el(id);
   if (!node) return;
+  let first = true;
   effect(() => {
-    node.style.display = fn() ? "" : "none";
+    const show = !!fn();
+    if (!motion || first) {
+      node.style.display = show ? "" : "none";
+      first = false;
+      return;
+    }
+    const visible = node.style.display !== "none";
+    if (show && !visible) {
+      node.style.display = "";
+      if (motion.enter) animateClass(node, motion.enter);
+      else node.__vmRun = ++motionRun; // cancel a pending exit hide
+    } else if (!show && visible) {
+      if (motion.exit) {
+        animateClass(node, motion.exit, () => {
+          node.style.display = "none";
+        });
+      } else {
+        node.style.display = "none";
+      }
+    }
   });
 }
 
@@ -209,10 +258,11 @@ export function esc(value) {
   })[c]);
 }
 
-export function bindList(id, items, renderItem, keyFn, handlers) {
+export function bindList(id, items, renderItem, keyFn, handlers, motion) {
   const node = el(id);
   if (!node) return;
   let current = [];
+  let hydrated = false;
 
   // Item events are delegated from the list container, so handlers
   // survive re-renders and cost one listener per event type.
@@ -226,7 +276,7 @@ export function bindList(id, items, renderItem, keyFn, handlers) {
         const target = ev.target.closest("[data-vh]");
         if (!target || !node.contains(target)) return;
         const wrap = target.closest("[data-vi]");
-        if (!wrap) return;
+        if (!wrap || wrap.dataset.vexit) return;
         const item = current[Number(wrap.dataset.vi)];
         const group = handlers[target.dataset.vh];
         const fn = group && group[ev.type];
@@ -237,12 +287,26 @@ export function bindList(id, items, renderItem, keyFn, handlers) {
 
   // Keyed reconciliation: unchanged items keep their DOM nodes (and
   // therefore focus and selection); changed items re-render in place.
+  // With motion, new items animate in, removed items freeze in place
+  // (absolutely positioned) while animating out so the layout collapses
+  // smoothly, and layout animation FLIPs survivors to new positions.
   const keyed = new Map();
   effect(() => {
     const list = items() || [];
     current = list;
+
+    let flipRects = null;
+    if (motion && motion.flip && hydrated) {
+      flipRects = new Map();
+      for (const [key, entry] of keyed) {
+        const child = entry.el.firstElementChild;
+        if (child) flipRects.set(key, child.getBoundingClientRect());
+      }
+    }
+
     const liveKeys = new Set();
     const ordered = [];
+    const entered = [];
     list.forEach((item, index) => {
       let key = keyFn ? String(keyFn(item)) : String(index);
       while (liveKeys.has(key)) key += ":" + index;
@@ -255,6 +319,7 @@ export function bindList(id, items, renderItem, keyFn, handlers) {
         wrap.style.display = "contents";
         entry = { el: wrap, html: null };
         keyed.set(key, entry);
+        if (hydrated && motion && motion.enter) entered.push(entry);
       }
       if (entry.html !== html) {
         entry.el.innerHTML = html;
@@ -263,18 +328,170 @@ export function bindList(id, items, renderItem, keyFn, handlers) {
       entry.el.dataset.vi = String(index);
       ordered.push(entry.el);
     });
+
     for (const [key, entry] of keyed) {
-      if (!liveKeys.has(key)) {
-        keyed.delete(key);
+      if (liveKeys.has(key)) continue;
+      keyed.delete(key);
+      const child = entry.el.firstElementChild;
+      if (hydrated && motion && motion.exit && child) {
+        const listRect = node.getBoundingClientRect();
+        const rect = child.getBoundingClientRect();
+        entry.el.dataset.vexit = "1";
+        child.style.position = "absolute";
+        child.style.left = rect.left - listRect.left + "px";
+        child.style.top = rect.top - listRect.top + "px";
+        child.style.width = rect.width + "px";
+        child.style.height = rect.height + "px";
+        child.style.margin = "0";
+        animateClass(child, motion.exit, () => entry.el.remove());
+      } else {
         entry.el.remove();
       }
     }
-    ordered.forEach((child, index) => {
-      if (node.children[index] !== child) {
-        node.insertBefore(child, node.children[index] || null);
+
+    // Position live wrappers among the children, flowing around any
+    // still-exiting ones; then drop leftovers (initial server-rendered
+    // markup on hydration).
+    let cursor = node.firstElementChild;
+    const advance = () => {
+      while (cursor && cursor.dataset.vexit) {
+        cursor = cursor.nextElementSibling;
       }
-    });
-    while (node.children.length > ordered.length) node.lastChild.remove();
+    };
+    for (const wrap of ordered) {
+      advance();
+      if (cursor === wrap) {
+        cursor = cursor.nextElementSibling;
+        continue;
+      }
+      node.insertBefore(wrap, cursor);
+    }
+    const keep = new Set(ordered);
+    for (const extra of Array.from(node.children)) {
+      if (!keep.has(extra) && !extra.dataset.vexit) extra.remove();
+    }
+
+    if (flipRects) {
+      for (const [key, entry] of keyed) {
+        const child = entry.el.firstElementChild;
+        const was = flipRects.get(key);
+        if (!child || !was) continue;
+        const now = child.getBoundingClientRect();
+        const dx = was.left - now.left;
+        const dy = was.top - now.top;
+        if (!dx && !dy) continue;
+        child.style.transition = "none";
+        child.style.transform = `translate(${dx}px, ${dy}px)`;
+        requestAnimationFrame(() => {
+          child.style.transition =
+            `transform ${motion.flipDuration}ms ${motion.flipEasing}`;
+          child.style.transform = "";
+          child.addEventListener("transitionend", () => {
+            child.style.transition = "";
+          }, { once: true });
+        });
+      }
+    }
+
+    for (const entry of entered) {
+      const child = entry.el.firstElementChild;
+      if (child) animateClass(child, motion.enter);
+    }
+
+    hydrated = true;
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Swipe gesture (SPEC 10.8): content follows the pointer and either
+ * springs back or slides away and fires virel-dismiss. Delete and
+ * Backspace dismiss from the keyboard. Reduced motion collapses the
+ * inline transitions through the global rule.
+ * ------------------------------------------------------------------ */
+
+export function swipeable(id) {
+  const node = el(id);
+  if (!node) return;
+  const direction = node.dataset.direction || "x";
+  const threshold = Number(node.dataset.threshold || 0.35);
+  const allowed = (dx) =>
+    direction === "x" ? true : direction === "left" ? dx < 0 : dx > 0;
+  let startX = null;
+  let startTime = 0;
+  let lastDx = 0;
+  let dragging = false;
+
+  const dismiss = (dx) => {
+    const width = node.offsetWidth || 300;
+    const target = (dx < 0 ? -1 : 1) * width * 1.2;
+    node.style.transition =
+      "transform 200ms cubic-bezier(0.16, 1, 0.3, 1), opacity 200ms linear";
+    node.style.transform = `translateX(${target}px)`;
+    node.style.opacity = "0";
+    setTimeout(() => {
+      node.dispatchEvent(new CustomEvent("virel-dismiss", { bubbles: true }));
+      // The handler normally removes the item; if it did not, restore.
+      setTimeout(() => {
+        if (node.isConnected) {
+          node.style.transition = "";
+          node.style.transform = "";
+          node.style.opacity = "";
+        }
+      }, 250);
+    }, 200);
+  };
+  const snapBack = () => {
+    node.style.transition = "transform 300ms cubic-bezier(0.16, 1, 0.3, 1)";
+    node.style.transform = "";
+    node.addEventListener("transitionend", () => {
+      node.style.transition = "";
+    }, { once: true });
+  };
+
+  node.addEventListener("pointerdown", (down) => {
+    if (down.button !== 0) return;
+    startX = down.clientX;
+    startTime = performance.now();
+    lastDx = 0;
+    dragging = false;
+  });
+  node.addEventListener("pointermove", (ev) => {
+    if (startX === null) return;
+    let dx = ev.clientX - startX;
+    if (!dragging) {
+      if (Math.abs(dx) < 6) return;
+      dragging = true;
+      node.setPointerCapture(ev.pointerId);
+    }
+    if (!allowed(dx)) dx *= 0.25; // resistance against the blocked way
+    lastDx = dx;
+    node.style.transition = "none";
+    node.style.transform = `translateX(${dx}px)`;
+  });
+  const release = () => {
+    if (startX === null) return;
+    const dx = lastDx;
+    const wasDragging = dragging;
+    startX = null;
+    dragging = false;
+    if (!wasDragging) return;
+    const width = node.offsetWidth || 300;
+    const elapsed = Math.max(1, performance.now() - startTime);
+    const velocity = Math.abs(dx) / elapsed;
+    if (allowed(dx) && (Math.abs(dx) > width * threshold
+                        || (velocity > 0.6 && Math.abs(dx) > 24))) {
+      dismiss(dx);
+    } else {
+      snapBack();
+    }
+  };
+  node.addEventListener("pointerup", release);
+  node.addEventListener("pointercancel", release);
+  node.addEventListener("keydown", (ev) => {
+    if (ev.key === "Delete" || ev.key === "Backspace") {
+      ev.preventDefault();
+      dismiss(direction === "right" ? 1 : -1);
+    }
   });
 }
 

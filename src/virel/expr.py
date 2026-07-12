@@ -114,6 +114,8 @@ def lift(value: Any) -> "Expr":
     if value is None or isinstance(value, (bool, int, float, str)):
         return Lit(value)
     if isinstance(value, (list, tuple)):
+        if any(isinstance(item, Expr) for item in value):
+            return ListExpr([lift(item) for item in value])
         return Lit(list(value))
     if isinstance(value, dict):
         return Lit(value)
@@ -126,6 +128,9 @@ def lift(value: Any) -> "Expr":
 
 class Expr:
     """Base class for symbolic expressions. Supports a typed operator subset."""
+
+    def is_list(self) -> bool:
+        return False
 
     def js(self) -> str:
         raise NotImplementedError
@@ -241,16 +246,23 @@ class Lit(Expr):
     def evaluate(self, env: dict[str, Any]) -> Any:
         return self.value
 
+    def is_list(self) -> bool:
+        return isinstance(self.value, list)
+
 
 class StateRead(Expr):
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, holds_list: bool = False) -> None:
         self.name = name
+        self._holds_list = holds_list
 
     def js(self) -> str:
         return f"S.{self.name}.get()"
 
     def evaluate(self, env: dict[str, Any]) -> Any:
         return env[self.name]
+
+    def is_list(self) -> bool:
+        return self._holds_list
 
 
 class BinOp(Expr):
@@ -269,7 +281,15 @@ class BinOp(Expr):
     def js(self) -> str:
         if self.op == "//":
             return f"Math.floor({self.left.js()} / {self.right.js()})"
+        if self.op == "+" and self.is_list():
+            # Python list concatenation; JS + on arrays would coerce
+            # both sides to strings.
+            return f"{self.left.js()}.concat({self.right.js()})"
         return f"({self.left.js()} {self.op} {self.right.js()})"
+
+    def is_list(self) -> bool:
+        return self.op == "+" and (self.left.is_list()
+                                   or self.right.is_list())
 
     def evaluate(self, env: dict[str, Any]) -> Any:
         return self._PY[self.op](self.left.evaluate(env), self.right.evaluate(env))
@@ -475,6 +495,9 @@ class ListExpr(Expr):
     def evaluate(self, env: dict[str, Any]) -> Any:
         return [i.evaluate(env) for i in self.items]
 
+    def is_list(self) -> bool:
+        return True
+
 
 class Cast(Expr):
     """Builtin conversions and math helpers with JS equivalents."""
@@ -617,7 +640,8 @@ class State(StateRead):
 
     def update(self, fn: Callable[[Expr], Any]) -> None:
         recorder = current_recorder()
-        recorder.ops.append(SetOp(self.name, lift(fn(StateRead(self.name)))))
+        read = StateRead(self.name, holds_list=isinstance(self.initial, list))
+        recorder.ops.append(SetOp(self.name, lift(fn(read))))
 
     def to_ir(self) -> dict[str, Any]:
         return {"kind": "state", "name": self.name, "initial": self.initial}
@@ -630,6 +654,7 @@ class Derived(StateRead):
         ctx = current_context()
         super().__init__(name or ctx.next_id("d"))
         self.expr = lift(fn())
+        self._holds_list = self.expr.is_list()
         ctx.derived[self.name] = self
 
     def to_ir(self) -> dict[str, Any]:

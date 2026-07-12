@@ -39,6 +39,19 @@ p { margin: 0; }
   --v-safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* Swipe gesture container (SPEC 10.8) */
+.v-swipeable { touch-action: pan-y; cursor: grab; user-select: none; }
+.v-swipeable:active { cursor: grabbing; }
+.v-swipeable:focus-visible { outline: 2px solid var(--v-ring); outline-offset: 2px; border-radius: var(--v-radius-md); }
+
+/* Default motion for overlay chrome (SPEC 10.8); dialogs have their
+ * own open animation further down. */
+@keyframes v-pop-in {
+  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.v-menu-open .v-menu-list { animation: 140ms cubic-bezier(0.16, 1, 0.3, 1) both v-pop-in; }
+
 /* Touch adaptation (SPEC 10.7): comfortable tap targets when the
  * primary pointer is coarse, without inflating desktop density. */
 @media (pointer: coarse) {
@@ -56,7 +69,7 @@ p { margin: 0; }
   .v-grid { grid-template-columns: repeat(var(--v-cols-xl, var(--v-cols-md, var(--v-cols, 1))), minmax(0, 1fr)); }
 }
 .v-row { display: flex; flex-direction: row; }
-.v-each { display: flex; flex-direction: column; }
+.v-each { display: flex; flex-direction: column; position: relative; }
 .v-spacer { flex: 1; }
 .v-section { padding-block: calc(var(--v-space) * 6); }
 

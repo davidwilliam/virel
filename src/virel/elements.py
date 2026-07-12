@@ -330,6 +330,31 @@ def _css_declarations(css: dict[str, Any]) -> str:
     return "; ".join(parts)
 
 
+def Swipeable(*children: Any, on_dismiss: Callable[[], None],
+              direction: str = "x", threshold: float = 0.35,
+              class_name: str | None = None) -> Element:
+    """A gesture container (SPEC 10.8): its content follows the pointer
+    horizontally and, past the threshold (or with a quick flick), slides
+    away and fires on_dismiss. Below the threshold it springs back. The
+    container is focusable, and Delete or Backspace dismisses it, so the
+    gesture has keyboard parity."""
+    if direction not in ("x", "left", "right"):
+        raise VirelCompileError(
+            "Swipeable direction must be 'x', 'left', or 'right'.")
+    if not isinstance(threshold, (int, float)) or not 0.05 <= threshold <= 0.9:
+        raise VirelCompileError(
+            "Swipeable threshold is a fraction between 0.05 and 0.9.")
+    return Element("div", normalize_children(children),
+                   attrs={"class": _classes("v-swipeable", class_name),
+                          "data-direction": direction,
+                          "data-threshold": f"{threshold:g}",
+                          "tabindex": "0",
+                          "role": "group",
+                          "aria-label": "Swipe or press Delete to dismiss"},
+                   events={"virel-dismiss": _handler(on_dismiss)},
+                   runtime_binding="swipeable")
+
+
 def _css_length(value: str | int) -> str:
     """A CSS length from an int (pixels) or a validated string. Strings
     are restricted to simple lengths so styles cannot be broken out of."""
@@ -1016,13 +1041,17 @@ def Breadcrumbs(items: list[tuple[str, str | None]]) -> Element:
 
 
 def Each(items: Any, *, render: Callable[[Any], Any], tag: str = "div",
-         gap: int | None = 3, key: Callable[[Any], Any] | None = None) -> Node:
+         gap: int | None = 3, key: Callable[[Any], Any] | None = None,
+         animate: Any = None) -> Node:
     """Reactive list rendering. ``render`` receives a symbolic item and is
     traced once into a template. Items may carry event handlers (delegated
     from the container). With ``key``, unchanged items keep their DOM nodes
-    across re-renders."""
+    across re-renders. With ``animate`` (a ui.Motion or preset name), new
+    items animate in, removed items animate out, and layout=True makes
+    reordered items glide to their new position."""
     from .nodes import EachNode
-    return EachNode(items, render, tag=tag, gap=gap, key=key)
+    return EachNode(items, render, tag=tag, gap=gap, key=key,
+                    animate=animate)
 
 
 def Suspense(resource: Any, *, content: Any, fallback: Any = None,

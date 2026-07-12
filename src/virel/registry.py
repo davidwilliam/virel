@@ -388,6 +388,8 @@ class AppRegistry:
         self.static_mounts: dict[str, Path] = {}
         # Generated CSS from ui.style() objects, keyed by class name.
         self.styles: dict[str, str] = {}
+        # Generated @keyframes rules (ui.keyframes), keyed by name.
+        self.keyframes: dict[str, str] = {}
         # Raw CSS registered with ui.use_css (SPEC 10.5).
         self.custom_css: list[str] = []
 

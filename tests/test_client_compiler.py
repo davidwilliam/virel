@@ -193,3 +193,34 @@ def test_client_function_calling_client_function():
     # Dependency emitted before its caller.
     assert compiled.js.index("function double") < compiled.js.index("function quadruple")
     assert "= 4" in compiled.html
+
+
+def test_list_concatenation_emits_concat_not_plus():
+    from virel.compiler import compile_page
+    from virel.registry import active_registry
+
+    @ui.page("/concat")
+    def concat_page():
+        items = ui.state(["a"])
+
+        def add():
+            items.update(lambda xs: xs + ["b"])
+
+        def prepend():
+            items.update(lambda xs: ["z"] + xs)
+
+        return ui.Page(
+            ui.Button("Add", on_click=add),
+            ui.Button("Prepend", on_click=prepend),
+            ui.Each(items, render=lambda item: ui.Text(item)),
+        )
+
+    js = compile_page(active_registry().pages["/concat"]).js
+    # JS + on arrays coerces to strings; list math must emit concat.
+    assert '.concat(["b"])' in js
+    assert '["z"].concat(' in js
+
+    view = ui.test.render(concat_page)
+    view.get_by_role("button", name="Add").click()
+    view.get_by_role("button", name="Prepend").click()
+    assert view.state("s1") == ["z", "a", "b"]

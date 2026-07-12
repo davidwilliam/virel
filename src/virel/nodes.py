@@ -131,9 +131,12 @@ class Element(Node):
 
 class When(Node):
     """Reactive conditional rendering. Both branches stay in the DOM; the
-    runtime toggles visibility, so nested bindings keep working."""
+    runtime toggles visibility, so nested bindings keep working. With
+    animate=, showing and hiding run enter and exit animations."""
 
-    def __init__(self, condition: Any, then: Any, otherwise: Any = None) -> None:
+    def __init__(self, condition: Any, then: Any, otherwise: Any = None,
+                 animate: Any = None) -> None:
+        from .motion import coerce_motion
         self.condition = lift(condition)
         self.then = normalize_children(then if isinstance(then, (list, tuple)) else (then,))
         if otherwise is None:
@@ -142,14 +145,18 @@ class When(Node):
             self.otherwise = normalize_children(
                 otherwise if isinstance(otherwise, (list, tuple)) else (otherwise,)
             )
+        self.motion = coerce_motion(animate)
 
     def to_ir(self) -> dict[str, Any]:
-        return {
+        ir = {
             "kind": "when",
             "condition": self.condition.js(),
             "then": [c.to_ir() for c in self.then],
             "otherwise": [c.to_ir() for c in self.otherwise],
         }
+        if self.motion:
+            ir["motion"] = self.motion.config()
+        return ir
 
 
 class EachNode(Node):
@@ -162,11 +169,14 @@ class EachNode(Node):
     """
 
     def __init__(self, items: Any, render: Any, tag: str = "div",
-                 gap: int | None = None, key: Any = None) -> None:
+                 gap: int | None = None, key: Any = None,
+                 animate: Any = None) -> None:
         from .expr import ItemRef, LocalRef, lift
+        from .motion import coerce_motion
         self.items = lift(items)
         self.tag = tag
         self.gap = gap
+        self.motion = coerce_motion(animate)
         item = ItemRef(LocalRef("item"))
         template = render(item)
         self.key = lift(key(item)) if key is not None else None
@@ -427,8 +437,14 @@ class Emitter:
             else_id = self.assign_id()
             visible = bool(node.condition.evaluate(self.env))
             cond_js = node.condition.js()
-            self.bindings.append(f'$.bindShow("{then_id}", () => !!{cond_js});')
-            self.bindings.append(f'$.bindShow("{else_id}", () => !{cond_js});')
+            motion = ""
+            if node.motion:
+                import json as _json
+                motion = ", " + _json.dumps(node.motion.config())
+            self.bindings.append(
+                f'$.bindShow("{then_id}", () => !!{cond_js}{motion});')
+            self.bindings.append(
+                f'$.bindShow("{else_id}", () => !{cond_js}{motion});')
             then_html = self.emit_children(node.then)
             else_html = self.emit_children(node.otherwise)
             then_style = "" if visible else ' style="display:none"'
@@ -498,9 +514,12 @@ class Emitter:
             vid = self.assign_id()
             js_item = "(item) => `" + _template_js(node.template) + "`"
             js_key = f"(item) => {node.key.js()}" if node.key is not None else "null"
+            import json as _json
+            js_motion = (_json.dumps(node.motion.config()) if node.motion
+                         else "null")
             self.bindings.append(
                 f'$.bindList("{vid}", () => {node.items.js()} || [], '
-                f"{js_item}, {js_key}, {node.handlers_js()});")
+                f"{js_item}, {js_key}, {node.handlers_js()}, {js_motion});")
             initial = node.items.evaluate(self.env) or []
             rendered = "".join(
                 f'<div class="v-each-item" style="display:contents" data-vi="{index}">'

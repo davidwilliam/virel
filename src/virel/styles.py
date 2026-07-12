@@ -87,6 +87,15 @@ def _number(name: str, value: Any) -> str:
     return f"{value:g}"
 
 
+def _transform(name: str, value: Any) -> str:
+    text = str(value)
+    if re.search(r"[;{}<>]", text):
+        raise VirelCompileError(
+            f"{name} contains characters that are not allowed in a "
+            "declaration.")
+    return text
+
+
 # Python property name -> (CSS property, resolver). This is the typed
 # vocabulary; anything beyond it belongs in the ui.Box css= escape hatch.
 _PROPERTIES: dict[str, tuple[str, Any]] = {
@@ -110,6 +119,7 @@ _PROPERTIES: dict[str, tuple[str, Any]] = {
     "min_height": ("min-height", _length),
     "opacity": ("opacity", _number),
     "weight": ("font-weight", _number),
+    "transform": ("transform", _transform),
 }
 
 def _container_type(name: str, value: Any) -> str:
@@ -159,6 +169,34 @@ class Style:
         return self.class_name
 
 
+def _pop_motion(props: dict[str, Any]) -> tuple[str, list[str]]:
+    """transition= and animation= take the typed values from
+    ui.transition and ui.animation (SPEC 10.8). An essential animation
+    re-declares its duration under reduced motion, exempting it from the
+    global collapse: motion that conveys state, not decoration."""
+    from .motion import AnimationValue, TransitionValue
+    declarations = []
+    extra_rules = []
+    if "transition" in props:
+        value = props.pop("transition")
+        if not isinstance(value, TransitionValue):
+            raise VirelCompileError(
+                "transition= takes ui.transition(...), not a raw string.")
+        declarations.append(f"transition: {value.css}")
+    if "animation" in props:
+        value = props.pop("animation")
+        if not isinstance(value, AnimationValue):
+            raise VirelCompileError(
+                "animation= takes ui.animation(...), not a raw string.")
+        declarations.append(f"animation: {value.css}")
+        if value.essential:
+            extra_rules.append(
+                "@media (prefers-reduced-motion: reduce) { .{name} { "
+                + f"animation-duration: {value.duration}ms !important; "
+                + "} }")
+    return "; ".join(declarations), extra_rules
+
+
 def _variant(kind: str, value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise VirelCompileError(f"{kind}= takes a dict of style properties.")
@@ -183,6 +221,7 @@ def style(**props: Any) -> Style:
     container_min={"30rem": {...}} for container queries against the
     nearest ancestor declaring container= (True or 'inline-size').
     """
+    motion_decls, motion_rules = _pop_motion(props)
     states = {key: _variant(key, props.pop(key))
               for key in tuple(_STATES) if key in props}
     media = {key: _variant(key, props.pop(key))
@@ -191,13 +230,17 @@ def style(**props: Any) -> Style:
     if not isinstance(container_min, dict):
         raise VirelCompileError("container_min= takes a dict mapping a "
                                 "minimum width to style properties.")
-    if not props and not states and not media and not container_min:
+    if not props and not states and not media and not container_min \
+            and not motion_decls:
         raise VirelCompileError("ui.style() needs at least one property.")
 
     base = _declarations(props, "")
+    if motion_decls:
+        base = "; ".join(filter(None, [base, motion_decls]))
     css_parts = []
     if base:
         css_parts.append(".{name} { " + base + "; }")
+    css_parts.extend(motion_rules)
     for state, state_props in states.items():
         css_parts.append(".{name}" + _STATES[state] + " { "
                          + _declarations(state_props, f" in {state}=") + "; }")

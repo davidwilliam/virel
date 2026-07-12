@@ -483,6 +483,9 @@ def build_stylesheet(theme: Theme | None = None) -> str:
     # component defaults; raw ui.use_css rules come last of all.
     from .registry import active_registry
     registry = active_registry()
+    frames = "\n".join(registry.keyframes.values())
+    if frames:
+        frames = "\n/* Application keyframes (ui.keyframes) */\n" + frames + "\n"
     styles = "\n".join(registry.styles.values())
     if styles:
         styles = "\n/* Application styles (ui.style) */\n" + styles + "\n"
@@ -490,7 +493,7 @@ def build_stylesheet(theme: Theme | None = None) -> str:
     if custom:
         custom = "\n/* Application CSS (ui.use_css) */\n" + custom + "\n"
     return ("\n".join(faces) + "\n\n" + theme.css_tokens() + "\n"
-            + base + styles + custom)
+            + base + frames + styles + custom)
 
 
 # --------------------------------------------------------------------------

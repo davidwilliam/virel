@@ -461,6 +461,136 @@ def _styling_tab() -> ui.Node:
     )
 
 
+_PULSE = ui.keyframes({
+    "0%": {"opacity": 1, "transform": "scale(1)"},
+    "50%": {"opacity": 0.55, "transform": "scale(0.92)"},
+    "100%": {"opacity": 1, "transform": "scale(1)"},
+})
+
+def _motion_tab() -> ui.Node:
+    show = ui.state(True)
+    tasks = ui.state(["Design review", "Ship the docs", "Triage inbox"])
+    next_id = ui.state(4)
+    note_visible = ui.state(True)
+
+    def add_task():
+        tasks.update(lambda xs: xs + [f"Task {next_id}"])
+        next_id.update(lambda n: n + 1)
+
+    def rotate_tasks():
+        tasks.update(lambda xs: [xs[len(xs) - 1]] + xs)
+
+    spring = ui.spring(stiffness=280, damping=14)
+    springy = ui.style(
+        padding=3, radius="md", background="accent.soft", color="accent",
+        weight=600,
+        transition=ui.transition("transform", easing=spring),
+        hover={"transform": "translateY(-8px) scale(1.08)"},
+    )
+    live_dot = ui.style(
+        width="10px", height="10px", radius="lg", background="success",
+        animation=ui.animation(_PULSE, duration=1400, easing="in-out",
+                               iterations="infinite", essential=True),
+    )
+
+    return ui.Stack(
+        ui.Grid(
+            ui.Card(
+                ui.Heading("Enter and exit", level=3),
+                ui.Text("ui.When with animate= runs enter and exit "
+                        "animations as the condition flips.",
+                        muted=True, size="sm"),
+                ui.Row(
+                    ui.Button("Toggle panel",
+                              on_click=lambda: show.set(ui.not_(show))),
+                    gap=3,
+                ),
+                ui.When(show,
+                        then=ui.Alert("This panel fades and rises in, and "
+                                      "fades away on exit.",
+                                      intent="primary"),
+                        animate=ui.Motion(enter="fade-up", exit="fade")),
+                gap=3,
+            ),
+            ui.Card(
+                ui.Heading("Springs, compiled", level=3),
+                ui.Text("Spring physics simulated in Python at compile "
+                        "time and emitted as a CSS linear() curve. Zero "
+                        "JavaScript per frame. Hover the chip.",
+                        muted=True, size="sm"),
+                ui.Row(
+                    ui.Box(ui.Text("Bouncy", size="sm"), class_name=springy,
+                           css={"cursor": "default"}),
+                    ui.Row(
+                        ui.Box(class_name=live_dot),
+                        ui.Text("Essential motion survives "
+                                "reduced-motion.", muted=True, size="sm"),
+                        gap=2,
+                    ),
+                    gap=5,
+                ),
+                ui.Code('ui.transition("transform", '
+                        'easing=ui.spring(stiffness=280, damping=14))',
+                        block=True, language="python"),
+                gap=3,
+            ),
+            columns={"base": 1, "md": 2},
+            gap=5,
+        ),
+        ui.Card(
+            ui.Heading("List choreography", level=3),
+            ui.Text("New items animate in, removed items animate out, and "
+                    "layout=True FLIPs survivors to their new positions "
+                    "when the list reorders.", muted=True, size="sm"),
+            ui.Row(
+                ui.Button("Add task", intent="primary", size="sm",
+                          on_click=add_task),
+                ui.Button("Rotate", size="sm", on_click=rotate_tasks),
+                gap=3,
+            ),
+            ui.Each(
+                tasks,
+                render=lambda task: ui.Card(ui.Text(task), gap=2),
+                key=lambda task: task,
+                gap=3,
+                animate=ui.Motion(enter="slide-right", exit="fade",
+                                  layout=True),
+            ),
+            gap=4,
+        ),
+        ui.Card(
+            ui.Heading("Gestures", level=3),
+            ui.Text("Drag the note sideways past the threshold to dismiss "
+                    "it (or focus it and press Delete). Below the "
+                    "threshold it springs back.", muted=True, size="sm"),
+            ui.When(
+                note_visible,
+                then=ui.Swipeable(
+                    ui.Card(
+                        ui.Row(
+                            ui.Icon("info", size=16),
+                            ui.Text("Swipe me away.", size="sm"),
+                            gap=2,
+                        ),
+                        gap=2,
+                    ),
+                    on_dismiss=lambda: note_visible.set(False),
+                ),
+                otherwise=ui.Row(
+                    ui.Text("Dismissed.", muted=True, size="sm"),
+                    ui.Button("Bring it back", size="sm",
+                              on_click=lambda: note_visible.set(True)),
+                    gap=3,
+                ),
+                animate=ui.Motion(enter="fade-up", exit="fade",
+                                  duration=180),
+            ),
+            gap=3,
+        ),
+        gap=6,
+    )
+
+
 def _icons_tab() -> ui.Node:
     tiles = [
         ui.Card(
@@ -490,6 +620,7 @@ def components() -> ui.Node:
                     "Patterns": _patterns_tab(),
                     "Layout": _layout_tab(),
                     "Styling": _styling_tab(),
+                    "Motion": _motion_tab(),
                     "Icons": _icons_tab(),
                 }, label="Component groups"),
             ),
