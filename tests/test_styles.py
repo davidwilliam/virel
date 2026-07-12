@@ -72,3 +72,32 @@ def test_state_variants_focus_and_active():
 def test_hex_colors_pass_validation():
     s = ui.style(background="#0f172a")
     assert "background: #0f172a" in s.css
+
+
+def test_use_css_ships_raw_rules_last():
+    ui.use_css(".viz { container-type: inline-size; }")
+    ui.use_css("@container (min-width: 30rem) { .viz p { columns: 2; } }")
+    css = build_stylesheet()
+    assert ".viz { container-type: inline-size; }" in css
+    assert "@container (min-width: 30rem)" in css
+    # Raw rules come after everything so they can override any default.
+    assert css.index(".viz {") > css.index(".v-card")
+
+
+def test_use_css_reaches_the_served_stylesheet():
+    from virel.server import create_asgi_app
+    from conftest import asgi_request
+
+    ui.use_css(".invoice-grid { display: grid; }")
+
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("x"))
+
+    response = asgi_request(create_asgi_app(dev=True), "GET", "/_virel/app.css")
+    assert ".invoice-grid { display: grid; }" in response.text
+
+
+def test_use_css_rejects_empty_input():
+    with pytest.raises(VirelCompileError, match="non-empty"):
+        ui.use_css("   ")

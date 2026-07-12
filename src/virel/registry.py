@@ -388,6 +388,8 @@ class AppRegistry:
         self.static_mounts: dict[str, Path] = {}
         # Generated CSS from ui.style() objects, keyed by class name.
         self.styles: dict[str, str] = {}
+        # Raw CSS registered with ui.use_css (SPEC 10.5).
+        self.custom_css: list[str] = []
 
     def match_page(self, path: str) -> tuple[Page, dict[str, str]] | None:
         page = self.pages.get(path)
@@ -486,6 +488,23 @@ def use_guard(fn: Callable[..., Any]) -> None:
     """Install a guard that runs before every page and server action,
     ahead of any route-specific guard."""
     active_registry().default_guard = fn
+
+
+def use_css(source: str) -> None:
+    """Register raw CSS rules (SPEC 10.5), compiled into the application
+    stylesheet after the framework and ui.style rules so they can
+    override anything. This is where the classes referenced by
+    class_name= live: pseudo-elements, container queries, keyframes, and
+    whatever else the typed API does not cover.
+
+        ui.use_css(".specialized-visualization { container-type: inline-size; }")
+
+    The rules ship in the same compiled app.css, so they stay compatible
+    with normal CSS concepts and browser development tools.
+    """
+    if not isinstance(source, str) or not source.strip():
+        raise VirelCompileError("ui.use_css takes a non-empty CSS string.")
+    active_registry().custom_css.append(source.strip())
 
 
 def use_static(route: str, directory: str | Path) -> None:

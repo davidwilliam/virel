@@ -463,6 +463,11 @@ ui.Box(chart, class_name="specialized-visualization",
        css={"container-type": "inline-size", "--plot-density": 0.8})
 ```
 
+The rules a `class_name` refers to live in `ui.use_css`, which registers
+raw CSS compiled into `app.css` after everything else, so it can express
+what inline declarations cannot (pseudo-elements, container queries,
+keyframes) and override any default.
+
 Third-party web components integrate through typed bindings generated from
 their custom elements manifests (`virel bind`), and static assets that live
 outside the project's public directory, such as a vendored package or files

@@ -4,6 +4,22 @@ from virel import ui
 
 from ..shared import shell
 
+# Raw CSS escape hatch (SPEC 10.5): rules the typed API cannot express,
+# like pseudo-elements, live in ui.use_css and ship inside app.css.
+ui.use_css("""
+.demo-corner { position: relative; }
+.demo-corner::after {
+  content: "";
+  position: absolute;
+  right: 0; bottom: 0;
+  width: 22px; height: 22px;
+  background: var(--v-accent);
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  border-radius: 0 0 10px 0;
+  opacity: 0.45;
+}
+""")
+
 _SNIPPET = '''form = ui.form(InviteInput, submit=invite_member)
 
 ui.Form(
@@ -341,13 +357,16 @@ def _styling_tab() -> ui.Node:
             gap=3,
         ),
         ui.Card(
-            ui.Heading("Box escape hatch", level=3),
-            ui.Text("Raw CSS declarations, including custom properties, "
-                    "for the cases the typed API does not cover.",
-                    muted=True, size="sm"),
+            ui.Heading("CSS escape hatch", level=3),
+            ui.Text("Two levels below the typed API: ui.Box takes raw "
+                    "inline declarations, and ui.use_css registers full "
+                    "rules in app.css for what inline styles cannot say. "
+                    "The accent corner below is a pseudo-element from a "
+                    "ui.use_css rule.", muted=True, size="sm"),
             ui.Box(
                 ui.Code("css={\"--stripe\": \"...\", "
                         "\"background\": \"...\"}"),
+                class_name="demo-corner",
                 css={
                     "--stripe": "var(--v-accent-soft)",
                     "background": ("repeating-linear-gradient(45deg, "

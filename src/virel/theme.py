@@ -479,13 +479,18 @@ def build_stylesheet(theme: Theme | None = None) -> str:
     faces = [_FONT_FACE.rstrip()]
     faces.extend(f.css() for f in _all_fonts(theme) if isinstance(f, FontFace))
     base = resources.files("virel.assets").joinpath("base.css").read_text("utf-8")
-    # Application styles (ui.style objects) come last so they can
-    # override component defaults.
+    # Application styles come after the framework so they can override
+    # component defaults; raw ui.use_css rules come last of all.
     from .registry import active_registry
-    styles = "\n".join(active_registry().styles.values())
+    registry = active_registry()
+    styles = "\n".join(registry.styles.values())
     if styles:
         styles = "\n/* Application styles (ui.style) */\n" + styles + "\n"
-    return "\n".join(faces) + "\n\n" + theme.css_tokens() + "\n" + base + styles
+    custom = "\n".join(registry.custom_css)
+    if custom:
+        custom = "\n/* Application CSS (ui.use_css) */\n" + custom + "\n"
+    return ("\n".join(faces) + "\n\n" + theme.css_tokens() + "\n"
+            + base + styles + custom)
 
 
 # --------------------------------------------------------------------------

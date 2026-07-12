@@ -86,7 +86,7 @@ from .resources import Resource, invalidate, resource, subscribe
 from .nodes import Node, When
 from .registry import (Request, build, client, component, deny, layout,
                        page,
-                       redirect, server, shared, use_guard,
+                       redirect, server, shared, use_css, use_guard,
                        use_middleware, use_static, web_component)
 from .styles import Style, style
 from .theme import (Color, ColorScale, Font, FontFace, GoogleFont, Space,
@@ -118,7 +118,8 @@ __all__ = [
     # programming model
     "page", "layout", "component", "server", "client", "shared", "build",
     "web_component",
-    "use_guard", "use_middleware", "use_static", "redirect", "deny", "Request",
+    "use_guard", "use_middleware", "use_static", "use_css", "redirect", "deny",
+    "Request",
     "channel", "connect", "Channel", "ChannelClosed",
     "context", "Context",
     "state", "derived", "effect", "cond", "not_", "length", "set_from_event",
