@@ -411,3 +411,58 @@ def test_datagrid_sorts_filters_selects_and_pages(page, server_url):
     # Page forward: the pager advances and new rows appear.
     page.get_by_role("button", name="Next").click()
     assert "Page 2 of 2" in page.locator(".v-grid-pages").text_content()
+
+
+def test_listbox_keyboard_selection(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Forms").click()
+    box = page.get_by_role("listbox")
+    box.wait_for()
+    box.focus()
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("Enter")
+    page.get_by_text("Evaluating against summarize-v1").wait_for()
+    assert page.evaluate(
+        "document.querySelectorAll("
+        "'.v-listbox [role=\"option\"][aria-selected=\"true\"]').length"
+    ) == 1
+
+
+def test_filter_chips_toggle_state(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Data").click()
+    page.get_by_text("Facets on: 1").wait_for()
+    page.get_by_role("button", name="failed").click()
+    page.get_by_text("Facets on: 2").wait_for()
+    page.get_by_role("button", name="passed", exact=True).click()
+    page.get_by_text("Facets on: 1").wait_for()
+
+
+def test_tour_walks_steps_and_closes(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Data").click()
+    card = page.locator(".v-tour-card")
+    page.get_by_role("button", name="Take the tour").click()
+    card.get_by_text("The data grid").wait_for()
+    assert page.locator(".v-tour-spotlight").is_visible()
+    card.get_by_role("button", name="Next").click()
+    card.get_by_text("Charts").wait_for()
+    card.get_by_role("button", name="Back").click()
+    card.get_by_text("The data grid").wait_for()
+    page.keyboard.press("Escape")
+    for _ in range(40):
+        if page.evaluate("!document.querySelector('.v-tour-overlay')"):
+            break
+        page.wait_for_timeout(25)
+    assert page.evaluate("!document.querySelector('.v-tour-overlay')")
+    # State went back to False, so the tour restarts cleanly.
+
+
+def test_charts_render_accessible_svg(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Data").click()
+    assert page.evaluate(
+        "document.querySelectorAll('.v-chart svg[role=\"img\"]').length") == 2
+    label = page.evaluate(
+        "document.querySelector('.v-chart svg').getAttribute('aria-label')")
+    assert "Line chart" in label

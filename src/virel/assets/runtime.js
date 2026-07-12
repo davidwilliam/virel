@@ -1117,6 +1117,205 @@ export function splitter(id) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Onboarding tour (SPEC 11.1): a spotlight glides across the step
+ * targets with an explaining card. Escape, the backdrop, and Done all
+ * dispatch virel-close, which writes the open state back to False.
+ * ------------------------------------------------------------------ */
+
+export function tour_overlay(id) {
+  const root = el(id);
+  if (!root) return;
+  const steps = JSON.parse(root.dataset.steps || "[]");
+  let overlay = null;
+  let index = 0;
+  let restoreFocus = null;
+
+  const onEscape = (ev) => {
+    if (ev.key === "Escape") teardown(true);
+  };
+  const teardown = (notify) => {
+    if (!overlay) return;
+    overlay.remove();
+    overlay = null;
+    window.removeEventListener("resize", position);
+    document.removeEventListener("keydown", onEscape);
+    if (restoreFocus && restoreFocus.isConnected) restoreFocus.focus();
+    restoreFocus = null;
+    if (notify) {
+      root.dispatchEvent(new CustomEvent("virel-close"));
+    }
+  };
+
+  const position = () => {
+    if (!overlay) return;
+    const step = steps[index];
+    const target = document.querySelector(step.target);
+    const spot = overlay.querySelector(".v-tour-spotlight");
+    const card = overlay.querySelector(".v-tour-card");
+    overlay.querySelector(".v-tour-title").textContent = step.title;
+    overlay.querySelector(".v-tour-body").textContent = step.body;
+    overlay.querySelector(".v-tour-progress").textContent =
+      `${index + 1} of ${steps.length}`;
+    overlay.querySelector(".v-tour-back").disabled = index === 0;
+    overlay.querySelector(".v-tour-next").textContent =
+      index === steps.length - 1 ? "Done" : "Next";
+    if (!target) {
+      spot.style.display = "none";
+      card.style.top = "40%";
+      card.style.left = "50%";
+      card.style.transform = "translateX(-50%)";
+      return;
+    }
+    target.scrollIntoView({ block: "center", behavior: "instant" });
+    const rect = target.getBoundingClientRect();
+    spot.style.display = "";
+    spot.style.top = rect.top - 6 + "px";
+    spot.style.left = rect.left - 6 + "px";
+    spot.style.width = rect.width + 12 + "px";
+    spot.style.height = rect.height + 12 + "px";
+    const cardHeight = card.offsetHeight || 160;
+    const below = rect.bottom + 14;
+    card.style.transform = "";
+    card.style.top = (below + cardHeight + 20 < window.innerHeight
+      ? below : Math.max(12, rect.top - cardHeight - 14)) + "px";
+    card.style.left = Math.max(
+      12, Math.min(rect.left, window.innerWidth - card.offsetWidth - 12))
+      + "px";
+  };
+
+  const start = () => {
+    if (overlay) return;
+    index = 0;
+    restoreFocus = document.activeElement;
+    overlay = document.createElement("div");
+    overlay.className = "v-tour-overlay";
+    overlay.innerHTML =
+      '<div class="v-tour-backdrop"></div>' +
+      '<div class="v-tour-spotlight"></div>' +
+      '<div class="v-tour-card" role="dialog" aria-label="Product tour">' +
+      '<h2 class="v-tour-title v-h4"></h2>' +
+      '<p class="v-tour-body"></p>' +
+      '<div class="v-tour-actions">' +
+      '<span class="v-tour-progress"></span>' +
+      '<button type="button" class="v-btn v-btn-neutral v-btn-sm ' +
+      'v-tour-back">Back</button>' +
+      '<button type="button" class="v-btn v-btn-primary v-btn-sm ' +
+      'v-tour-next">Next</button>' +
+      "</div></div>";
+    document.body.appendChild(overlay);
+    overlay.querySelector(".v-tour-backdrop")
+      .addEventListener("click", () => teardown(true));
+    overlay.querySelector(".v-tour-back").addEventListener("click", () => {
+      if (index > 0) { index--; position(); }
+    });
+    overlay.querySelector(".v-tour-next").addEventListener("click", () => {
+      if (index < steps.length - 1) { index++; position(); }
+      else teardown(true);
+    });
+    document.addEventListener("keydown", onEscape);
+    window.addEventListener("resize", position);
+    position();
+    overlay.querySelector(".v-tour-next").focus();
+  };
+
+  const sync = () => {
+    if (root.dataset.open === "true") start();
+    else teardown(false);
+  };
+  new MutationObserver(sync).observe(root, {
+    attributes: true, attributeFilter: ["data-open"],
+  });
+  sync();
+  onDispose(() => teardown(false));
+}
+
+/* ------------------------------------------------------------------ *
+ * Listbox (SPEC 11.1): always-visible options. Arrow keys move the
+ * active option (aria-activedescendant), Enter/Space and clicks select
+ * (toggle when multiselectable), virel-change carries the selection.
+ * ------------------------------------------------------------------ */
+
+export function listbox(id) {
+  const box = el(id);
+  if (!box) return;
+  const multiple = box.getAttribute("aria-multiselectable") === "true";
+  const options = Array.from(box.querySelectorAll('[role="option"]'));
+  options.forEach((option, index) => { option.id = `${id}-opt-${index}`; });
+  let active = Math.max(0, options.findIndex(
+    (option) => option.getAttribute("aria-selected") === "true"));
+
+  const mark = (index) => {
+    active = Math.max(0, Math.min(index, options.length - 1));
+    options.forEach((option) => option.classList.remove("v-listbox-active"));
+    options[active].classList.add("v-listbox-active");
+    options[active].scrollIntoView({ block: "nearest" });
+    box.setAttribute("aria-activedescendant", options[active].id);
+  };
+  const dispatch = () => {
+    const chosen = options
+      .filter((option) => option.getAttribute("aria-selected") === "true")
+      .map((option) => option.dataset.value);
+    box.dispatchEvent(new CustomEvent("virel-change", {
+      detail: { value: chosen[0] ?? "", values: chosen },
+    }));
+  };
+  const choose = (index) => {
+    const option = options[index];
+    if (multiple) {
+      const on = option.getAttribute("aria-selected") === "true";
+      option.setAttribute("aria-selected", on ? "false" : "true");
+    } else {
+      options.forEach((other) => other.setAttribute(
+        "aria-selected", other === option ? "true" : "false"));
+    }
+    mark(index);
+    dispatch();
+  };
+
+  mark(active);
+  box.addEventListener("click", (ev) => {
+    const option = ev.target.closest('[role="option"]');
+    if (option) choose(options.indexOf(option));
+  });
+  box.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowDown") mark(active + 1);
+    else if (ev.key === "ArrowUp") mark(active - 1);
+    else if (ev.key === "Home") mark(0);
+    else if (ev.key === "End") mark(options.length - 1);
+    else if (ev.key === "Enter" || ev.key === " ") choose(active);
+    else return;
+    ev.preventDefault();
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Filter chips (SPEC 11.1): toggle buttons whose pressed set is the
+ * filter selection; virel-change carries the values.
+ * ------------------------------------------------------------------ */
+
+export function chips(id) {
+  const group = el(id);
+  if (!group) return;
+  const multiple = group.dataset.multiple !== "false";
+  group.addEventListener("click", (ev) => {
+    const chip = ev.target.closest(".v-chip");
+    if (!chip) return;
+    const pressed = chip.getAttribute("aria-pressed") === "true";
+    if (!multiple) {
+      group.querySelectorAll(".v-chip").forEach((other) =>
+        other.setAttribute("aria-pressed", "false"));
+    }
+    chip.setAttribute("aria-pressed", pressed && multiple ? "false" : "true");
+    const values = Array.from(
+      group.querySelectorAll('.v-chip[aria-pressed="true"]'))
+      .map((selected) => selected.dataset.value);
+    group.dispatchEvent(new CustomEvent("virel-change", {
+      detail: { value: values[0] ?? "", values },
+    }));
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * Data grid (SPEC 11.1): the rows are all server-rendered; sorting
  * reorders the real DOM, filtering hides rows, selection tracks
  * checkboxes and dispatches virel-selection, paging shows a window.

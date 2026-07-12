@@ -1086,3 +1086,126 @@ th[aria-sort] .v-grid-sort:hover::after { opacity: 0.5; }
   gap: calc(var(--v-space) * 3);
 }
 .v-grid-pages { color: var(--v-fg-muted); font-size: 0.875rem; }
+
+/* Media, listbox, filter chips, article (SPEC 11.1) */
+.v-article { gap: calc(var(--v-space) * 3); }
+.v-media { max-width: 100%; border-radius: var(--v-radius-md); display: block; }
+audio.v-media { width: 100%; }
+
+.v-listbox {
+  list-style: none;
+  margin: 0;
+  padding: calc(var(--v-space) * 1);
+  border: 1px solid var(--v-border);
+  border-radius: var(--v-radius-md);
+  background: var(--v-surface-1);
+  max-height: 14rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.v-listbox:focus-visible { outline: 2px solid var(--v-ring); outline-offset: 1px; }
+.v-listbox-option {
+  padding: calc(var(--v-space) * 2) calc(var(--v-space) * 3);
+  border-radius: var(--v-radius-sm);
+  cursor: pointer;
+  font-size: 0.925rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.v-listbox-option:hover { background: var(--v-surface-2); }
+.v-listbox-active { background: var(--v-surface-2); }
+.v-listbox-option[aria-selected="true"] {
+  color: var(--v-accent);
+  font-weight: 560;
+}
+.v-listbox-option[aria-selected="true"]::after {
+  content: "";
+  width: 9px;
+  height: 5px;
+  border-inline-start: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg) translateY(-2px);
+}
+
+.v-chips { display: flex; flex-wrap: wrap; gap: calc(var(--v-space) * 2); }
+.v-chip {
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 520;
+  padding: calc(var(--v-space) * 1.25) calc(var(--v-space) * 3);
+  border: 1px solid var(--v-border);
+  border-radius: 999px;
+  background: var(--v-surface-1);
+  color: var(--v-fg);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.v-chip:hover { border-color: var(--v-border-strong); }
+.v-chip:focus-visible { outline: 2px solid var(--v-ring); outline-offset: 1px; }
+.v-chip[aria-pressed="true"] {
+  background: var(--v-accent-soft);
+  border-color: var(--v-accent);
+  color: var(--v-accent);
+}
+
+/* Onboarding tour (SPEC 11.1) */
+.v-tour { display: none; }
+.v-tour-overlay { position: fixed; inset: 0; z-index: 70; }
+.v-tour-backdrop { position: absolute; inset: 0; background: rgba(10, 11, 14, 0.5); }
+.v-tour-spotlight {
+  position: fixed;
+  border-radius: var(--v-radius-md);
+  box-shadow: 0 0 0 100vmax rgba(10, 11, 14, 0.5);
+  outline: 2px solid var(--v-accent);
+  pointer-events: none;
+  transition: top 220ms cubic-bezier(0.16, 1, 0.3, 1),
+              left 220ms cubic-bezier(0.16, 1, 0.3, 1),
+              width 220ms cubic-bezier(0.16, 1, 0.3, 1),
+              height 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.v-tour-overlay:has(.v-tour-spotlight:not([style*="display: none"])) .v-tour-backdrop { background: transparent; }
+.v-tour-card {
+  position: fixed;
+  width: min(22rem, calc(100vw - 24px));
+  padding: calc(var(--v-space) * 4);
+  border: 1px solid var(--v-border);
+  border-radius: var(--v-radius-lg);
+  background: var(--v-surface-1);
+  box-shadow: var(--v-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--v-space) * 2);
+  transition: top 220ms cubic-bezier(0.16, 1, 0.3, 1),
+              left 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.v-tour-body { color: var(--v-fg-muted); font-size: 0.925rem; }
+.v-tour-actions {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--v-space) * 2);
+  margin-top: calc(var(--v-space) * 1);
+}
+.v-tour-progress {
+  color: var(--v-fg-muted);
+  font-size: 0.85rem;
+  margin-inline-end: auto;
+}
+
+/* Charts (SPEC 11.1) */
+.v-chart { margin: 0; display: flex; flex-direction: column; gap: calc(var(--v-space) * 2); }
+.v-chart-svg { width: 100%; height: auto; display: block; }
+.v-chart-grid { stroke: var(--v-border); stroke-width: 1; }
+.v-chart-tick { fill: var(--v-fg-muted); font-size: 11px; font-family: var(--v-font-body); }
+.v-chart-total { fill: var(--v-fg); font-size: 22px; font-weight: 650; font-family: var(--v-font-body); }
+.v-chart-point:hover { r: 5; }
+.v-chart-bar:hover { opacity: 0.85; }
+.v-chart-legend { display: flex; flex-wrap: wrap; gap: calc(var(--v-space) * 4); }
+.v-chart-key {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--v-space) * 1.5);
+  font-size: 0.85rem;
+  color: var(--v-fg-muted);
+}
+.v-chart-dot { width: 10px; height: 10px; border-radius: 50%; }

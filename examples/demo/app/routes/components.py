@@ -72,6 +72,7 @@ def _forms_tab() -> ui.Node:
     notes = ui.state("")
     volume = ui.state(40)
     due = ui.state("2026-07-15")
+    dataset = ui.state("qa-hard-v2")
     plan = ui.state("starter")
     notify = ui.state(True)
     terms = ui.state(False)
@@ -86,6 +87,9 @@ def _forms_tab() -> ui.Node:
             ui.NumberField(seats, label="Seats", min=1, max=50),
             ui.DateField(due, label="Due date", min="2026-01-01",
                          description="The platform calendar, no JS shipped."),
+            ui.Listbox(dataset, label="Dataset",
+                       options=["qa-hard-v2", "summarize-v1", "extract-v3"]),
+            ui.Text(f"Evaluating against {dataset}", muted=True, size="sm"),
             gap=4,
         ),
         ui.Stack(
@@ -123,6 +127,8 @@ _RUN_ROWS = [
 
 def _data_tab() -> ui.Node:
     chosen = ui.state([])
+    facets = ui.state(["passed"])
+    touring = ui.state(False)
     return ui.Stack(
         ui.Grid(
             ui.Stat(label="Runs", value="1,284", hint="last 30 days"),
@@ -163,6 +169,52 @@ def _data_tab() -> ui.Node:
                     size="sm"),
             gap=3,
         ),
+        ui.Grid(
+            ui.Card(
+                ui.Heading("Charts", level=2, size=3),
+                ui.Text("Compiled to themed inline SVG: zero JavaScript, "
+                        "brand and dark-mode aware, every point titled.",
+                        muted=True, size="sm"),
+                ui.Chart("line", [
+                    ui.Series("atlas-large", points=[78, 83, 86, 89, 93]),
+                    ui.Series("baseline", points=[62, 64, 61, 68, 71]),
+                ], labels=["Mar", "Apr", "May", "Jun", "Jul"]),
+                gap=3,
+                class_name="demo-tour-chart",
+            ),
+            ui.Card(
+                ui.Heading("Donut and filters", level=2, size=3),
+                ui.Chart("donut", [
+                    ui.Series("Passed", value=118),
+                    ui.Series("Flaky", value=7),
+                    ui.Series("Failed", value=3),
+                ], height=170),
+                ui.FilterChips(facets,
+                               options=["passed", "flaky", "failed"]),
+                ui.Text(f"Facets on: {ui.length(facets)}", muted=True,
+                        size="sm"),
+                gap=3,
+                class_name="demo-tour-chips",
+            ),
+            columns={"base": 1, "md": 2},
+            gap=5,
+        ),
+        ui.Row(
+            ui.Button("Take the tour", intent="primary",
+                      on_click=lambda: touring.set(True)),
+            gap=3,
+        ),
+        ui.Tour(steps=[
+            ui.TourStep(".v-datagrid", "The data grid",
+                        "Sort with the headers, filter across every "
+                        "cell, select rows, and page through results."),
+            ui.TourStep(".demo-tour-chart", "Charts",
+                        "Inline SVG compiled from Python. No chart "
+                        "library ships to the browser."),
+            ui.TourStep(".demo-tour-chips", "Filter chips",
+                        "Toggle facets; the selection lands in Python "
+                        "state like every other control."),
+        ], open=touring),
         ui.Text("Syntax-highlighted code (compiled server-side, zero JS)",
                 muted=True, size="sm"),
         ui.Code(_SNIPPET, block=True, language="python"),

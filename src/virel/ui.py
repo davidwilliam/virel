@@ -11,6 +11,8 @@ from typing import Any, Callable
 from .expr import Derived, State, VirelCompileError, cond, length, not_
 from .elements import (
     Accordion,
+    Article,
+    Audio,
     AspectRatio,
     Center,
     Cluster,
@@ -35,6 +37,7 @@ from .elements import (
     ErrorBoundary,
     ErrorState,
     FileField,
+    FilterChips,
     Footer,
     Grid,
     Hero,
@@ -46,6 +49,7 @@ from .elements import (
     Link,
     LinkButton,
     List,
+    Listbox,
     Nav,
     NumberField,
     Page,
@@ -73,14 +77,18 @@ from .elements import (
     Tabs,
     Text,
     Tree,
+    Video,
     Textarea,
     TextField,
     ThemeToggle,
     Tooltip,
+    Tour,
+    TourStep,
     set_from_event,
     unsafe_html,
 )
 from .channels import Channel, ChannelClosed, channel, connect
+from .charts import Chart, Series
 from .context import Context, context
 from .datagrid import Column, DataGrid
 from .elements import Each, Island, Suspense, effect, upload
@@ -152,6 +160,7 @@ __all__ = [
     "Divider", "Spacer", "AppShell", "Footer", "Hero",
     # semantic elements
     "Heading", "Text", "Code", "Link", "LinkButton", "Image", "List", "Nav",
+    "Article", "Video", "Audio",
     "unsafe_html", "When",
     # data loading
     "resource", "Resource", "invalidate", "subscribe", "Each",
@@ -161,13 +170,14 @@ __all__ = [
     "form", "Form", "FormActions", "SubmitButton",
     # form controls
     "Button", "TextField", "Select", "Checkbox", "Textarea", "DateField",
+    "Listbox", "FilterChips",
     "NumberField", "Slider", "Switch", "RadioGroup", "ThemeToggle",
     # interaction patterns
     "Tabs", "Dialog", "Accordion", "Tooltip", "Popover",
     "Menu", "MenuItem", "MenuDivider", "Pagination", "notify",
-    "Tree", "Command", "CommandPalette",
+    "Tree", "Command", "CommandPalette", "Tour", "TourStep",
     # data display and status
-    "Table", "DataGrid", "Column",
+    "Table", "DataGrid", "Column", "Chart", "Series",
     "Stat", "Progress", "Spinner", "Skeleton", "Avatar",
     "Breadcrumbs", "Alert", "Badge", "EmptyState", "ErrorBoundary",
     "ErrorState", "Icon", "icon_names",

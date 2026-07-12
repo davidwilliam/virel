@@ -355,6 +355,166 @@ def Swipeable(*children: Any, on_dismiss: Callable[[], None],
                    runtime_binding="swipeable")
 
 
+def Article(*children: Any, class_name: str | None = None) -> Element:
+    """A self-contained composition: a post, a comment, a card that
+    stands on its own in a feed."""
+    return Element("article", normalize_children(children),
+                   attrs={"class": _classes("v-article v-stack", class_name)})
+
+
+def _media_source(kind: str, src: str) -> None:
+    from .security import is_safe_url
+    if not is_safe_url(src):
+        raise VirelCompileError(
+            f"{kind} source {src!r} uses a blocked URL scheme.")
+
+
+def Video(src: str, *, label: str, poster: str | None = None,
+          captions: str | None = None, width: int | None = None,
+          loop: bool = False, muted: bool = False) -> Element:
+    """A video player on the platform's controls. ``label`` names the
+    player for assistive technology, and ``captions`` takes a WebVTT
+    track URL; there is no autoplay by design."""
+    _media_source("Video", src)
+    if poster is not None:
+        _media_source("Video poster", poster)
+    children: list[Node] = []
+    if captions is not None:
+        _media_source("Video captions", captions)
+        children.append(Element("track", attrs={
+            "kind": "captions", "src": captions, "default": True}))
+    return Element("video", children, attrs={
+        "src": src,
+        "class": "v-media",
+        "controls": True,
+        "preload": "metadata",
+        "aria-label": label,
+        "poster": poster,
+        "width": str(width) if width else None,
+        "loop": loop or None,
+        "muted": muted or None,
+        "playsinline": True,
+    })
+
+
+def Audio(src: str, *, label: str) -> Element:
+    """An audio player on the platform's controls."""
+    _media_source("Audio", src)
+    return Element("audio", attrs={
+        "src": src,
+        "class": "v-media",
+        "controls": True,
+        "preload": "metadata",
+        "aria-label": label,
+    })
+
+
+def Listbox(state: Any, *, options: list[str], label: str,
+            multiple: bool = False) -> Element:
+    """A standalone listbox (SPEC 11.1): always-visible options, arrow
+    keys move the active option, Enter or Space selects (toggles, when
+    multiple=True), and the selection writes into the bound state (a
+    string, or a list of strings when multiple)."""
+    if not options:
+        raise VirelCompileError("Listbox requires options=[...].")
+    state, _extra, error_node = _unwrap_field(state, "Listbox")
+    initial = state.initial if hasattr(state, "initial") else None
+    selected = set(initial if isinstance(initial, list) else
+                   [initial] if initial else [])
+    option_nodes = [
+        Element("li", [TextNode(option)], attrs={
+            "role": "option",
+            "class": "v-listbox-option",
+            "data-value": option,
+            "aria-selected": "true" if option in selected else "false",
+        })
+        for option in options
+    ]
+    path = "detail.values" if multiple else "detail.value"
+    box = Element(
+        "ul", option_nodes,
+        attrs={"role": "listbox", "class": "v-listbox", "tabindex": "0",
+               "aria-label": label,
+               "aria-multiselectable": "true" if multiple else None},
+        events={"virel-change": Handler([SetFromEventOp(state.name, path)])},
+        runtime_binding="listbox",
+    )
+    children: list[Node] = [
+        Element("span", [TextNode(label)], attrs={"class": "v-label"}),
+        box,
+    ]
+    if error_node is not None:
+        children.append(error_node)
+    return Element("div", children, attrs={"class": "v-field"})
+
+
+def FilterChips(state: Any, *, options: list[str], label: str = "Filters",
+                multiple: bool = True) -> Element:
+    """A filter bar (SPEC 11.1): toggleable chips whose selected values
+    write into the bound state list. aria-pressed carries the state of
+    each chip."""
+    if not options:
+        raise VirelCompileError("FilterChips requires options=[...].")
+    state, _extra, _error = _unwrap_field(state, "FilterChips")
+    initial = state.initial if hasattr(state, "initial") else None
+    selected = set(initial if isinstance(initial, list) else [])
+    chips = [
+        Element("button", [TextNode(option)], attrs={
+            "type": "button",
+            "class": "v-chip",
+            "data-value": option,
+            "aria-pressed": "true" if option in selected else "false",
+        })
+        for option in options
+    ]
+    path = "detail.values" if multiple else "detail.value"
+    return Element(
+        "div", chips,
+        attrs={"class": "v-chips", "role": "group", "aria-label": label,
+               "data-multiple": "true" if multiple else "false"},
+        events={"virel-change": Handler([SetFromEventOp(state.name, path)])},
+        runtime_binding="chips",
+    )
+
+
+class TourStep:
+    """One onboarding step: a CSS selector naming the element to
+    spotlight, plus its explanation."""
+
+    def __init__(self, target: str, title: str, body: str) -> None:
+        import re as _re
+        if not target or _re.search(r"[<>\"'`]", target):
+            raise VirelCompileError(
+                f"TourStep target must be a CSS selector, got {target!r}.")
+        self.target = target
+        self.title = title
+        self.body = body
+
+
+def Tour(*, steps: list[TourStep], open: Any) -> Element:
+    """An onboarding tour (SPEC 11.1): with open= truthy, a spotlight
+    moves across the step targets with an explaining card, Back/Next
+    navigation, and Escape or Done writing the open state back to
+    False. The spotlight glides between steps."""
+    if not steps:
+        raise VirelCompileError("Tour needs at least one TourStep.")
+    for step in steps:
+        if not isinstance(step, TourStep):
+            raise VirelCompileError("Tour steps take ui.TourStep(...).")
+    import json as _json
+    from .expr import Lit, cond
+    payload = _json.dumps([
+        {"target": step.target, "title": step.title, "body": step.body}
+        for step in steps
+    ])
+    return Element("div", attrs={
+        "class": "v-tour",
+        "data-open": cond(open, "true", False),
+        "data-steps": payload,
+    }, events={"virel-close": Handler([SetOp(open.name, Lit(False))])},
+        runtime_binding="tour_overlay")
+
+
 def Tree(items: list, *, label: Callable[[Any], str],
          children: Callable[[Any], list] | None = None,
          on_select: Callable[[Any], None] | None = None,

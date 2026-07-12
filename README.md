@@ -426,6 +426,9 @@ the browser with full locale data.
 The library covers the essentials in four groups, all with accessibility
 built in:
 
+- Semantic elements: `Heading`, `Text`, `Code`, `Link`, `Image`, `List`,
+  `Article`, `Video`/`Audio` (platform players, required labels, captions
+  track, no autoplay), `Nav`, plus page metadata on `Page`
 - Layout and chrome: `Stack`, `Row`, `Grid`, `Wrap`, `Cluster`, `Center`,
   `Sidebar` (aside plus fluid content, stacking without media queries),
   `AspectRatio`, `ScrollArea`, `Resizable`, `Splitter` (draggable,
@@ -433,15 +436,19 @@ built in:
   (with optional sidebar that becomes an off-canvas drawer on small
   screens, and footer), `Footer`, `Hero`, `Divider`, `Spacer`
 - Form controls: `Button`, `TextField`, `Textarea`, `NumberField`, `Select`,
-  `DateField` (platform date/time/datetime pickers, zero JS), `Checkbox`,
-  `Switch`, `RadioGroup`, `Slider`
+  `DateField` (platform date/time/datetime pickers, zero JS), `Listbox`
+  (always-visible options, single or multiple), `FilterChips` (toggleable
+  facets), `Checkbox`, `Switch`, `RadioGroup`, `Slider`
 - Interaction patterns: `Tabs`, `Dialog` (on the native dialog element),
   `Menu`/`MenuItem`/`MenuDivider` (accessible dropdowns with keyboard
   navigation and flip-up placement), `Popover` (anchored non-modal panel
   with focus management), `Tree` (the ARIA tree pattern over plain nested
   data), `CommandPalette` (Ctrl/Cmd+K search over typed commands),
-  `Accordion` (on details/summary), `Tooltip`, `Swipeable`, `When`
-- Data display and status: `Table`, `DataGrid` (sortable typed columns,
+  `Accordion` (on details/summary), `Tooltip`, `Swipeable`, `Tour`
+  (onboarding spotlight steps), `When`
+- Data display and status: `Table`, `Chart` (line, area, bar, donut
+  compiled to themed accessible inline SVG, zero JS), `DataGrid`
+  (sortable typed columns,
   filtering, row selection with select-all, client-side paging over
   server-rendered rows), `Stat`, `Progress`, `Spinner`, `Skeleton`,
   `Avatar`, `Badge`, `Alert`, `Breadcrumbs`, `EmptyState`, `Pagination`
@@ -458,7 +465,9 @@ ui.Code(snippet, block=True, language="python")
 
 Run `virel schema <Name>` for the machine-readable schema of any component.
 
-Accessibility is checked at compile time (SPEC 11.2). Much of it is
+Every interactive component documents its keyboard and ARIA contract in
+[ACCESSIBILITY.md](ACCESSIBILITY.md). Accessibility is also checked at
+compile time (SPEC 11.2). Much of it is
 enforced by construction: images require alt text, inputs require labels,
 icons are hidden from assistive technology unless labeled, and there is no
 way to attach a click handler to a noninteractive element. The audit
