@@ -104,6 +104,7 @@ virel inspect <route>  print the intermediate representation as JSON
 virel schema <name>    print a component schema as JSON (--list for all)
 virel context          generate a compact context pack for an agent
 virel mcp              run the MCP server for agent tools (stdio)
+virel lsp              run the language server for editors (stdio)
 virel bind <manifest>  generate typed bindings from custom-elements.json
 virel bind npm <pkg>   fetch a package from npm, vendor it, and bind it
 virel element <fn>     export a component as a standard custom element
@@ -666,6 +667,17 @@ browser-local interactivity works with no server and whatever previews
 ships unchanged. There is no notebook-only API. Server actions need
 `virel dev`, and the preview says so inline. `preview(...).save(path)`
 writes the standalone document for sharing.
+
+## Editor support
+
+`virel lsp` runs a standard-library language server (SPEC 15.4) over
+stdio, so VS Code, PyCharm, Neovim, and any generic LSP client get
+component and prop autocomplete, prop documentation on hover,
+invalid-prop diagnostics, design-token and route completion, and
+go-to-definition from a route string to its page function. It reuses the
+component schema registry and diagnostics, so the editor, CLI, and MCP
+server share one source of truth. Ready-to-use client configs are in
+`editors/`.
 
 ## For agents
 

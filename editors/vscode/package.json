@@ -1,0 +1,22 @@
+{
+  "name": "virel",
+  "displayName": "Virel",
+  "description": "Language support for Virel, the compiler-first Python UI framework.",
+  "version": "0.1.0",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Programming Languages"],
+  "activationEvents": ["onLanguage:python"],
+  "main": "./extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Virel",
+      "properties": {
+        "virel.serverCommand": {
+          "type": "string",
+          "default": "virel",
+          "description": "The virel executable used to launch the language server."
+        }
+      }
+    }
+  }
+}

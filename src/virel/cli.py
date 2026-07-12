@@ -462,6 +462,12 @@ def cmd_mcp(args: argparse.Namespace) -> None:
     serve(Path.cwd())
 
 
+def cmd_lsp(args: argparse.Namespace) -> None:
+    """Run the language server for editors (SPEC 15.4)."""
+    from .lsp import serve
+    serve()
+
+
 def cmd_context(args: argparse.Namespace) -> None:
     """Generate a task-specific context pack (SPEC 14.3)."""
     from .contextpack import context_pack
@@ -623,6 +629,10 @@ def main(argv: list[str] | None = None) -> None:
     p_mcp = sub.add_parser(
         "mcp", help="run the MCP server for agent tools (stdio)")
     p_mcp.set_defaults(fn=cmd_mcp)
+
+    p_lsp = sub.add_parser(
+        "lsp", help="run the language server for editors (stdio)")
+    p_lsp.set_defaults(fn=cmd_lsp)
 
     p_context = sub.add_parser(
         "context", help="generate a compact context pack for an agent")
