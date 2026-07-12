@@ -128,3 +128,28 @@ def test_splitter_compiles_to_runtime_call():
 
     result = compile_page(active_registry().pages["/split"])
     assert "$.splitter(" in result.js
+
+
+def test_box_css_escape_hatch():
+    box = ui.Box(ui.Text("x"),
+                 class_name="specialized-visualization",
+                 css={"container-type": "inline-size",
+                      "--plot-density": 0.8})
+    assert box.attrs["class"] == "v-box specialized-visualization"
+    assert box.attrs["style"] == ("container-type: inline-size; "
+                                  "--plot-density: 0.8")
+
+
+def test_box_css_rejects_injection():
+    with pytest.raises(VirelCompileError, match="property name"):
+        ui.Box(css={"color: red; background": "blue"})
+    with pytest.raises(VirelCompileError, match="not allowed"):
+        ui.Box(css={"background": "url(x); position: fixed"})
+    with pytest.raises(VirelCompileError, match="not allowed"):
+        ui.Box(css={"--x": "1} body { display: none"})
+    with pytest.raises(VirelCompileError, match="string or number"):
+        ui.Box(css={"--x": True})
+
+
+def test_box_without_css_has_no_style():
+    assert ui.Box(ui.Text("x")).attrs.get("style") is None

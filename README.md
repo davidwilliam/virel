@@ -441,6 +441,16 @@ ui.Code(snippet, block=True, language="python")
 
 Run `virel schema <Name>` for the machine-readable schema of any component.
 
+When the typed API is not enough, `ui.Box` is the CSS escape hatch: raw
+declarations, including custom properties, validated and emitted as a
+normal inline style so they stay compatible with standard CSS concepts and
+browser development tools:
+
+```python
+ui.Box(chart, class_name="specialized-visualization",
+       css={"container-type": "inline-size", "--plot-density": 0.8})
+```
+
 Third-party web components integrate through typed bindings generated from
 their custom elements manifests (`virel bind`), and static assets that live
 outside the project's public directory, such as a vendored package or files

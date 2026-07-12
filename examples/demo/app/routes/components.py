@@ -291,7 +291,27 @@ def _layout_tab() -> ui.Node:
                 ),
                 gap=4,
             ),
-            columns={"base": 1, "md": 2},
+            ui.Card(
+                ui.Heading("Box escape hatch", level=3),
+                ui.Text("Raw CSS declarations, including custom "
+                        "properties, for the cases the typed API does "
+                        "not cover.", muted=True, size="sm"),
+                ui.Box(
+                    ui.Code("css={\"--stripe\": \"...\", "
+                            "\"background\": \"...\"}"),
+                    css={
+                        "--stripe": "var(--v-accent-soft)",
+                        "background": ("repeating-linear-gradient(45deg, "
+                                       "var(--stripe), var(--stripe) 12px, "
+                                       "transparent 12px, transparent 24px)"),
+                        "border": "1px dashed var(--v-border-strong)",
+                        "border-radius": "10px",
+                        "padding": "20px",
+                    },
+                ),
+                gap=3,
+            ),
+            columns={"base": 1, "md": 3},
             gap=5,
         ),
         gap=6,

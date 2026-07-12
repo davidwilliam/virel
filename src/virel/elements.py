@@ -282,6 +282,48 @@ def Splitter(first: Any, second: Any, *, direction: str = "row",
                    runtime_binding="splitter")
 
 
+def Box(*children: Any, css: dict[str, Any] | None = None,
+        class_name: str | None = None) -> Element:
+    """The CSS escape hatch (SPEC 10.5): a neutral container taking raw
+    CSS declarations, including custom properties, for the cases the
+    typed styling API does not cover.
+
+        ui.Box(chart, class_name="specialized-visualization",
+               css={"container-type": "inline-size", "--plot-density": 0.8})
+
+    Declarations land as a normal inline style, so they stay compatible
+    with standard CSS concepts and browser development tools.
+    """
+    return Element("div", normalize_children(children),
+                   attrs={"class": _classes("v-box", class_name),
+                          "style": _css_declarations(css) if css else None})
+
+
+def _css_declarations(css: dict[str, Any]) -> str:
+    """Validate an escape-hatch CSS dict into inline declarations.
+    Property names must be real CSS identifiers or custom properties;
+    values must be scalars free of characters that could terminate the
+    declaration list or the attribute."""
+    import re as _re
+    parts = []
+    for name, value in css.items():
+        if not _re.fullmatch(r"--[\w-]+|[a-zA-Z-]+", str(name)):
+            raise VirelCompileError(
+                f"Invalid CSS property name {name!r}; expected a property "
+                "like 'container-type' or a custom property like '--x'.")
+        if not isinstance(value, (str, int, float)) or isinstance(value, bool):
+            raise VirelCompileError(
+                f"CSS value for {name!r} must be a string or number, "
+                f"got {value!r}.")
+        text = str(value)
+        if _re.search(r"[;{}<>]", text):
+            raise VirelCompileError(
+                f"CSS value for {name!r} contains characters that are not "
+                "allowed in a declaration: use one property per key.")
+        parts.append(f"{name}: {text}")
+    return "; ".join(parts)
+
+
 def _css_length(value: str | int) -> str:
     """A CSS length from an int (pixels) or a validated string. Strings
     are restricted to simple lengths so styles cannot be broken out of."""

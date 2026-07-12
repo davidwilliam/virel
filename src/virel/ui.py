@@ -18,6 +18,7 @@ from .elements import (
     AppShell,
     Avatar,
     Badge,
+    Box,
     Breadcrumbs,
     Button,
     Card,
@@ -128,7 +129,7 @@ __all__ = [
     # layout
     "Page", "Stack", "Row", "Grid", "Container", "Section", "Card",
     "Wrap", "Cluster", "Center", "Sidebar", "AspectRatio", "ScrollArea",
-    "Resizable", "Splitter",
+    "Resizable", "Splitter", "Box",
     "Divider", "Spacer", "AppShell", "Footer", "Hero",
     # semantic elements
     "Heading", "Text", "Code", "Link", "LinkButton", "Image", "List", "Nav",
