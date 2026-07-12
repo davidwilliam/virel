@@ -24,12 +24,69 @@ from .theme import Theme, build_stylesheet, runtime_js
 DEV_JS = """\
 // Virel dev helpers: hot reload plus the page inspector.
 
+const SNAP_KEY = "virel:hmr:" + location.pathname;
+
+// State-preserving hot reload (SPEC 15.2): browser-local state lives in
+// serializable signals with stable names, so a snapshot survives a
+// reload. On the next load it is restored only if the state shape still
+// matches (the safe case); otherwise the reload starts clean.
+function snapshotState() {
+  const S = window.__virel && window.__virel.S;
+  if (!S) return;
+  const snap = {};
+  for (const k in S) {
+    try { snap[k] = S[k].get(); } catch {}
+  }
+  try { sessionStorage.setItem(SNAP_KEY, JSON.stringify(snap)); } catch {}
+}
+
+function restoreState() {
+  let raw;
+  try { raw = sessionStorage.getItem(SNAP_KEY); } catch { return; }
+  if (!raw) return;
+  try { sessionStorage.removeItem(SNAP_KEY); } catch {}
+  const restore = () => {
+    const S = window.__virel && window.__virel.S;
+    if (!S) return false;
+    let snap;
+    try { snap = JSON.parse(raw); } catch { return true; }
+    const names = Object.keys(S).sort().join(",");
+    const saved = Object.keys(snap).sort().join(",");
+    if (names !== saved) return true;  // shape changed: keep the fresh state
+    for (const k in snap) {
+      try { S[k].set(snap[k]); } catch {}
+    }
+    const note = document.createElement("div");
+    note.textContent = "state preserved";
+    note.style.cssText =
+      "position:fixed;bottom:14px;left:50%;transform:translateX(-50%);" +
+      "z-index:99999;background:#9ece6a;color:#16161e;padding:4px 12px;" +
+      "border-radius:999px;font:600 11px ui-monospace,monospace;opacity:.9";
+    document.body.appendChild(note);
+    setTimeout(() => note.remove(), 1400);
+    return true;
+  };
+  // The page module mounts after this script; retry until it does.
+  let tries = 0;
+  const tick = () => {
+    if (restore() || ++tries > 60) return;
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+restoreState();
+// Exposed so a reload can snapshot on demand (tests, manual triggers).
+window.__virelHmr = { snapshot: snapshotState };
+
 let token = null;
 async function poll() {
   try {
     const res = await fetch("/_virel/reload-token");
     const next = (await res.json()).token;
-    if (token !== null && next !== token) location.reload();
+    if (token !== null && next !== token) {
+      snapshotState();
+      location.reload();
+    }
     token = next;
   } catch {}
   setTimeout(poll, 1000);
@@ -207,6 +264,125 @@ document.addEventListener("keydown", (ev) => {
   if (ev.altKey && ev.key.toLowerCase() === "v") toggleInspector();
   if (ev.key === "Escape") closeInspector();
 });
+
+/* ---- Dev toolbar: viewport, theme, locale, and action tracing ---- */
+
+// Server-action trace panel (SPEC 15.2): wrap fetch and record every
+// call to a server action with its status and duration.
+const actionTrace = [];
+const nativeFetch = window.fetch.bind(window);
+window.fetch = async (input, init) => {
+  const url = typeof input === "string" ? input : input.url;
+  const isAction = url && url.includes("/_virel/action/");
+  const started = performance.now();
+  try {
+    const res = await nativeFetch(input, init);
+    if (isAction) {
+      actionTrace.unshift({
+        name: url.split("/_virel/action/")[1].split("?")[0],
+        status: res.status, ms: Math.round(performance.now() - started),
+      });
+      actionTrace.length = Math.min(actionTrace.length, 25);
+      renderTrace();
+    }
+    return res;
+  } catch (err) {
+    if (isAction) {
+      actionTrace.unshift({
+        name: url.split("/_virel/action/")[1].split("?")[0],
+        status: "error", ms: Math.round(performance.now() - started),
+      });
+      renderTrace();
+    }
+    throw err;
+  }
+};
+
+let tracePanel = null;
+function renderTrace() {
+  if (!tracePanel) return;
+  tracePanel.innerHTML = actionTrace.length
+    ? actionTrace.map((c) =>
+        "<div style='display:flex;gap:8px;padding:3px 0'>" +
+        "<span style='color:" + (c.status === 200 ? "#9ece6a" : "#f7768e") +
+        "'>" + escHtml(String(c.status)) + "</span>" +
+        "<span style='flex:1'>" + escHtml(c.name) + "</span>" +
+        "<span style='color:#565f89'>" + c.ms + "ms</span></div>").join("")
+    : "<div style='color:#565f89'>no server-action calls yet</div>";
+}
+
+function makeToolButton(label, title) {
+  const b = document.createElement("button");
+  b.textContent = label;
+  b.title = title;
+  b.style.cssText =
+    "border:0;background:#2a2b3d;color:#c0caf5;border-radius:6px;" +
+    "padding:5px 9px;cursor:pointer;font:600 11px ui-monospace,monospace";
+  return b;
+}
+
+const bar = document.createElement("div");
+bar.style.cssText =
+  "position:fixed;bottom:14px;left:14px;z-index:99997;display:flex;" +
+  "gap:6px;align-items:center;padding:6px;background:#16161e;" +
+  "border:1px solid #2a2b3d;border-radius:10px;opacity:.9";
+
+const widths = [null, 390, 768, 1024];
+let widthIndex = 0;
+const viewBtn = makeToolButton("full", "Cycle responsive viewport width");
+viewBtn.addEventListener("click", () => {
+  widthIndex = (widthIndex + 1) % widths.length;
+  const w = widths[widthIndex];
+  if (w === null) {
+    document.documentElement.style.maxWidth = "";
+    document.documentElement.style.margin = "";
+    viewBtn.textContent = "full";
+  } else {
+    document.documentElement.style.maxWidth = w + "px";
+    document.documentElement.style.margin = "0 auto";
+    document.documentElement.style.boxShadow = "0 0 0 100vmax #0b0b0f";
+    viewBtn.textContent = w + "px";
+  }
+});
+
+const themeBtn = makeToolButton("theme", "Cycle system / light / dark");
+const themes = ["system", "light", "dark"];
+themeBtn.addEventListener("click", () => {
+  const cur = document.documentElement.dataset.theme || "system";
+  const next = themes[(themes.indexOf(cur) + 1) % themes.length];
+  if (next === "system") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = next;
+  themeBtn.textContent = next;
+});
+
+const localeBtn = makeToolButton("lang", "Switch the negotiated locale");
+localeBtn.addEventListener("click", async () => {
+  const params = new URLSearchParams(location.search);
+  const locales = (window.__virelLocales || ["en"]);
+  const cur = params.get("lang") || locales[0];
+  const next = locales[(locales.indexOf(cur) + 1) % locales.length];
+  params.set("lang", next);
+  location.search = params.toString();
+});
+
+const traceBtn = makeToolButton("actions", "Toggle the server-action trace");
+traceBtn.addEventListener("click", () => {
+  if (tracePanel) { tracePanel.remove(); tracePanel = null; return; }
+  tracePanel = document.createElement("div");
+  tracePanel.style.cssText =
+    "position:fixed;bottom:58px;left:14px;z-index:99997;width:320px;" +
+    "max-height:40vh;overflow:auto;padding:12px;background:#16161e;" +
+    "color:#c0caf5;border:1px solid #2a2b3d;border-radius:10px;" +
+    "font:12px ui-monospace,monospace";
+  document.body.appendChild(tracePanel);
+  renderTrace();
+});
+
+bar.append(viewBtn, themeBtn, localeBtn, traceBtn);
+document.addEventListener("DOMContentLoaded",
+                          () => document.body.appendChild(bar));
+window.addEventListener("virel:navigate",
+                        () => document.body.appendChild(bar));
 """
 
 Scope = dict[str, Any]
@@ -310,7 +486,11 @@ class VirelASGIApp:
                                            b"public, max-age=31536000, immutable")])
             return
         if path == "/_virel/dev.js":
-            await self._send_text(send, 200, DEV_JS,
+            from .i18n import available_locales
+            locales = available_locales() or ["en"]
+            preamble = (f"window.__virelLocales = "
+                        f"{json.dumps(locales)};\n")
+            await self._send_text(send, 200, preamble + DEV_JS,
                                   content_type="text/javascript; charset=utf-8")
             return
         if path == "/_virel/reload-token":
@@ -493,6 +673,21 @@ class VirelASGIApp:
         return result
 
     async def _serve_page(self, path: str, scope: Scope, send: Send) -> None:
+        try:
+            await self._serve_page_inner(path, scope, send)
+        except VirelCompileError as error:
+            if not self.dev:
+                raise
+            # Route-aware error overlay (SPEC 15.2): the diagnostic
+            # renders in the browser; the reload poll recovers when the
+            # source is fixed.
+            from .diagnostics import classify
+            await self._send_text(
+                send, 200, _error_overlay(path, classify(str(error))),
+                content_type="text/html; charset=utf-8")
+
+    async def _serve_page_inner(self, path: str, scope: Scope,
+                                send: Send) -> None:
         matched = self.registry.match_page(path)
         if not matched:
             await self._send_text(send, 404,
@@ -1129,6 +1324,53 @@ def _convert_query(raw: str | None, annotation: type, default: Any) -> Any:
     except ValueError:
         return default
     return raw
+
+
+def _error_overlay(route: str, diagnostic: dict[str, Any]) -> str:
+    """A route-aware dev error overlay (SPEC 15.2): the structured
+    diagnostic, its source range, and suggested fixes, over a dimmed
+    page. Polls the reload token so a fix clears it automatically."""
+    import html as _html
+    esc = lambda s: _html.escape(str(s))  # noqa: E731
+    range_info = diagnostic.get("range") or {}
+    location = ""
+    if range_info:
+        location = (f'<div class="loc">in handler '
+                    f'<b>{esc(range_info.get("handler"))}</b>, line '
+                    f'{esc(range_info.get("line"))}</div>')
+    fixes = "".join(f"<li>{esc(fix)}</li>"
+                    for fix in diagnostic.get("fixes", []))
+    return (
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        f"<title>Compile error: {esc(route)}</title>"
+        '<style>:root{color-scheme:dark}body{margin:0;font-family:'
+        'ui-monospace,SFMono-Regular,Menlo,monospace;background:#16161e;'
+        "color:#c0caf5;padding:0}"
+        ".bar{background:#f7768e;color:#16161e;padding:10px 20px;"
+        "font-weight:700}"
+        ".wrap{padding:24px 28px;max-width:900px}"
+        ".code{color:#7dcfff;font-size:13px}"
+        ".msg{white-space:pre-wrap;background:#1a1b26;border:1px solid "
+        "#2a2b3d;border-radius:8px;padding:16px;margin:14px 0;font-size:"
+        "13.5px;line-height:1.6}"
+        ".loc{color:#e0af68;margin:8px 0}"
+        "h2{font-size:15px;color:#9aa0ad;margin:22px 0 8px;text-transform:"
+        "uppercase;letter-spacing:.08em}"
+        "li{margin:6px 0}a{color:#7aa2f7}</style></head>"
+        f'<body><div class="bar">Virel compile error &middot; '
+        f'{esc(route)}</div><div class="wrap">'
+        f'<div class="code">{esc(diagnostic.get("code"))}</div>'
+        f'<div class="msg">{esc(diagnostic.get("message"))}</div>'
+        f"{location}"
+        f'<div>{esc(diagnostic.get("explanation"))}</div>'
+        f"<h2>Suggested fixes</h2><ul>{fixes}</ul>"
+        f'<p><a href="{esc(diagnostic.get("documentation"))}">'
+        "Documentation</a></p></div>"
+        '<script>setInterval(async()=>{try{const t=await(await fetch('
+        '"/_virel/reload-token")).json();if(window.__t&&window.__t!==t.token)'
+        "location.reload();window.__t=t.token}catch{}},1000)</script>"
+        "</body></html>"
+    )
 
 
 def _error_html(status: int, title: str, detail: str) -> str:

@@ -708,3 +708,63 @@ def test_inspector_shows_the_enriched_panel(page, server_url):
     assert "--v-accent" in panel_text          # style tokens
     assert "data-v=" in panel_text             # DOM mapping
     assert "no accessibility warnings" in panel_text
+
+
+def test_dev_toolbar_controls_present(page, server_url):
+    page.goto(f"{server_url}/counter")
+    # The dev toolbar renders viewport, theme, locale, and trace buttons.
+    page.get_by_title("Cycle responsive viewport width").wait_for()
+    theme = page.get_by_title("Cycle system / light / dark")
+    theme.click()
+    assert page.evaluate("document.documentElement.dataset.theme") == "light"
+
+    view = page.get_by_title("Cycle responsive viewport width")
+    view.click()
+    assert page.evaluate("document.documentElement.style.maxWidth") == "390px"
+
+
+def test_dev_action_trace_records_calls(page, server_url):
+    page.goto(f"{server_url}/invite")
+    page.get_by_title("Toggle the server-action trace").click()
+    page.get_by_text("no server-action calls yet").wait_for()
+    # Trigger a server action.
+    page.get_by_label("Email").fill("someone@example.com")
+    page.get_by_role("button", name="Send invitation").click()
+    for _ in range(40):
+        text = page.evaluate(
+            "document.body.textContent")
+        if "invite_member" in text:
+            break
+        page.wait_for_timeout(50)
+    assert "invite_member" in page.evaluate("document.body.textContent")
+
+
+def test_state_preserving_hot_reload(page, server_url):
+    page.goto(f"{server_url}/counter")
+    inc = page.get_by_role("button", name="Increment")
+    inc.click()
+    inc.click()
+    inc.click()
+    page.get_by_text("Count: 3").wait_for()
+
+    # Simulate the HMR path: snapshot, then reload as the poll would.
+    page.evaluate("window.__virelHmr.snapshot()")
+    page.reload()
+
+    # The HMR restore path runs and announces itself; the count holds.
+    page.get_by_text("state preserved").wait_for()
+    page.get_by_text("Count: 3").wait_for()
+
+
+def test_hot_reload_falls_back_when_shape_changes(page, server_url):
+    page.goto(f"{server_url}/counter")
+    page.get_by_text("Count: 0").wait_for()
+    # A snapshot whose state names do not match the page is discarded:
+    # the restore path does not run, so no "state preserved" badge and
+    # the page keeps its fresh state.
+    page.evaluate(
+        "sessionStorage.setItem('virel:hmr:/counter', "
+        "JSON.stringify({sX: 99, sY: 'gone'}))")
+    page.reload()
+    page.wait_for_timeout(400)
+    assert not page.get_by_text("state preserved").is_visible()
