@@ -91,8 +91,14 @@ def Page(*children: Any, title: str = "Virel App",
     )
 
 
-def _classes(base: str, class_name: str | None) -> str:
-    return f"{base} {class_name}" if class_name else base
+def _classes(base: str, class_name: Any) -> str:
+    # class_name accepts a plain string or a ui.style() object (or a
+    # sequence mixing both).
+    if class_name is None:
+        return base
+    if isinstance(class_name, (list, tuple)):
+        return " ".join([base, *(str(c) for c in class_name)])
+    return f"{base} {class_name}"
 
 
 def Stack(*children: Any, gap: int = 4, align: str = "stretch",

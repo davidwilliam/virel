@@ -441,6 +441,18 @@ ui.Code(snippet, block=True, language="python")
 
 Run `virel schema <Name>` for the machine-readable schema of any component.
 
+Reusable styles are typed objects compiled to shared classes in the
+application stylesheet. Spacing takes theme space units and colors,
+radii, and shadows take token names, so a style follows the theme,
+brands, and density modes; `hover=`, `focus=`, and `active=` add state
+variants. Anything accepting `class_name` accepts a style object:
+
+```python
+card_style = ui.style(padding=6, radius="lg", background="surface.1",
+                      border="subtle", hover={"shadow": "md"})
+ui.Stack(..., class_name=card_style)
+```
+
 When the typed API is not enough, `ui.Box` is the CSS escape hatch: raw
 declarations, including custom properties, validated and emitted as a
 normal inline style so they stay compatible with standard CSS concepts and

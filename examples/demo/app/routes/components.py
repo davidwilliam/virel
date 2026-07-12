@@ -305,28 +305,60 @@ def _layout_tab() -> ui.Node:
                 ),
                 gap=4,
             ),
-            ui.Card(
-                ui.Heading("Box escape hatch", level=3),
-                ui.Text("Raw CSS declarations, including custom "
-                        "properties, for the cases the typed API does "
-                        "not cover.", muted=True, size="sm"),
-                ui.Box(
-                    ui.Code("css={\"--stripe\": \"...\", "
-                            "\"background\": \"...\"}"),
-                    css={
-                        "--stripe": "var(--v-accent-soft)",
-                        "background": ("repeating-linear-gradient(45deg, "
-                                       "var(--stripe), var(--stripe) 12px, "
-                                       "transparent 12px, transparent 24px)"),
-                        "border": "1px dashed var(--v-border-strong)",
-                        "border-radius": "10px",
-                        "padding": "20px",
-                    },
-                ),
+            columns={"base": 1, "md": 2},
+            gap=5,
+        ),
+        gap=6,
+    )
+
+
+def _styling_tab() -> ui.Node:
+    tile = ui.style(
+        padding=4,
+        radius="lg",
+        background="surface.2",
+        border="subtle",
+        hover={"shadow": "md", "border": "accent", "background": "surface.1"},
+    )
+    return ui.Stack(
+        ui.Card(
+            ui.Heading("Style objects", level=3),
+            ui.Text("ui.style() compiles typed properties to a shared "
+                    "class: spacing in theme units, colors and shadows as "
+                    "tokens, with hover, focus, and active variants. Hover "
+                    "over a tile.", muted=True, size="sm"),
+            ui.Wrap(
+                *[ui.Box(ui.Text(label, size="sm"), class_name=tile)
+                  for label in ("One style object", "Shared by every tile",
+                                "Theme and density aware")],
                 gap=3,
             ),
-            columns={"base": 1, "md": 3},
-            gap=5,
+            ui.Code('tile = ui.style(padding=4, radius="lg", '
+                    'background="surface.2",\n'
+                    '                border="subtle", '
+                    'hover={"shadow": "md", "border": "accent"})',
+                    block=True, language="python"),
+            gap=3,
+        ),
+        ui.Card(
+            ui.Heading("Box escape hatch", level=3),
+            ui.Text("Raw CSS declarations, including custom properties, "
+                    "for the cases the typed API does not cover.",
+                    muted=True, size="sm"),
+            ui.Box(
+                ui.Code("css={\"--stripe\": \"...\", "
+                        "\"background\": \"...\"}"),
+                css={
+                    "--stripe": "var(--v-accent-soft)",
+                    "background": ("repeating-linear-gradient(45deg, "
+                                   "var(--stripe), var(--stripe) 12px, "
+                                   "transparent 12px, transparent 24px)"),
+                    "border": "1px dashed var(--v-border-strong)",
+                    "border-radius": "10px",
+                    "padding": "20px",
+                },
+            ),
+            gap=3,
         ),
         gap=6,
     )
@@ -360,6 +392,7 @@ def components() -> ui.Node:
                     "Feedback": _feedback_tab(),
                     "Patterns": _patterns_tab(),
                     "Layout": _layout_tab(),
+                    "Styling": _styling_tab(),
                     "Icons": _icons_tab(),
                 }, label="Component groups"),
             ),

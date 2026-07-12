@@ -386,6 +386,8 @@ class AppRegistry:
         self.channels: dict[str, Any] = {}
         # Extra static directories by URL prefix (ui.use_static).
         self.static_mounts: dict[str, Path] = {}
+        # Generated CSS from ui.style() objects, keyed by class name.
+        self.styles: dict[str, str] = {}
 
     def match_page(self, path: str) -> tuple[Page, dict[str, str]] | None:
         page = self.pages.get(path)
