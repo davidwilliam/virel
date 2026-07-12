@@ -282,12 +282,15 @@ def _emit_document(root: PageNode, body_html: str, js_module: str,
         from .registry import active_registry as _reg2
         from .theme import asset_version
         suffix = "?v=" + asset_version(_reg2().theme)
-    # Applies a stored light/dark preference before first paint so theme
-    # switching never flashes. With no stored preference the CSS media
-    # query follows the system setting.
+    # Applies stored design preferences (theme, brand, density, contrast)
+    # before first paint so switching never flashes. With no stored theme
+    # the CSS media query follows the system setting.
     bootstrap_source = (
-        '(()=>{try{const t=localStorage.getItem("virel-theme");'
-        'if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}'
+        "(()=>{try{const d=document.documentElement.dataset;"
+        'const t=localStorage.getItem("virel-theme");'
+        'if(t==="light"||t==="dark")d.theme=t;'
+        'for(const k of["brand","density","contrast"]){'
+        'const v=localStorage.getItem("virel-"+k);if(v)d[k]=v}}'
         "catch{}})()"
     )
     # Every inline script's exact text is tracked so the server can emit

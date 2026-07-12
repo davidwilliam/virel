@@ -117,3 +117,127 @@ def test_default_csp_has_no_external_font_origins():
 def test_overscroll_bounce_disabled_by_default():
     css = build_stylesheet(Theme())
     assert "overscroll-behavior: none" in css
+
+
+def test_color_scale_derives_every_token_from_one_hex():
+    scale = ui.Color.scale("#4f46e5")
+    assert scale.base == "#4f46e5"
+    assert scale.fg == "#ffffff"          # indigo: white text
+    assert scale.strong != scale.base     # darker shade for hover
+    assert scale.soft.startswith("#")     # light-mode tint
+    assert scale.soft_dark.startswith("#")
+    assert scale.ring.startswith("rgba(79, 70, 229")
+
+
+def test_color_scale_picks_readable_foreground_by_contrast():
+    assert ui.Color.scale("#f59e0b").fg == "#16181d"  # amber: dark text
+    assert ui.Color.scale("#4f46e5").fg == "#ffffff"  # indigo: white text
+
+
+def test_typed_color_roles_flow_into_both_modes():
+    theme = Theme(color={"accent": "#059669"})
+    css = theme.css_tokens()
+    assert "--v-accent: #059669" in css
+    scale = ui.Color.scale("#059669")
+    assert f"--v-accent-soft: {scale.soft}" in css
+    assert f"--v-accent-soft: {scale.soft_dark}" in css
+    assert f"--v-ring: {scale.ring_dark}" in css
+
+
+def test_surface_color_tints_the_neutral_ramp_in_both_modes():
+    plain = Theme().css_tokens()
+    tinted = Theme(color={"surface": "#7c8db5"}).css_tokens()
+    assert plain != tinted
+    assert "--v-bg: #f7f7f9" in plain
+    assert "--v-bg: #f7f7f9" not in tinted
+    assert tinted.count("--v-surface-1:") >= 2  # light and dark ramps
+
+
+def test_space_scale_and_density_modes():
+    theme = Theme(space=ui.Space.scale(base=4))
+    css = theme.css_tokens()
+    assert "--v-space: 4px" in css
+    assert ':root[data-density="compact"]' in css
+    assert "--v-space: 3px" in css
+    roomy = Theme(space_base=8, densities={"cozy": 0.5})
+    assert "--v-space: 4px" in roomy.css_tokens()
+
+
+def test_typography_roles_accept_fonts_and_load_them():
+    theme = Theme(typography={"body": ui.Font("Manrope", google=True),
+                              "mono": ui.Font("Berkeley Mono",
+                                              src="/public/fonts/bm.woff2")})
+    assert "'Manrope'" in theme.font_body
+    from virel.theme import google_fonts
+    assert any(f.family == "Manrope" for f in google_fonts(theme))
+    css = build_stylesheet(theme)
+    assert "font-family: 'Berkeley Mono'" in css
+    import pytest
+    with pytest.raises(ValueError, match="typography role"):
+        Theme(typography={"caption": ui.Font("X")})
+
+
+def test_high_contrast_via_preference_and_media_query():
+    css = Theme().css_tokens()
+    assert ':root[data-contrast="high"]' in css
+    assert "@media (prefers-contrast: more)" in css
+    assert "--v-border: var(--v-fg)" in css
+
+
+def test_brand_themes_compile_to_selectable_token_blocks():
+    theme = Theme(brands={"acme": Theme(color={"accent": "#dc2626"})})
+    css = theme.css_tokens()
+    assert ':root[data-brand="acme"] {' in css
+    assert ':root[data-brand="acme"][data-theme="dark"]' in css
+    assert ':root[data-brand="acme"]:not([data-theme="light"])' in css
+    assert "--v-accent: #dc2626" in css
+    assert "--v-accent: #4f46e5" in css  # the default brand keeps its own
+
+
+def test_brand_fonts_reach_the_stylesheet_and_csp():
+    theme = Theme(brands={
+        "acme": Theme(typography={"body": ui.Font("Sora", google=True)}),
+    })
+    from virel.theme import google_fonts
+    assert any(f.family == "Sora" for f in google_fonts(theme))
+
+
+def test_set_preference_compiles_and_executes():
+    @ui.page("/prefs")
+    def prefs():
+        return ui.Page(
+            ui.Button("Compact",
+                      on_click=lambda: ui.set_preference("density", "compact")),
+            ui.Button("Default brand",
+                      on_click=lambda: ui.set_preference("brand", None)),
+        )
+
+    from virel.compiler import compile_page
+    from virel.registry import active_registry
+    result = compile_page(active_registry().pages["/prefs"])
+    assert '$.setPreference("density", "compact");' in result.js
+    assert '$.setPreference("brand", null);' in result.js
+
+    view = ui.test.render(prefs)
+    view.get_by_role("button", name="Compact").click()
+    assert view.preferences == {"density": "compact"}
+    view.get_by_role("button", name="Default brand").click()
+    assert view.preferences["brand"] is None
+
+
+def test_set_preference_rejects_unknown_keys():
+    import pytest
+    with pytest.raises(ValueError, match="Unknown preference"):
+        ui.set_preference("motion", "off")
+
+
+def test_bootstrap_restores_all_preferences_before_paint():
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("x"))
+
+    from virel.compiler import compile_page
+    from virel.registry import active_registry
+    html = compile_page(active_registry().pages["/"]).html
+    assert 'localStorage.getItem("virel-theme")' in html
+    assert '"brand","density","contrast"' in html

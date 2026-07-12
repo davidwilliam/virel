@@ -57,6 +57,46 @@ def settings(tab: str = "profile") -> ui.Node:
                     ),
                     gap=4,
                 ),
+                _appearance(),
             ),
         title="Settings — Virel Demo",
+    )
+
+
+def _appearance() -> ui.Node:
+    """Runtime design preferences (SPEC 10.1): brand, density, and
+    contrast switch instantly, persist across reloads, and are applied
+    before first paint. Brands are registered on the theme in app.py."""
+    return ui.Card(
+        ui.Heading("Appearance", level=3),
+        ui.Text("Preferences apply instantly, persist in this browser, "
+                "and never flash on reload.", muted=True, size="sm"),
+        ui.Row(
+            ui.Text("Brand", size="sm"),
+            ui.Button("Default", size="sm",
+                      on_click=lambda: ui.set_preference("brand", None)),
+            ui.Button("Emerald", size="sm",
+                      on_click=lambda: ui.set_preference("brand", "emerald")),
+            ui.Button("Amber", size="sm",
+                      on_click=lambda: ui.set_preference("brand", "amber")),
+            gap=3, wrap=True,
+        ),
+        ui.Row(
+            ui.Text("Density", size="sm"),
+            ui.Button("Comfortable", size="sm",
+                      on_click=lambda: ui.set_preference("density", None)),
+            ui.Button("Compact", size="sm",
+                      on_click=lambda: ui.set_preference("density",
+                                                         "compact")),
+            gap=3, wrap=True,
+        ),
+        ui.Row(
+            ui.Text("Contrast", size="sm"),
+            ui.Button("Normal", size="sm",
+                      on_click=lambda: ui.set_preference("contrast", None)),
+            ui.Button("High", size="sm",
+                      on_click=lambda: ui.set_preference("contrast", "high")),
+            gap=3, wrap=True,
+        ),
+        gap=4,
     )

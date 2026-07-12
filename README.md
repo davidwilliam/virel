@@ -290,19 +290,33 @@ preference before first paint so switching never flashes, and
 `ui.ThemeToggle()` gives users a control that cycles the modes and persists
 the choice.
 
-The default typeface is Inter (bundled, self-hosted). Applications can use
-any font: `ui.GoogleFont` loads from Google Fonts with the stylesheet link
-and content security policy handled automatically, and `ui.FontFace`
-registers font files the project serves itself:
+Colors are typed scales: give a role one base color and every derived
+token follows, including a readable foreground picked by WCAG contrast,
+hover shades, subtle tints for each mode, and focus rings. Organization
+brands and tenant themes are complete themes selected at runtime, and
+density modes rescale the spacing unit every component is built on:
 
 ```python
 ui.use_theme(ui.Theme(
-    fonts=[ui.GoogleFont("Manrope"),
-           ui.FontFace("Berkeley Mono", "/public/fonts/BerkeleyMono.woff2")],
-    font_heading="'Manrope', sans-serif",
-    font_mono="'Berkeley Mono', monospace",
+    color={"accent": ui.Color.scale("#4f46e5"), "surface": "#7c8db5"},
+    space=ui.Space.scale(base=4),
+    typography={"body": ui.Font("Manrope", google=True)},
+    brands={"acme": ui.Theme(color={"accent": "#059669"})},
 ))
 ```
+
+Handlers switch any preference at runtime with
+`ui.set_preference("brand", "acme")` (likewise `theme`, `density`, and
+`contrast`); the choice persists in the browser and is restored before
+first paint, so nothing flashes on reload. High contrast also engages
+automatically for users whose system requests it, and animations collapse
+under reduced-motion preferences.
+
+The default typeface is Inter (bundled, self-hosted). `ui.Font(...,
+google=True)` loads from Google Fonts with the stylesheet link and content
+security policy handled automatically; `ui.Font(..., src=...)` registers
+font files the project serves itself. The lower-level `ui.GoogleFont` and
+`ui.FontFace` entries remain available on `Theme(fonts=[...])`.
 
 ## Loading data
 

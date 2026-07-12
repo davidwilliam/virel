@@ -71,3 +71,26 @@ def test_custom_element_events_reach_python_state(page, server_url):
     page.get_by_text("Python-side state sees: 5 / 5").wait_for()
     page.wait_for_function(
         "document.querySelector('star-rating').getAttribute('value') === '5'")
+
+
+def test_design_preferences_switch_and_persist(page, server_url):
+    page.goto(f"{server_url}/settings")
+    accent = ("getComputedStyle(document.documentElement)"
+              ".getPropertyValue('--v-accent').trim()")
+    before = page.evaluate(accent)
+
+    page.get_by_role("button", name="Emerald").click()
+    page.get_by_role("button", name="Compact").click()
+    assert page.evaluate("document.documentElement.dataset.brand") == "emerald"
+    assert page.evaluate("document.documentElement.dataset.density") == "compact"
+    switched = page.evaluate(accent)
+    assert switched != before and switched == "#059669"
+
+    # The bootstrap script restores preferences before first paint.
+    page.reload()
+    assert page.evaluate("document.documentElement.dataset.brand") == "emerald"
+    assert page.evaluate(accent) == "#059669"
+
+    page.get_by_role("button", name="Default", exact=True).click()
+    assert page.evaluate("document.documentElement.dataset.brand") is None
+    assert page.evaluate(accent) == before

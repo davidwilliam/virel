@@ -957,6 +957,27 @@ export function themeToggle(id) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Design preferences (SPEC 10.1): theme, brand, density, contrast.
+ * Each lives as data-<key> on the root element and persists to
+ * localStorage; the inline bootstrap restores all of them before first
+ * paint. A null value clears the preference back to the default.
+ * ------------------------------------------------------------------ */
+
+export function setPreference(key, value) {
+  if (!["theme", "brand", "density", "contrast"].includes(key)) return;
+  const root = document.documentElement;
+  try {
+    if (value == null) {
+      delete root.dataset[key];
+      localStorage.removeItem("virel-" + key);
+    } else {
+      root.dataset[key] = value;
+      localStorage.setItem("virel-" + key, value);
+    }
+  } catch {}
+}
+
+/* ------------------------------------------------------------------ *
  * Server actions: typed HTTP RPC (SPEC 8.8). JSON in, JSON out.
  * ------------------------------------------------------------------ */
 

@@ -82,6 +82,8 @@ class TestView:
             }
             self._files: dict[str, list[Any]] = {}
             self.channel_sends: list[tuple[str, dict]] = []
+            # Design preferences changed by handlers (ui.set_preference).
+            self.preferences: dict[str, str | None] = {}
             if fetch_resources:
                 # Simulate the browser's initial load: every resource fetches
                 # (running the real server action) unless server rendering
@@ -115,6 +117,7 @@ class TestView:
         handler.execute(working, ev)
         working.pop("__files__", None)
         self.channel_sends.extend(working.pop("__channel_sends__", []))
+        self.preferences.update(working.pop("__preferences__", {}))
         for action_name in working.pop("__invalidated__", []):
             for res in self.resources.values():
                 if res.action.name == action_name:

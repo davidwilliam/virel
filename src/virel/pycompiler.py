@@ -308,6 +308,8 @@ class FnCompiler:
             return OpStmt(self._compile_invalidate(call))
         if marker == "upload":
             return OpStmt(self._compile_upload(call))
+        if marker == "set_preference":
+            return OpStmt(self._compile_set_preference(call))
         if isinstance(call.func, ast.Attribute):
             target = self._try_resolve_node(call.func.value)
             attr = call.func.attr
@@ -352,6 +354,23 @@ class FnCompiler:
             "calls (action.call/action.stream), and resource.refresh() may "
             "be used as statements.",
         )
+
+    def _compile_set_preference(self, call: ast.Call) -> Any:
+        from .theme import SetPreferenceOp, _PREFERENCE_KEYS
+        if len(call.args) != 2 or call.keywords:
+            raise self.error(call, "ui.set_preference takes a preference "
+                                   "key and a value.")
+        key, value = call.args
+        if not (isinstance(key, ast.Constant) and isinstance(key.value, str)
+                and key.value in _PREFERENCE_KEYS):
+            raise self.error(call, "The preference key must be one of "
+                                   f"{', '.join(_PREFERENCE_KEYS)} as a "
+                                   "string literal.")
+        if not (isinstance(value, ast.Constant)
+                and (value.value is None or isinstance(value.value, str))):
+            raise self.error(call, "The preference value must be a string "
+                                   "literal or None.")
+        return SetPreferenceOp(key.value, value.value)
 
     def _compile_invalidate(self, call: ast.Call) -> Any:
         from .registry import ServerAction

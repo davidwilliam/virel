@@ -79,7 +79,8 @@ from .registry import (Request, build, client, component, deny, layout,
                        page,
                        redirect, server, shared, use_guard,
                        use_middleware, use_static, web_component)
-from .theme import FontFace, GoogleFont, Theme
+from .theme import (Color, ColorScale, Font, FontFace, GoogleFont, Space,
+                    Theme, set_preference)
 from . import testing as test
 
 
@@ -111,7 +112,9 @@ __all__ = [
     "channel", "connect", "Channel", "ChannelClosed",
     "context", "Context",
     "state", "derived", "effect", "cond", "not_", "length", "set_from_event",
-    "use_theme", "Theme", "FontFace", "GoogleFont", "Node", "VirelCompileError", "test",
+    "use_theme", "Theme", "Color", "ColorScale", "Space", "Font",
+    "FontFace", "GoogleFont", "set_preference",
+    "Node", "VirelCompileError", "test",
     "messages", "t",
     "format_number", "format_currency", "format_percent", "format_date",
     # layout
