@@ -328,6 +328,30 @@ def _layout_tab() -> ui.Node:
     )
 
 
+_ProjectCard = ui.recipe(
+    base=ui.Card,
+    variants={"status": {
+        "active": {"border": "accent"},
+        "paused": {"background": "surface.2"},
+        "archived": {"background": "surface.2", "opacity": 0.65},
+    }},
+    defaults={"status": "active"},
+)
+
+_STATUS_INTENT = {"active": "primary", "paused": "neutral",
+                  "archived": "neutral"}
+
+
+def _status_card(name: str, status: str, blurb: str) -> ui.Node:
+    return _ProjectCard(
+        ui.Row(ui.Heading(name, level=4), ui.Spacer(),
+               ui.Badge(status, intent=_STATUS_INTENT[status])),
+        ui.Text(blurb, muted=True, size="sm"),
+        status=status,
+        gap=2,
+    )
+
+
 def _styling_tab() -> ui.Node:
     tile = ui.style(
         padding=4,
@@ -353,6 +377,27 @@ def _styling_tab() -> ui.Node:
                     'background="surface.2",\n'
                     '                border="subtle", '
                     'hover={"shadow": "md", "border": "accent"})',
+                    block=True, language="python"),
+            gap=3,
+        ),
+        ui.Card(
+            ui.Heading("Recipes", level=3),
+            ui.Text("ui.recipe() defines a component with named variants; "
+                    "each axis becomes a typed keyword argument.",
+                    muted=True, size="sm"),
+            ui.Grid(
+                _status_card("Atlas", "active",
+                             "Ingesting eval runs since March."),
+                _status_card("Borealis", "paused",
+                             "Waiting on the annotation batch."),
+                _status_card("Cascade", "archived",
+                             "Shipped and wound down in May."),
+                columns={"base": 1, "md": 3},
+                gap=4,
+            ),
+            ui.Code('ProjectCard = ui.recipe(base=ui.Card, variants={'
+                    '"status": {...}})\n'
+                    'ProjectCard(..., status="paused")',
                     block=True, language="python"),
             gap=3,
         ),

@@ -453,6 +453,20 @@ card_style = ui.style(padding=6, radius="lg", background="surface.1",
 ui.Stack(..., class_name=card_style)
 ```
 
+Recipes build variants on top of style objects: each axis becomes a
+typed keyword argument on the returned component, validated against the
+declared options, with everything else passing through to the base:
+
+```python
+ProjectCard = ui.recipe(
+    base=ui.Card,
+    variants={"status": {"active": {"border": "accent"},
+                         "paused": {"background": "surface.2"}}},
+    defaults={"status": "active"},
+)
+ProjectCard(ui.Text("Atlas"), status="paused")
+```
+
 When the typed API is not enough, `ui.Box` is the CSS escape hatch: raw
 declarations, including custom properties, validated and emitted as a
 normal inline style so they stay compatible with standard CSS concepts and

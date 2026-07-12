@@ -101,3 +101,61 @@ def test_use_css_reaches_the_served_stylesheet():
 def test_use_css_rejects_empty_input():
     with pytest.raises(VirelCompileError, match="non-empty"):
         ui.use_css("   ")
+
+
+def test_recipe_compiles_the_spec_example():
+    ProjectCard = ui.recipe(
+        base=ui.Card,
+        variants={"status": {
+            "active": {"border": "accent"},
+            "paused": {"background": "surface.2", "opacity": 0.8},
+        }},
+    )
+    active = ProjectCard(ui.Text("Atlas"), status="active")
+    paused = ProjectCard(ui.Text("Atlas"), status="paused", gap=5)
+    assert active.attrs["class"] != paused.attrs["class"]
+    assert "v-card" in active.attrs["class"]
+    assert "gap: calc(var(--v-space) * 5)" in paused.attrs["style"]
+    variant_class = paused.attrs["class"].split()[-1]
+    assert f".{variant_class}" in build_stylesheet()
+
+
+def test_recipe_defaults_and_composed_class_name():
+    Tile = ui.recipe(base=ui.Box,
+                     variants={"tone": {"info": {"background": "accent.soft"},
+                                        "warn": {"background": "danger.soft"}}},
+                     defaults={"tone": "info"})
+    assert Tile(ui.Text("x")).attrs["class"] == \
+        Tile(ui.Text("x"), tone="info").attrs["class"]
+    combined = Tile(ui.Text("x"), tone="warn", class_name="extra")
+    assert combined.attrs["class"].endswith("extra")
+    assert Tile.variants == {"tone": ("info", "warn")}
+
+
+def test_recipe_validates_variants():
+    Tile = ui.recipe(base=ui.Box,
+                     variants={"tone": {"info": {"padding": 2}}})
+    with pytest.raises(VirelCompileError, match="Unknown tone variant"):
+        Tile(ui.Text("x"), tone="loud")
+    with pytest.raises(VirelCompileError, match="at least one variant"):
+        ui.recipe(base=ui.Box, variants={})
+    with pytest.raises(VirelCompileError, match="does not match"):
+        ui.recipe(base=ui.Box, variants={"tone": {"info": {"padding": 2}}},
+                  defaults={"tone": "loud"})
+    with pytest.raises(VirelCompileError, match="Unknown style property"):
+        ui.recipe(base=ui.Box, variants={"tone": {"info": {"float": "left"}}})
+
+
+def test_recipe_accepts_ready_style_objects():
+    accent = ui.style(border="accent")
+    Tile = ui.recipe(base=ui.Box, variants={"tone": {"info": accent}})
+    assert accent.class_name in Tile(ui.Text("x"), tone="info").attrs["class"]
+
+
+def test_recipe_axes_compose():
+    Chip = ui.recipe(base=ui.Box, variants={
+        "tone": {"info": {"background": "accent.soft"}},
+        "size": {"lg": {"padding": 4}},
+    })
+    chip = Chip(ui.Text("x"), tone="info", size="lg")
+    assert len(chip.attrs["class"].split()) == 3  # v-box + two variants

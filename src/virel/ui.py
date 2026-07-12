@@ -88,7 +88,7 @@ from .registry import (Request, build, client, component, deny, layout,
                        page,
                        redirect, server, shared, use_css, use_guard,
                        use_middleware, use_static, web_component)
-from .styles import Style, style
+from .styles import Style, recipe, style
 from .theme import (Color, ColorScale, Font, FontFace, GoogleFont, Space,
                     Theme, set_preference)
 from . import testing as test
@@ -124,7 +124,7 @@ __all__ = [
     "context", "Context",
     "state", "derived", "effect", "cond", "not_", "length", "set_from_event",
     "use_theme", "Theme", "Color", "ColorScale", "Space", "Font",
-    "style", "Style",
+    "style", "Style", "recipe",
     "FontFace", "GoogleFont", "set_preference",
     "Node", "VirelCompileError", "test",
     "messages", "t",

@@ -178,3 +178,62 @@ def style(**props: Any) -> Style:
     from .registry import active_registry
     active_registry().styles[name] = css
     return Style(class_name=name, css=css)
+
+
+def recipe(*, base: Any, variants: dict[str, dict[str, Any]],
+           defaults: dict[str, str] | None = None) -> Any:
+    """A component with organization-defined variants (SPEC 10.6). Each
+    variant axis becomes a keyword argument on the returned component;
+    each option is a dict of ui.style() properties (or a ready Style):
+
+        ProjectCard = ui.recipe(
+            base=ui.Card,
+            variants={"status": {
+                "active": {"border": "accent", "background": "surface.1"},
+                "paused": {"background": "surface.2", "opacity": 0.8},
+            }},
+            defaults={"status": "active"},
+        )
+        ProjectCard(ui.Text("Atlas"), status="paused", gap=3)
+
+    Everything else passes through to the base component, and a caller's
+    class_name composes with the variant classes.
+    """
+    if not variants:
+        raise VirelCompileError("ui.recipe needs at least one variant axis.")
+    compiled: dict[str, dict[str, Style]] = {}
+    for axis, options in variants.items():
+        if not isinstance(options, dict) or not options:
+            raise VirelCompileError(
+                f"Variant axis {axis!r} takes a dict of named options.")
+        compiled[axis] = {
+            option: props if isinstance(props, Style) else style(**props)
+            for option, props in options.items()
+        }
+    for axis, choice in (defaults or {}).items():
+        if axis not in compiled or choice not in compiled[axis]:
+            raise VirelCompileError(
+                f"Default {axis}={choice!r} does not match a variant.")
+
+    def component(*children: Any, **kwargs: Any) -> Any:
+        classes: list[Any] = []
+        for axis, options in compiled.items():
+            choice = kwargs.pop(axis, (defaults or {}).get(axis))
+            if choice is None:
+                continue
+            if choice not in options:
+                raise VirelCompileError(
+                    f"Unknown {axis} variant {choice!r}; expected one of "
+                    f"{', '.join(options)}.")
+            classes.append(options[choice])
+        extra = kwargs.pop("class_name", None)
+        if isinstance(extra, (list, tuple)):
+            classes.extend(extra)
+        elif extra is not None:
+            classes.append(extra)
+        return base(*children,
+                    class_name=classes if classes else None, **kwargs)
+
+    component.variants = {axis: tuple(options)
+                          for axis, options in compiled.items()}
+    return component
