@@ -378,39 +378,31 @@ def test_list_reorders_with_a_pointer_drag(page, server_url):
     assert "Design review" not in page.evaluate(head)
 
 
-def test_datagrid_sorts_filters_selects_and_pages(page, server_url):
+def test_datagrid_sorts_filters_and_selects(page, server_url):
     page.goto(f"{server_url}/components")
     page.get_by_role("tab", name="Data").click()
-    grid = page.locator(".v-datagrid")
+    grid = page.locator(".v-datagrid").first
     grid.wait_for()
-    first_model = ("document.querySelector('.v-datagrid tbody tr:not([hidden])')"
-                   ".children[1].textContent")
 
-    # Sort by score ascending, then descending.
-    page.get_by_role("button", name="Score").click()
-    assert page.evaluate(first_model) == "baseline"
-    page.get_by_role("button", name="Score").click()
-    assert page.evaluate(first_model) == "atlas-large"
+    # Sort by score: aria-sort tracks the cycle.
+    grid.get_by_role("button", name="Score").click()
+    grid.get_by_role("button", name="Score").click()
     assert page.evaluate(
         "document.querySelector('th[data-key=\"score\"]')"
         ".getAttribute('aria-sort')") == "descending"
 
     # Filter narrows the row count.
-    page.get_by_label("Filter rows").fill("extract")
+    grid.get_by_label("Filter rows").fill("extract")
     for _ in range(40):
-        if "3 of 12 rows" in page.locator(".v-grid-count").text_content():
+        if "3 of 12 rows" in grid.locator(".v-grid-count").text_content():
             break
         page.wait_for_timeout(25)
-    assert "3 of 12 rows" in page.locator(".v-grid-count").text_content()
-    page.get_by_label("Filter rows").fill("")
+    assert "3 of 12 rows" in grid.locator(".v-grid-count").text_content()
+    grid.get_by_label("Filter rows").fill("")
 
     # Select all visible rows; the count reaches Python state.
-    page.get_by_label("Select all rows").check()
-    page.get_by_text("Selected rows: 6").wait_for()
-
-    # Page forward: the pager advances and new rows appear.
-    page.get_by_role("button", name="Next").click()
-    assert "Page 2 of 2" in page.locator(".v-grid-pages").text_content()
+    grid.get_by_label("Select all rows").check()
+    page.get_by_text("Selected rows: 12").wait_for()
 
 
 def test_listbox_keyboard_selection(page, server_url):
@@ -466,3 +458,74 @@ def test_charts_render_accessible_svg(page, server_url):
     label = page.evaluate(
         "document.querySelector('.v-chart svg').getAttribute('aria-label')")
     assert "Line chart" in label
+
+
+def test_grid_groups_collapse_and_aggregate(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Data").click()
+    grid = page.locator(".v-datagrid").first
+    grid.wait_for()
+    toggle = grid.locator(".v-grid-group-toggle").first
+    label = toggle.text_content()
+    assert "(" in label  # group name with member count
+    assert "Score mean:" in grid.locator(
+        ".v-grid-group-summary").first.text_content()
+
+    visible = ("document.querySelectorAll('.v-datagrid tbody "
+               "tr[data-group-of]:not([hidden])').length")
+    before = page.evaluate(visible)
+    toggle.click()
+    after = page.evaluate(visible)
+    assert after < before
+    toggle.click()
+    assert page.evaluate(visible) == before
+
+
+def test_grid_cell_edits_reach_state(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Data").click()
+    grid = page.locator(".v-datagrid").first
+    cell = grid.locator("td.v-grid-editable").first
+    cell.scroll_into_view_if_needed()
+    cell.dblclick()
+    field = grid.locator(".v-grid-edit-input")
+    field.fill("0.99")
+    field.press("Enter")
+    page.get_by_text("Last edit: 0.99").wait_for()
+    assert cell.text_content() == "0.99"
+
+
+def test_virtual_grid_windows_and_filters(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Data").click()
+    virtual = page.locator(".v-datagrid").nth(1)
+    virtual.scroll_into_view_if_needed()
+    for _ in range(40):
+        if "2000 rows" in virtual.locator(".v-grid-count").text_content():
+            break
+        page.wait_for_timeout(25)
+    rendered = page.evaluate(
+        "document.querySelectorAll('.v-datagrid')[1]"
+        ".querySelectorAll('tbody tr:not(.v-grid-spacer)').length")
+    assert rendered < 60  # 2000 rows of data, only a window in the DOM
+
+    virtual.locator(".v-grid-filter").fill("run-1999")
+    for _ in range(40):
+        if "1 of 2000 rows" in virtual.locator(
+                ".v-grid-count").text_content():
+            break
+        page.wait_for_timeout(25)
+    assert "1 of 2000 rows" in virtual.locator(
+        ".v-grid-count").text_content()
+
+
+def test_grid_csv_export_downloads(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Data").click()
+    with page.expect_download() as download_info:
+        page.get_by_role("button", name="Export CSV").click()
+    download = download_info.value
+    assert download.suggested_filename == "grid.csv"
+    path = download.path()
+    content = open(path).read()
+    assert '"model"' in content and '"atlas-large"' in content

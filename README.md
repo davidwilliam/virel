@@ -466,9 +466,10 @@ built in:
   (onboarding spotlight steps), `When`
 - Data display and status: `Table`, `Chart` (line, area, bar, donut
   compiled to themed accessible inline SVG, zero JS), `DataGrid`
-  (sortable typed columns,
-  filtering, row selection with select-all, client-side paging over
-  server-rendered rows), `Stat`, `Progress`, `Spinner`, `Skeleton`,
+  (sortable typed columns, filtering, selection, grouping with Python-side
+  aggregation, in-place cell editing, column pinning and resizing,
+  CSV export, virtualization for large datasets, SSE streaming row
+  updates, and a server mode where sorting and paging are plain links), `Stat`, `Progress`, `Spinner`, `Skeleton`,
   `Avatar`, `Badge`, `Alert`, `Breadcrumbs`, `EmptyState`, `Pagination`
   (state-driven buttons or server-rendered windowed links), `Icon` (a
   built-in inline SVG set), plus `ui.notify` toasts raised from any

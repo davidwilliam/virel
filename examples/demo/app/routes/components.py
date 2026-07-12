@@ -114,7 +114,9 @@ import datetime as _datetime
 class _RunRecord:
     """Rows reach the grid as typed records (SPEC 12.1): dataclasses,
     Pydantic models, TypedDicts, and DataFrames all normalize the same
-    way through ui.records."""
+    way through ui.records. The run field is the unique row key; it
+    needs no column of its own."""
+    run: str
     model: str
     dataset: str
     score: float
@@ -122,7 +124,8 @@ class _RunRecord:
 
 
 _RUN_ROWS = [
-    _RunRecord(name, ds, score, _datetime.date.fromisoformat(day))
+    _RunRecord(f"{name}@{ds}", name, ds, score,
+               _datetime.date.fromisoformat(day))
     for name, ds, score, day in [
         ("atlas-large", "qa-hard-v2", 0.93, "2026-07-10"),
         ("atlas-small", "qa-hard-v2", 0.87, "2026-07-11"),
@@ -140,8 +143,18 @@ _RUN_ROWS = [
 ]
 
 
+_FLEET_ROWS = [
+    {"run": f"run-{i:04d}", "model": ("atlas-large", "atlas-small",
+                                      "baseline")[i % 3],
+     "score": round(0.5 + (i * 37 % 500) / 1000, 3),
+     "latency_ms": 120 + (i * 17) % 900}
+    for i in range(2000)
+]
+
+
 def _data_tab() -> ui.Node:
     chosen = ui.state([])
+    last_edit = ui.state("none yet")
     facets = ui.state(["passed"])
     touring = ui.state(False)
     return ui.Stack(
@@ -169,19 +182,42 @@ def _data_tab() -> ui.Node:
             ui.DataGrid(
                 _RUN_ROWS,
                 columns=[
-                    ui.Column("model", "Model"),
+                    ui.Column("model", "Model", pin="start"),
                     ui.Column("dataset", "Dataset"),
-                    ui.Column("score", "Score", kind="number"),
+                    ui.Column("score", "Score", kind="number",
+                              editable=True),
                     ui.Column("started", "Started", kind="date"),
                 ],
-                key="model",
+                key="run",
                 filterable=True,
-                page_size=6,
                 selectable=True,
+                group_by="dataset",
+                aggregate={"score": "mean"},
+                resizable=True,
+                export=True,
                 on_selection=ui.set_from_event(chosen, "detail.keys"),
+                on_edit=ui.set_from_event(last_edit, "detail.value"),
             ),
-            ui.Text(f"Selected rows: {ui.length(chosen)}", muted=True,
-                    size="sm"),
+            ui.Row(
+                ui.Text(f"Selected rows: {ui.length(chosen)}", muted=True,
+                        size="sm"),
+                ui.Text(f"Last edit: {last_edit}", muted=True, size="sm"),
+                gap=5,
+            ),
+            gap=3,
+        ),
+        ui.Card(
+            ui.Heading("Virtual grid", level=2, size=3),
+            ui.Text("Two thousand rows travel as data; only the visible "
+                    "window exists in the DOM. Double-click a score to "
+                    "edit it in place.", muted=True, size="sm"),
+            ui.DataGrid(
+                _FLEET_ROWS,
+                key="run",
+                virtual=True,
+                height="18rem",
+                filterable=True,
+            ),
             gap=3,
         ),
         ui.Grid(

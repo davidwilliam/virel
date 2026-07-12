@@ -90,6 +90,7 @@ from .elements import (
 from .channels import Channel, ChannelClosed, channel, connect
 from .charts import Chart, Series
 from .data import records
+from .datagrid import GridQuery, apply_grid_query, grid_query
 from .context import Context, context
 from .datagrid import Column, DataGrid
 from .elements import Each, Island, Suspense, effect, upload
@@ -179,6 +180,7 @@ __all__ = [
     "Tree", "Command", "CommandPalette", "Tour", "TourStep",
     # data display and status
     "Table", "DataGrid", "Column", "Chart", "Series",
+    "grid_query", "apply_grid_query", "GridQuery",
     "Stat", "Progress", "Spinner", "Skeleton", "Avatar",
     "Breadcrumbs", "Alert", "Badge", "EmptyState", "ErrorBoundary",
     "ErrorState", "Icon", "icon_names",

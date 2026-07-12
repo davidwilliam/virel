@@ -54,7 +54,7 @@ focus rings; those apply to every component below.
 | `Tree` | Arrows move, Right/Left expand and collapse, Home/End jump, Enter selects | `role="tree"` pattern with roving tabindex and `aria-expanded` |
 | `CommandPalette` | Ctrl/Cmd+letter opens, typing filters, arrows move, Enter runs, Escape closes | Combobox over a listbox inside a native dialog; `aria-activedescendant` tracks the active option |
 | `Pagination` | Tab between pages, Enter activates | `<nav>` with `aria-label`; `aria-current="page"` on the active page; edges disabled |
-| `DataGrid` | Sort buttons and checkboxes are native controls | `aria-sort` tracks each sortable column; select-all is tri-state; row count is a `role="status"` region |
+| `DataGrid` | Sort buttons and checkboxes are native controls; arrow keys move cell focus (roving tabindex), Enter edits an editable cell, Escape cancels | `aria-sort` tracks each sortable column; select-all is tri-state; group toggles carry `aria-expanded`; row count is a `role="status"` region |
 | `Splitter` | Arrows move the divider, Home/End snap to the limits | `role="separator"` with `aria-valuenow`/min/max and orientation |
 | `Swipeable` | Delete/Backspace dismiss | Focusable group with usage named in its label |
 | `Each(reorderable=True)` | Space grabs the handle, arrows move, Space drops, Escape cancels | Per-item handle buttons; every move announced through a visually hidden `role="status"` region |

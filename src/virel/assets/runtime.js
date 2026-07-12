@@ -1324,70 +1324,260 @@ export function chips(id) {
 export function datagrid(id) {
   const root = el(id);
   if (!root) return;
-  const body = root.querySelector("tbody");
-  const rows = Array.from(body.querySelectorAll(":scope > tr"));
+  const meta = JSON.parse(root.dataset.meta || "{}");
+  const table = root.querySelector("table");
+  const body = table.querySelector("tbody");
+  const wrap = root.querySelector(".v-table-wrap");
   const count = root.querySelector(".v-grid-count");
   const pageSize = Number(root.dataset.pageSize) || 0;
+  const columns = meta.columns || [];
+  const selOffset = meta.selectable ? 1 : 0;
+  const selected = new Set();
   let page = 0;
   let sortKey = null;
   let sortDir = 0; // 1 ascending, -1 descending, 0 original order
   let query = "";
 
-  const matches = (row) =>
-    query === "" || row.textContent.toLowerCase().includes(query);
+  const compare = (kind, va, vb) => kind === "number"
+    ? Number(va || "-Infinity") - Number(vb || "-Infinity")
+    : va < vb ? -1 : va > vb ? 1 : 0;
 
-  const refresh = () => {
-    let live = rows.filter(matches);
-    if (sortDir !== 0 && sortKey !== null) {
-      const heads = Array.from(root.querySelectorAll("th[data-key]"));
-      const columnIndex = heads.findIndex(
-        (th) => th.dataset.key === sortKey);
-      const offset = root.querySelector(".v-grid-selcol") ? 1 : 0;
-      const kind = heads[columnIndex].dataset.kind;
-      const valueOf = (row) => {
-        const cell = row.children[columnIndex + offset];
-        return cell ? cell.dataset.value : "";
-      };
-      live = live.slice().sort((a, b) => {
-        const va = valueOf(a);
-        const vb = valueOf(b);
-        const order = kind === "number"
-          ? Number(va || "-Infinity") - Number(vb || "-Infinity")
-          : va < vb ? -1 : va > vb ? 1 : 0;
-        return order * sortDir;
-      });
-    } else {
-      live = live.slice().sort(
-        (a, b) => Number(a.dataset.index) - Number(b.dataset.index));
-    }
-    const pages = pageSize
-      ? Math.max(1, Math.ceil(live.length / pageSize)) : 1;
-    page = Math.min(page, pages - 1);
-    const start = pageSize ? page * pageSize : 0;
-    const shown = pageSize ? live.slice(start, start + pageSize) : live;
-
-    for (const row of rows) row.hidden = true;
-    // Reordering happens in the real DOM so the table stays a table.
-    for (const row of shown) {
-      body.appendChild(row);
-      row.hidden = false;
-    }
-    if (count) {
-      count.textContent = live.length === rows.length
-        ? `${rows.length} rows` : `${live.length} of ${rows.length} rows`;
-    }
-    const pager = root.querySelector(".v-grid-pages");
-    if (pager) pager.textContent = `Page ${page + 1} of ${pages}`;
-    const previous = root.querySelector(".v-grid-prev");
-    const next = root.querySelector(".v-grid-next");
-    if (previous) previous.disabled = page === 0;
-    if (next) next.disabled = page >= pages - 1;
-    syncSelectAll();
+  const dispatchSelection = () => {
+    root.dispatchEvent(new CustomEvent("virel-selection", {
+      detail: { keys: [...selected] },
+    }));
+  };
+  const dispatchEdit = (key, column, value) => {
+    root.dispatchEvent(new CustomEvent("virel-edit", {
+      detail: { key, column, value },
+    }));
   };
 
-  // Sorting cycles ascending, descending, back to the original order.
-  root.querySelectorAll("th[data-key]").forEach((th) => {
-    const button = th.querySelector(".v-grid-sort");
+  /* ----- engines: both expose refresh() and csvRows() ----- */
+  let engine;
+
+  if (meta.virtual) {
+    const script = root.querySelector(".v-grid-data");
+    let data = script ? JSON.parse(script.textContent) : [];
+    const rowHeight = meta.rowHeight || 44;
+    const topSpacer = document.createElement("tr");
+    const bottomSpacer = document.createElement("tr");
+    topSpacer.className = "v-grid-spacer";
+    bottomSpacer.className = "v-grid-spacer";
+    topSpacer.appendChild(document.createElement("td"));
+    bottomSpacer.appendChild(document.createElement("td"));
+    const span = columns.length + selOffset;
+    topSpacer.firstChild.colSpan = span;
+    bottomSpacer.firstChild.colSpan = span;
+
+    const view = () => {
+      let live = data;
+      if (query) {
+        live = live.filter((row) => columns.some((column) =>
+          String(row[column.key] ?? "").toLowerCase().includes(query)));
+      }
+      if (sortDir !== 0 && sortKey) {
+        const kind = (columns.find((c) => c.key === sortKey) || {}).kind;
+        live = live.slice().sort((a, b) => sortDir * compare(
+          kind,
+          kind === "number" ? a[sortKey] : String(a[sortKey] ?? "").toLowerCase(),
+          kind === "number" ? b[sortKey] : String(b[sortKey] ?? "").toLowerCase()));
+      }
+      return live;
+    };
+
+    const buildRow = (row) => {
+      const tr = document.createElement("tr");
+      const rowKey = String(row[meta.key] ?? "");
+      tr.dataset.key = rowKey;
+      tr.style.height = rowHeight + "px";
+      if (meta.selectable) {
+        const td = document.createElement("td");
+        td.className = "v-grid-selcol";
+        const check = document.createElement("input");
+        check.type = "checkbox";
+        check.className = "v-grid-check v-grid-check-row";
+        check.setAttribute("aria-label", `Select row ${rowKey}`);
+        check.checked = selected.has(rowKey);
+        td.appendChild(check);
+        tr.appendChild(td);
+      }
+      for (const column of columns) {
+        const td = document.createElement("td");
+        td.className = "v-grid-align-" + column.align
+          + (column.editable ? " v-grid-editable" : "")
+          + (column.pin ? ` v-grid-pin v-grid-pin-${column.pin}` : "");
+        td.dataset.col = column.key;
+        td.tabIndex = -1;
+        td.textContent = String(row[column.key] ?? "");
+        tr.appendChild(td);
+      }
+      return tr;
+    };
+
+    const refresh = () => {
+      let live = view();
+      const pages = pageSize
+        ? Math.max(1, Math.ceil(live.length / pageSize)) : 1;
+      page = Math.min(page, pages - 1);
+      if (pageSize) live = live.slice(page * pageSize, (page + 1) * pageSize);
+      const total = live.length;
+      const viewport = wrap.clientHeight || 400;
+      const start = Math.max(
+        0, Math.floor(wrap.scrollTop / rowHeight) - 4);
+      const visible = Math.min(
+        total - start, Math.ceil(viewport / rowHeight) + 8);
+      body.textContent = "";
+      topSpacer.firstChild.style.height = start * rowHeight + "px";
+      bottomSpacer.firstChild.style.height =
+        Math.max(0, total - start - visible) * rowHeight + "px";
+      body.appendChild(topSpacer);
+      for (const row of live.slice(start, start + visible)) {
+        body.appendChild(buildRow(row));
+      }
+      body.appendChild(bottomSpacer);
+      if (count) {
+        count.textContent = view().length === data.length
+          ? `${data.length} rows`
+          : `${view().length} of ${data.length} rows`;
+      }
+      const pager = root.querySelector(".v-grid-pages");
+      if (pager) pager.textContent = `Page ${page + 1} of ${pages}`;
+      syncSelectAll();
+      applyPins();
+    };
+    wrap.addEventListener("scroll", () => refresh());
+
+    engine = {
+      refresh,
+      csvRows: () => view().map((row) =>
+        columns.map((column) => String(row[column.key] ?? ""))),
+      rowFor: (tr) => data.find(
+        (row) => String(row[meta.key] ?? "") === tr.dataset.key),
+      commitEdit: (tr, columnKey, value) => {
+        const row = engine.rowFor(tr);
+        if (row) row[columnKey] = value;
+        refresh();
+      },
+      upsert: (row) => {
+        const rowKey = String(row[meta.key] ?? "");
+        const at = data.findIndex(
+          (existing) => String(existing[meta.key] ?? "") === rowKey);
+        if (at >= 0) data[at] = { ...data[at], ...row };
+        else data.push(row);
+        refresh();
+      },
+      allChecks: () => Array.from(
+        body.querySelectorAll(".v-grid-check-row")),
+    };
+
+    if (meta.stream) {
+      const source = new EventSource(`/_virel/action/${meta.stream}`);
+      source.onmessage = (ev) => {
+        try {
+          engine.upsert(JSON.parse(ev.data));
+        } catch {}
+      };
+      source.addEventListener("done", () => source.close());
+      onDispose(() => source.close());
+    }
+  } else {
+    const rows = Array.from(body.querySelectorAll(
+      ":scope > tr:not(.v-grid-group)"));
+    const groupHeads = Array.from(
+      body.querySelectorAll(":scope > tr.v-grid-group"));
+    const collapsed = new Set();
+
+    const matches = (row) =>
+      query === "" || row.textContent.toLowerCase().includes(query);
+
+    const refresh = () => {
+      let live = rows.filter(matches);
+      if (sortDir !== 0 && sortKey !== null) {
+        const heads = Array.from(table.querySelectorAll("th[data-key]"));
+        const columnIndex = heads.findIndex(
+          (th) => th.dataset.key === sortKey);
+        const kind = heads[columnIndex].dataset.kind;
+        const valueOf = (row) =>
+          row.children[columnIndex + selOffset]?.dataset.value ?? "";
+        live = live.slice().sort(
+          (a, b) => sortDir * compare(kind, valueOf(a), valueOf(b)));
+      } else {
+        live = live.slice().sort(
+          (a, b) => Number(a.dataset.index) - Number(b.dataset.index));
+      }
+      const pages = pageSize
+        ? Math.max(1, Math.ceil(live.length / pageSize)) : 1;
+      page = Math.min(page, pages - 1);
+      const start = pageSize ? page * pageSize : 0;
+      const shown = pageSize ? live.slice(start, start + pageSize) : live;
+
+      for (const row of rows) row.hidden = true;
+      for (const head of groupHeads) head.hidden = true;
+      // Rebuild in order: group headers precede their first visible row.
+      const seenGroups = new Set();
+      for (const row of shown) {
+        const group = row.dataset.groupOf;
+        if (group !== undefined && !seenGroups.has(group)) {
+          seenGroups.add(group);
+          const head = groupHeads.find((h) => h.dataset.group === group);
+          if (head) {
+            body.appendChild(head);
+            head.hidden = false;
+          }
+        }
+        body.appendChild(row);
+        row.hidden = group !== undefined && collapsed.has(group);
+      }
+      if (count) {
+        count.textContent = live.length === rows.length
+          ? `${rows.length} rows` : `${live.length} of ${rows.length} rows`;
+      }
+      const pager = root.querySelector(".v-grid-pages");
+      if (pager) pager.textContent = `Page ${page + 1} of ${pages}`;
+      const previous = root.querySelector(".v-grid-prev");
+      const next = root.querySelector(".v-grid-next");
+      if (previous) previous.disabled = page === 0;
+      if (next) next.disabled = page >= pages - 1;
+      syncSelectAll();
+      applyPins();
+    };
+
+    body.addEventListener("click", (ev) => {
+      const toggle = ev.target.closest(".v-grid-group-toggle");
+      if (!toggle) return;
+      const group = toggle.closest("tr").dataset.group;
+      const expanded = toggle.getAttribute("aria-expanded") === "true";
+      toggle.setAttribute("aria-expanded", expanded ? "false" : "true");
+      if (expanded) collapsed.add(group);
+      else collapsed.delete(group);
+      refresh();
+    });
+
+    engine = {
+      refresh,
+      csvRows: () => rows.filter(matches).map((row) =>
+        Array.from(row.children).slice(selOffset)
+          .map((cell) => cell.textContent)),
+      rowFor: (tr) => tr,
+      commitEdit: (tr, columnKey, value, kind) => {
+        const heads = Array.from(table.querySelectorAll("th[data-key]"));
+        const columnIndex = heads.findIndex(
+          (th) => th.dataset.key === columnKey);
+        const cell = tr.children[columnIndex + selOffset];
+        cell.textContent = String(value);
+        cell.dataset.value = kind === "number"
+          ? Number(value).toFixed(10) : String(value).toLowerCase();
+      },
+      allChecks: () => rows.filter((row) => !row.hidden)
+        .map((row) => row.querySelector(".v-grid-check-row"))
+        .filter(Boolean),
+    };
+  }
+
+  /* ----- sorting (client mode: buttons; server mode renders links) ----- */
+  table.querySelectorAll("th[data-key]").forEach((th) => {
+    const button = th.querySelector("button.v-grid-sort");
     if (!button) return;
     button.addEventListener("click", () => {
       if (sortKey !== th.dataset.key) {
@@ -1396,73 +1586,219 @@ export function datagrid(id) {
       } else {
         sortDir = sortDir === 1 ? -1 : sortDir === -1 ? 0 : 1;
       }
-      root.querySelectorAll("th[data-key]").forEach((other) => {
+      table.querySelectorAll("th[data-key]").forEach((other) => {
         if (other.getAttribute("aria-sort") !== null) {
           other.setAttribute("aria-sort",
             other === th && sortDir !== 0
               ? (sortDir === 1 ? "ascending" : "descending") : "none");
         }
       });
-      refresh();
+      engine.refresh();
     });
   });
 
-  const filter = root.querySelector(".v-grid-filter");
-  if (filter) {
+  /* ----- filtering and paging ----- */
+  const filter = root.querySelector("input.v-grid-filter");
+  if (filter && !meta.server) {
     filter.addEventListener("input", () => {
       query = filter.value.trim().toLowerCase();
       page = 0;
-      refresh();
+      engine.refresh();
     });
   }
   const previous = root.querySelector(".v-grid-prev");
   const next = root.querySelector(".v-grid-next");
   if (previous) {
-    previous.addEventListener("click", () => { page--; refresh(); });
+    previous.addEventListener("click", () => { page--; engine.refresh(); });
   }
   if (next) {
-    next.addEventListener("click", () => { page++; refresh(); });
+    next.addEventListener("click", () => { page++; engine.refresh(); });
   }
 
-  // Selection: per-row checkboxes plus a tri-state select-all over the
-  // currently visible rows.
+  /* ----- selection ----- */
   const selectAll = root.querySelector(".v-grid-check-all");
-  const rowChecks = () => rows
-    .filter((row) => !row.hidden)
-    .map((row) => row.querySelector(".v-grid-check-row"))
-    .filter(Boolean);
-  const selectedKeys = () => rows
-    .filter((row) => {
-      const check = row.querySelector(".v-grid-check-row");
-      return check && check.checked;
-    })
-    .map((row) => row.dataset.key);
-  const announceSelection = () => {
-    root.dispatchEvent(new CustomEvent("virel-selection", {
-      detail: { keys: selectedKeys() },
-    }));
-    syncSelectAll();
-  };
   function syncSelectAll() {
     if (!selectAll) return;
-    const checks = rowChecks();
+    const checks = engine.allChecks();
     const checked = checks.filter((check) => check.checked).length;
     selectAll.checked = checks.length > 0 && checked === checks.length;
     selectAll.indeterminate = checked > 0 && checked < checks.length;
   }
   if (selectAll) {
     selectAll.addEventListener("change", () => {
-      for (const check of rowChecks()) check.checked = selectAll.checked;
-      announceSelection();
+      for (const check of engine.allChecks()) {
+        check.checked = selectAll.checked;
+        const key = check.closest("tr").dataset.key;
+        if (selectAll.checked) selected.add(key);
+        else selected.delete(key);
+      }
+      dispatchSelection();
+      syncSelectAll();
     });
     body.addEventListener("change", (ev) => {
-      if (ev.target.classList.contains("v-grid-check-row")) {
-        announceSelection();
-      }
+      if (!ev.target.classList.contains("v-grid-check-row")) return;
+      const key = ev.target.closest("tr").dataset.key;
+      if (ev.target.checked) selected.add(key);
+      else selected.delete(key);
+      dispatchSelection();
+      syncSelectAll();
     });
   }
 
-  refresh();
+  /* ----- editable cells: Enter or double-click edits, Enter commits,
+   * Escape cancels. ----- */
+  const startEdit = (cell) => {
+    if (!cell || !cell.classList.contains("v-grid-editable")
+        || cell.querySelector("input")) {
+      return;
+    }
+    const columnKey = cell.dataset.col;
+    const kind = (columns.find((c) => c.key === columnKey) || {}).kind;
+    const original = cell.textContent;
+    cell.textContent = "";
+    const input = document.createElement("input");
+    input.className = "v-input v-grid-edit-input";
+    input.value = original;
+    if (kind === "number") input.type = "number";
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+    let finished = false;
+    const finish = (commit) => {
+      if (finished) return;
+      finished = true;
+      const raw = input.value;
+      input.remove();
+      if (!commit || (kind === "number" && raw !== "" && isNaN(Number(raw)))) {
+        cell.textContent = original;
+        cell.focus();
+        return;
+      }
+      const value = kind === "number" ? Number(raw) : raw;
+      const tr = cell.closest("tr");
+      engine.commitEdit(tr, columnKey, value, kind);
+      if (!meta.virtual) cell.focus();
+      dispatchEdit(tr.dataset.key, columnKey, value);
+    };
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") finish(true);
+      else if (ev.key === "Escape") finish(false);
+      ev.stopPropagation();
+    });
+    input.addEventListener("blur", () => finish(true));
+  };
+  body.addEventListener("dblclick", (ev) =>
+    startEdit(ev.target.closest("td")));
+
+  /* ----- keyboard navigation: the ARIA grid pattern over cells ----- */
+  table.addEventListener("keydown", (ev) => {
+    const cell = ev.target.closest("td[tabindex]");
+    if (!cell) return;
+    const row = cell.closest("tr");
+    const cellIndex = Array.from(row.children).indexOf(cell);
+    let target = null;
+    if (ev.key === "ArrowRight") target = cell.nextElementSibling;
+    else if (ev.key === "ArrowLeft") target = cell.previousElementSibling;
+    else if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      let sibling = ev.key === "ArrowDown"
+        ? row.nextElementSibling : row.previousElementSibling;
+      while (sibling && (sibling.hidden
+             || sibling.classList.contains("v-grid-group")
+             || sibling.classList.contains("v-grid-spacer"))) {
+        sibling = ev.key === "ArrowDown"
+          ? sibling.nextElementSibling : sibling.previousElementSibling;
+      }
+      target = sibling && sibling.children[cellIndex];
+    } else if (ev.key === "Enter") {
+      startEdit(cell);
+      ev.preventDefault();
+      return;
+    } else {
+      return;
+    }
+    if (target && target.tabIndex === -1) {
+      table.querySelectorAll("td[tabindex='0']").forEach(
+        (other) => { other.tabIndex = -1; });
+      target.tabIndex = 0;
+      target.focus();
+      ev.preventDefault();
+    }
+  });
+  body.addEventListener("click", (ev) => {
+    const cell = ev.target.closest("td[tabindex]");
+    if (cell) {
+      table.querySelectorAll("td[tabindex='0']").forEach(
+        (other) => { other.tabIndex = -1; });
+      cell.tabIndex = 0;
+    }
+  });
+
+  /* ----- CSV export of the current view, formula-injection safe ----- */
+  const exporter = root.querySelector(".v-grid-export");
+  if (exporter) {
+    exporter.addEventListener("click", () => {
+      const field = (value) => {
+        let text = String(value ?? "");
+        if (/^[=+\-@]/.test(text)) text = "'" + text;
+        return '"' + text.replace(/"/g, '""') + '"';
+      };
+      const lines = [columns.map((c) => field(c.key)).join(",")];
+      for (const row of engine.csvRows()) {
+        lines.push(row.map(field).join(","));
+      }
+      const blob = new Blob([lines.join("\r\n")],
+                            { type: "text/csv;charset=utf-8" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "grid.csv";
+      link.click();
+      URL.revokeObjectURL(link.href);
+    });
+  }
+
+  /* ----- column resizing and pinned offsets ----- */
+  function applyPins() {
+    let leftOffset = 0;
+    table.querySelectorAll("th.v-grid-pin-start").forEach((th) => {
+      const index = Array.from(th.parentElement.children).indexOf(th);
+      th.style.left = leftOffset + "px";
+      table.querySelectorAll("tbody tr").forEach((row) => {
+        const cell = row.children[index];
+        if (cell && cell.classList.contains("v-grid-pin-start")) {
+          cell.style.left = leftOffset + "px";
+        }
+      });
+      leftOffset += th.offsetWidth;
+    });
+  }
+  if (meta.resizable) {
+    table.style.tableLayout = "fixed";
+    table.querySelectorAll("th[data-key]").forEach((th) => {
+      th.style.width = th.offsetWidth + "px";
+      const handle = document.createElement("span");
+      handle.className = "v-grid-resize";
+      handle.setAttribute("aria-hidden", "true");
+      th.appendChild(handle);
+      handle.addEventListener("pointerdown", (down) => {
+        down.preventDefault();
+        const startX = down.clientX;
+        const startWidth = th.offsetWidth;
+        const move = (ev) => {
+          th.style.width = Math.max(56, startWidth + ev.clientX - startX)
+            + "px";
+          applyPins();
+        };
+        const stop = () => {
+          document.removeEventListener("pointermove", move);
+          document.removeEventListener("pointerup", stop);
+        };
+        document.addEventListener("pointermove", move);
+        document.addEventListener("pointerup", stop);
+      });
+    });
+  }
+
+  engine.refresh();
 }
 
 /* ------------------------------------------------------------------ *
