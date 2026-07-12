@@ -91,6 +91,14 @@ def test_design_preferences_switch_and_persist(page, server_url):
     assert page.evaluate("document.documentElement.dataset.brand") == "emerald"
     assert page.evaluate(accent) == "#059669"
 
+    # The mono brand flips its accent between modes: near-black in
+    # light, white in dark.
+    page.get_by_role("button", name="Mono").click()
+    assert page.evaluate(accent) == "#18181b"
+    page.evaluate("document.documentElement.dataset.theme = 'dark'")
+    assert page.evaluate(accent) == "#fafafa"
+    page.evaluate("delete document.documentElement.dataset.theme")
+
     page.get_by_role("button", name="Default", exact=True).click()
     assert page.evaluate("document.documentElement.dataset.brand") is None
     assert page.evaluate(accent) == before

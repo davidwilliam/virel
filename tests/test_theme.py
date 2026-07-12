@@ -241,3 +241,39 @@ def test_bootstrap_restores_all_preferences_before_paint():
     html = compile_page(active_registry().pages["/"]).html
     assert 'localStorage.getItem("virel-theme")' in html
     assert '"brand","density","contrast"' in html
+
+
+def test_mid_tone_accents_get_white_text():
+    # A pure WCAG ratio comparison would pick dark text on emerald; the
+    # readability threshold matches shipped design systems instead.
+    assert ui.Color.scale("#059669").fg == "#ffffff"   # emerald
+    assert ui.Color.scale("#e11d48").fg == "#ffffff"   # rose
+    assert ui.Color.scale("#f59e0b").fg == "#16181d"   # amber stays dark
+
+
+def test_color_scale_can_flip_between_modes():
+    scale = ui.Color.scale("#18181b", dark="#fafafa")
+    assert scale.fg == "#ffffff"
+    assert scale.fg_dark == "#16181d"  # white accent: dark text on it
+    css = Theme(color={"accent": scale}).css_tokens()
+    assert "--v-accent: #18181b" in css
+    assert "--v-accent: #fafafa" in css
+
+
+def test_theme_presets_cover_at_least_five_looks():
+    names = Theme.preset_names()
+    assert len(names) >= 5
+    assert "mono" in names
+    for name in names:
+        css = Theme.preset(name).css_tokens()
+        assert "--v-accent" in css
+    import pytest
+    with pytest.raises(ValueError, match="Unknown theme preset"):
+        Theme.preset("neon")
+
+
+def test_semantic_colors_live_in_mode_blocks_not_shared():
+    css = Theme.preset("mono").css_tokens()
+    dark_block = css.split(':root[data-theme="dark"]')[1]
+    assert "--v-accent: #fafafa" in dark_block
+    assert "--v-accent-fg: #16181d" in dark_block

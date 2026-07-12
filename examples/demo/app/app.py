@@ -4,11 +4,12 @@ from virel import ui
 
 from . import routes  # noqa: F401  (importing registers pages and actions)
 
-# Organization brands (SPEC 10.1): each derives its full palette from one
-# base color and is switchable at runtime from the settings page.
+# Organization brands (SPEC 10.1): every built-in preset is available as
+# a runtime-switchable brand from the settings page. "mono" is the black
+# and white look; the accent flips to white in dark mode.
 ui.use_theme(ui.Theme(brands={
-    "emerald": ui.Theme(color={"accent": "#059669"}),
-    "amber": ui.Theme(color={"accent": "#f59e0b"}),
+    name: ui.Theme.preset(name)
+    for name in ui.Theme.preset_names() if name != "indigo"
 }))
 
 # The widgets page binds to vanilla custom elements that stand in for an

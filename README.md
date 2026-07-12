@@ -291,10 +291,13 @@ preference before first paint so switching never flashes, and
 the choice.
 
 Colors are typed scales: give a role one base color and every derived
-token follows, including a readable foreground picked by WCAG contrast,
-hover shades, subtle tints for each mode, and focus rings. Organization
-brands and tenant themes are complete themes selected at runtime, and
-density modes rescale the spacing unit every component is built on:
+token follows, including a readable foreground, hover shades, subtle
+tints for each mode, and focus rings. A scale can flip between modes
+(`ui.Color.scale("#18181b", dark="#fafafa")` is how the monochrome look
+gets a near-black accent in light mode and a white one in dark mode).
+Organization brands and tenant themes are complete themes selected at
+runtime, and density modes rescale the spacing unit every component is
+built on:
 
 ```python
 ui.use_theme(ui.Theme(
@@ -304,6 +307,12 @@ ui.use_theme(ui.Theme(
     brands={"acme": ui.Theme(color={"accent": "#059669"})},
 ))
 ```
+
+Six looks ship built in: `ui.Theme.preset("indigo")` (the default),
+`"mono"` (black and white), `"emerald"`, `"blue"`, `"rose"`, and
+`"amber"`. A preset is an ordinary theme: use one as the application
+theme, register several as brands, or start from one and override
+fields.
 
 Handlers switch any preference at runtime with
 `ui.set_preference("brand", "acme")` (likewise `theme`, `density`, and

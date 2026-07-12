@@ -53,21 +53,26 @@ def _luminance(color: str) -> float:
     return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
 
 
-def _contrast(a: str, b: str) -> float:
-    la, lb = sorted((_luminance(a), _luminance(b)), reverse=True)
-    return (la + 0.05) / (lb + 0.05)
-
-
 def _alpha(color: str, alpha: float) -> str:
     r, g, b = _hex_rgb(color)
     return f"rgba({r}, {g}, {b}, {alpha})"
+
+
+def _readable_fg(base: str) -> str:
+    """White text on anything but genuinely light colors. A pure WCAG
+    ratio comparison prefers dark text on mid-tone colors like emerald,
+    which reads worse in practice; a luminance threshold matches how
+    every major design system resolves this."""
+    return "#ffffff" if _luminance(base) < 0.4 else "#16181d"
 
 
 @dataclass(frozen=True)
 class ColorScale:
     """A semantic color with every derived token components consume:
     the base, a stronger shade for hover and active states, a readable
-    foreground, subtle tints for each mode, and focus-ring colors."""
+    foreground, subtle tints for each mode, and focus-ring colors. The
+    dark-mode variants let a color flip between modes, as monochrome
+    palettes need (near-black in light mode, white in dark mode)."""
     base: str
     strong: str
     fg: str
@@ -75,29 +80,37 @@ class ColorScale:
     soft_dark: str
     ring: str
     ring_dark: str
+    base_dark: str
+    strong_dark: str
+    fg_dark: str
 
 
 class Color:
     @staticmethod
-    def scale(base: str, *, strong: str | None = None, fg: str | None = None,
+    def scale(base: str, *, dark: str | None = None,
+              strong: str | None = None, fg: str | None = None,
               soft: str | None = None, soft_dark: str | None = None,
               ring: str | None = None,
               ring_dark: str | None = None) -> ColorScale:
         """Derive a full color scale from one base color. Every derived
-        value can be overridden. The foreground is picked by WCAG
-        contrast, so light accents get dark text automatically."""
+        value can be overridden, and ``dark=`` swaps in a different base
+        for dark mode with its own derived tokens. The foreground is
+        picked for readability, so light accents get dark text."""
         _hex_rgb(base)  # validate early with a precise error
-        if fg is None:
-            fg = ("#ffffff" if _contrast(base, "#ffffff")
-                  >= _contrast(base, "#16181d") else "#16181d")
+        base_dark = dark or base
         return ColorScale(
             base=base,
             strong=strong or _lightness(base, 0.82),
-            fg=fg,
+            fg=fg or _readable_fg(base),
             soft=soft or _mix(base, "#ffffff", 0.90),
-            soft_dark=soft_dark or _mix(base, "#17181e", 0.78),
+            soft_dark=soft_dark or _mix(base_dark, "#17181e", 0.78),
             ring=ring or _alpha(base, 0.35),
-            ring_dark=ring_dark or _alpha(_lightness(base, 1.35), 0.4),
+            ring_dark=ring_dark or _alpha(_lightness(base_dark, 1.35), 0.4),
+            base_dark=base_dark,
+            strong_dark=_lightness(base_dark, 0.82) if dark
+            else (strong or _lightness(base, 0.82)),
+            fg_dark=_readable_fg(base_dark) if dark
+            else (fg or _readable_fg(base)),
         )
 
 
@@ -247,6 +260,35 @@ class Theme:
         self._surface = surface if isinstance(surface, (str, type(None))) \
             else surface.base
 
+    @classmethod
+    def preset(cls, name: str) -> "Theme":
+        """A built-in look by name. Presets are ordinary themes: use one
+        directly, register several as brands, or pass one as a starting
+        point and override fields.
+
+        - indigo: the default look
+        - mono: black and white, near-black accent flipping to white in
+          dark mode
+        - emerald, blue, rose, amber: accent-led variations
+        """
+        factories: dict[str, Any] = {
+            "indigo": lambda: cls(),
+            "mono": lambda: cls(color={
+                "accent": Color.scale("#18181b", dark="#fafafa")}),
+            "emerald": lambda: cls(color={"accent": "#059669"}),
+            "blue": lambda: cls(color={"accent": "#2563eb"}),
+            "rose": lambda: cls(color={"accent": "#e11d48"}),
+            "amber": lambda: cls(color={"accent": "#f59e0b"}),
+        }
+        if name not in factories:
+            raise ValueError(f"Unknown theme preset {name!r}; available: "
+                             f"{', '.join(sorted(factories))}.")
+        return factories[name]()
+
+    @staticmethod
+    def preset_names() -> tuple[str, ...]:
+        return ("indigo", "mono", "emerald", "blue", "rose", "amber")
+
     def _neutrals(self) -> tuple[dict[str, str], dict[str, str]]:
         """The neutral ramps for both modes. With a surface color, hue
         and (capped) saturation tint the ramp; lightness steps stay fixed
@@ -338,13 +380,26 @@ class Theme:
             "--v-tok-self": "#e06c75",
             "--v-tok-op": "#56b6c2",
         }
+        # Semantic colors live in the mode blocks, not the shared block,
+        # so a scale can flip between modes (monochrome accents are
+        # near-black in light mode and white in dark mode).
+        light |= {
+            "--v-accent": self._accent.base,
+            "--v-accent-strong": self._accent.strong,
+            "--v-accent-fg": self._accent.fg,
+            "--v-danger": self._danger.base,
+            "--v-danger-strong": self._danger.strong,
+            "--v-success": self._success.base,
+        }
+        dark |= {
+            "--v-accent": self._accent.base_dark,
+            "--v-accent-strong": self._accent.strong_dark,
+            "--v-accent-fg": self._accent.fg_dark,
+            "--v-danger": self._danger.base_dark,
+            "--v-danger-strong": self._danger.strong_dark,
+            "--v-success": self._success.base_dark,
+        }
         shared = {
-            "--v-accent": self.accent,
-            "--v-accent-strong": self.accent_strong,
-            "--v-accent-fg": self.accent_fg,
-            "--v-danger": self.danger,
-            "--v-danger-strong": self.danger_strong,
-            "--v-success": self.success,
             "--v-space": f"{self.space_base}px",
             "--v-font-body": self.font_body,
             "--v-font-heading": self.font_heading,
