@@ -93,6 +93,8 @@ from .data import records
 from .datagrid import GridQuery, apply_grid_query, grid_query
 from .viz import Figure, figure_style
 from .context import Context, context
+from .contextpack import canonical_patterns, context_pack
+from .schema import component_schema, list_components
 from .datagrid import Column, DataGrid
 from .elements import Each, Island, Suspense, effect, upload
 from .formatting import (collation_key, format_currency, format_date,
@@ -152,6 +154,8 @@ __all__ = [
     "Request",
     "channel", "connect", "Channel", "ChannelClosed",
     "context", "Context",
+    "context_pack", "canonical_patterns", "component_schema",
+    "list_components",
     "state", "derived", "effect", "cond", "not_", "length", "set_from_event",
     "use_theme", "Theme", "Color", "ColorScale", "Space", "Font",
     "style", "Style", "recipe",

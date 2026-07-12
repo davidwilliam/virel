@@ -95,7 +95,9 @@ virel build            build for a target: --target static | asgi
 virel check            compile every route and report diagnostics
 virel routes           list routes and rendering modes
 virel inspect <route>  print the intermediate representation as JSON
-virel schema <name>    print a component schema as JSON
+virel schema <name>    print a component schema as JSON (--list for all)
+virel context          generate a compact context pack for an agent
+virel mcp              run the MCP server for agent tools (stdio)
 virel bind <manifest>  generate typed bindings from custom-elements.json
 virel bind npm <pkg>   fetch a package from npm, vendor it, and bind it
 virel element <fn>     export a component as a standard custom element
@@ -658,6 +660,23 @@ browser-local interactivity works with no server and whatever previews
 ships unchanged. There is no notebook-only API. Server actions need
 `virel dev`, and the preview says so inline. `preview(...).save(path)`
 writes the standalone document for sharing.
+
+## For agents
+
+Virel is built to be driven by agents (SPEC 14). Every component exposes
+a structured schema (`virel schema <Name>` or `ui.component_schema`) with
+props, types, events, accessibility contract, examples, and constraints.
+`virel context --components ... --features ...` generates a compact,
+task-specific documentation pack sized to a token budget, built from one
+canonical pattern per common task. `virel check --json` emits
+deterministic diagnostics with stable error codes, source ranges,
+explanations, documentation keys, and suggested fixes. `virel mcp` runs a
+standard-library MCP server exposing project inspection, schema queries,
+context packs, compilation, structured diagnostics, route and
+execution-zone inspection, targeted test runs, and bundle-impact
+estimates. Reproducible agent-efficiency benchmarks live under
+`benchmarks/` (SPEC 14.7); comparative numbers are published only when a
+run is recorded, never estimated.
 
 ## Testing
 

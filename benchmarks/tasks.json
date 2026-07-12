@@ -1,0 +1,38 @@
+{
+  "schema": "virel-benchmarks/1",
+  "metrics": [
+    "successful_completion", "functional_correctness", "visual_correctness",
+    "accessibility_score", "security_defects", "generated_source_tokens",
+    "context_tokens", "model_output_tokens", "repair_turns",
+    "wall_clock_seconds", "runtime_bundle_bytes", "app_performance"
+  ],
+  "tasks": [
+    {"id": "landing-page",
+     "prompt": "Build a responsive marketing landing page with a hero, a three-column feature grid, and a footer.",
+     "acceptance": "Renders responsively; no accessibility errors; static (zero server)."},
+    {"id": "saas-settings",
+     "prompt": "Build an authenticated settings page behind a guard with a sidebar and a profile form.",
+     "acceptance": "Guard redirects unauthenticated users; form saves via a server action."},
+    {"id": "multi-step-form",
+     "prompt": "Build a three-step validated form (account, profile, review) with a typed model and server validation.",
+     "acceptance": "Client and server validation; per-field errors; state preserved across steps."},
+    {"id": "data-table",
+     "prompt": "Build a sortable, filterable, paginated table of evaluation runs with row selection.",
+     "acceptance": "Sort by any column; filter; select rows; correct counts."},
+    {"id": "ai-chat",
+     "prompt": "Build a streaming chat over a model, with a prompt editor, streaming response, and a token meter.",
+     "acceptance": "Tokens stream in; cost updates live; Ctrl/Cmd+Enter submits."},
+    {"id": "file-upload",
+     "prompt": "Build a multi-file upload with a drag-and-drop zone and a progress bar.",
+     "acceptance": "Multiple files upload; progress reaches 100; server receives them."},
+    {"id": "ops-dashboard",
+     "prompt": "Build a real-time operations dashboard with live-updating stats and a job progress list.",
+     "acceptance": "Values update live over SSE; job statuses transition."},
+    {"id": "command-palette",
+     "prompt": "Build an accessible command palette opened with Ctrl/Cmd+K that filters and runs commands.",
+     "acceptance": "Keyboard-drivable; filters; runs a navigation and an action command."},
+    {"id": "stateful-editor",
+     "prompt": "Build a complex stateful editor: a document outline tree, a resizable split view, and reorderable sections.",
+     "acceptance": "Tree navigates by keyboard; split resizes; sections reorder by drag and keyboard."}
+  ]
+}

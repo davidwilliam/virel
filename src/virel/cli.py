@@ -233,7 +233,8 @@ def cmd_check(args: argparse.Namespace) -> None:
         except VirelCompileError as error:
             failures += 1
             if args.json:
-                print(json.dumps({"route": page.path, "error": str(error)}))
+                from .diagnostics import classify
+                print(json.dumps(classify(str(error))))
             else:
                 print(f"FAIL  {page.path}\n      {error}")
     if failures:
@@ -291,30 +292,14 @@ def cmd_bind(args: argparse.Namespace) -> None:
 
 def cmd_schema(args: argparse.Namespace) -> None:
     """Machine-readable component schema for agents (SPEC 14.2)."""
-    from . import elements
-    name = args.component
-    fn = getattr(elements, name, None)
-    if fn is None or not callable(fn):
-        available = [n for n in elements.__dict__
-                     if n[0].isupper() and callable(getattr(elements, n))]
-        _fail(f"unknown component {name!r}. Available: {', '.join(sorted(available))}")
-    signature = pyinspect.signature(fn)
-    schema = {
-        "name": name,
-        "import": "from virel import ui",
-        "purpose": (fn.__doc__ or "").strip().split("\n")[0],
-        "props": {
-            param.name: {
-                "type": str(param.annotation),
-                "default": None if param.default is pyinspect.Parameter.empty
-                else repr(param.default),
-                "required": param.default is pyinspect.Parameter.empty
-                and param.kind is not pyinspect.Parameter.VAR_POSITIONAL,
-            }
-            for param in signature.parameters.values()
-        },
-    }
-    print(json.dumps(schema, indent=2))
+    from .schema import component_schema, list_components
+    if args.list or args.component is None:
+        print(json.dumps({"components": list_components()}, indent=2))
+        return
+    try:
+        print(json.dumps(component_schema(args.component), indent=2))
+    except VirelCompileError as error:
+        _fail(str(error))
 
 
 def extract_message_keys(package_dir: Path) -> tuple[set[str], list[str]]:
@@ -361,6 +346,33 @@ def cmd_element(args: argparse.Namespace) -> None:
         print(f"Wrote {args.tag} ({len(source)} bytes) to {args.out}")
     else:
         print(source)
+
+
+def cmd_mcp(args: argparse.Namespace) -> None:
+    """Run the MCP server for agents (SPEC 14.4)."""
+    from .mcp import serve
+    serve(Path.cwd())
+
+
+def cmd_context(args: argparse.Namespace) -> None:
+    """Generate a task-specific context pack (SPEC 14.3)."""
+    from .contextpack import context_pack
+    components = [c for c in (args.components or "").split(",") if c]
+    features = [f for f in (args.features or "").split(",") if f]
+    if not components and not features:
+        _fail("Give --components and/or --features, e.g. "
+              "virel context --components form,dialog "
+              "--features validation")
+    try:
+        pack = context_pack(components=components, features=features,
+                            budget=args.budget)
+    except VirelCompileError as error:
+        _fail(str(error))
+    if args.out:
+        Path(args.out).write_text(pack, encoding="utf-8")
+        print(f"Wrote context pack ({len(pack)} bytes) to {args.out}")
+    else:
+        print(pack, end="")
 
 
 def cmd_messages(args: argparse.Namespace) -> None:
@@ -446,7 +458,11 @@ def main(argv: list[str] | None = None) -> None:
     p_bind.set_defaults(fn=cmd_bind)
 
     p_schema = sub.add_parser("schema", help="print a component schema as JSON")
-    p_schema.add_argument("component")
+    p_schema.add_argument("component", nargs="?")
+    p_schema.add_argument("--json", action="store_true",
+                          help="JSON output (the default)")
+    p_schema.add_argument("--list", action="store_true",
+                          help="list every component name")
     p_schema.set_defaults(fn=cmd_schema)
 
     p_element = sub.add_parser(
@@ -456,6 +472,21 @@ def main(argv: list[str] | None = None) -> None:
                            help="custom element tag, e.g. virel-counter")
     p_element.add_argument("--out", help="write the module to this file")
     p_element.set_defaults(fn=cmd_element)
+
+    p_mcp = sub.add_parser(
+        "mcp", help="run the MCP server for agent tools (stdio)")
+    p_mcp.set_defaults(fn=cmd_mcp)
+
+    p_context = sub.add_parser(
+        "context", help="generate a compact context pack for an agent")
+    p_context.add_argument("--components", default="",
+                           help="comma-separated component names")
+    p_context.add_argument("--features", default="",
+                           help="comma-separated features")
+    p_context.add_argument("--budget", type=int, default=12000,
+                           help="approximate token budget")
+    p_context.add_argument("--out", help="write the pack to this file")
+    p_context.set_defaults(fn=cmd_context)
 
     p_messages = sub.add_parser(
         "messages", help="extract ui.t keys and audit catalogs per locale")
