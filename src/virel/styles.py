@@ -112,7 +112,27 @@ _PROPERTIES: dict[str, tuple[str, Any]] = {
     "weight": ("font-weight", _number),
 }
 
+def _container_type(name: str, value: Any) -> str:
+    if value is True:
+        return "inline-size"
+    if value in ("inline-size", "size"):
+        return value
+    raise VirelCompileError(
+        f"{name} must be True, 'inline-size', or 'size', got {value!r}.")
+
+
+_PROPERTIES["container"] = ("container-type", _container_type)
+
 _STATES = {"hover": ":hover", "focus": ":focus-visible", "active": ":active"}
+
+# Media variants (SPEC 10.7): the same viewport breakpoints as Grid
+# columns, plus pointer capability so touch interfaces can adapt.
+_MEDIA = {
+    "md": "(min-width: 768px)",
+    "xl": "(min-width: 1200px)",
+    "pointer_coarse": "(pointer: coarse)",
+    "pointer_fine": "(pointer: fine)",
+}
 
 
 def _declarations(props: dict[str, Any], context: str) -> str:
@@ -139,6 +159,12 @@ class Style:
         return self.class_name
 
 
+def _variant(kind: str, value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise VirelCompileError(f"{kind}= takes a dict of style properties.")
+    return value
+
+
 def style(**props: Any) -> Style:
     """A reusable typed style (SPEC 10.4), compiled to a generated CSS
     class in the application stylesheet:
@@ -150,30 +176,44 @@ def style(**props: Any) -> Style:
 
     Spacing takes theme space units; colors, radii, and shadows take
     token names, so styles follow the theme, brands, and density modes.
-    hover=, focus=, and active= take the same properties as variants.
+
+    Variants take the same properties (SPEC 10.7): hover=, focus=, and
+    active= for states; md= and xl= for the viewport breakpoints;
+    pointer_coarse= and pointer_fine= for input capability; and
+    container_min={"30rem": {...}} for container queries against the
+    nearest ancestor declaring container= (True or 'inline-size').
     """
-    states = {key: props.pop(key) for key in tuple(_STATES) if key in props}
-    if not props and not states:
+    states = {key: _variant(key, props.pop(key))
+              for key in tuple(_STATES) if key in props}
+    media = {key: _variant(key, props.pop(key))
+             for key in tuple(_MEDIA) if key in props}
+    container_min = props.pop("container_min", None) or {}
+    if not isinstance(container_min, dict):
+        raise VirelCompileError("container_min= takes a dict mapping a "
+                                "minimum width to style properties.")
+    if not props and not states and not media and not container_min:
         raise VirelCompileError("ui.style() needs at least one property.")
+
     base = _declarations(props, "")
-    rules = []
-    body = []
-    if base:
-        body.append(base)
-    for state, state_props in states.items():
-        if not isinstance(state_props, dict):
-            raise VirelCompileError(
-                f"{state}= takes a dict of style properties.")
-        rules.append((_STATES[state],
-                      _declarations(state_props, f" in {state}=")))
-    fingerprint = base + "".join(f"{sel}{{{decl}}}" for sel, decl in rules)
-    name = "vs-" + hashlib.sha256(fingerprint.encode()).hexdigest()[:8]
     css_parts = []
     if base:
-        css_parts.append(f".{name} {{ {base}; }}")
-    for selector, declarations in rules:
-        css_parts.append(f".{name}{selector} {{ {declarations}; }}")
-    css = "\n".join(css_parts)
+        css_parts.append(".{name} { " + base + "; }")
+    for state, state_props in states.items():
+        css_parts.append(".{name}" + _STATES[state] + " { "
+                         + _declarations(state_props, f" in {state}=") + "; }")
+    for key, media_props in media.items():
+        css_parts.append(f"@media {_MEDIA[key]} {{ .{{name}} {{ "
+                         + _declarations(media_props, f" in {key}=") + "; } }")
+    for width, query_props in container_min.items():
+        from .elements import _css_length
+        css_parts.append(
+            f"@container (min-width: {_css_length(width)}) {{ .{{name}} {{ "
+            + _declarations(_variant("container_min", query_props),
+                            " in container_min=") + "; } }")
+
+    fingerprint = "\n".join(css_parts)
+    name = "vs-" + hashlib.sha256(fingerprint.encode()).hexdigest()[:8]
+    css = "\n".join(part.replace("{name}", name) for part in css_parts)
 
     from .registry import active_registry
     active_registry().styles[name] = css

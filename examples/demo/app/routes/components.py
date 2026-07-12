@@ -381,6 +381,39 @@ def _styling_tab() -> ui.Node:
             gap=3,
         ),
         ui.Card(
+            ui.Heading("Adaptive styles", level=3),
+            ui.Text("This tile is a query container: drag the corner and "
+                    "it restyles itself by its own width, not the "
+                    "viewport. Styles can also vary by breakpoint and "
+                    "pointer capability, and every tap target grows on "
+                    "touch screens automatically.", muted=True, size="sm"),
+            ui.Resizable(
+                ui.Box(
+                    ui.Text("Drag my corner past 24rem and I turn accent.",
+                            size="sm"),
+                    class_name=ui.style(
+                        padding=4,
+                        radius="md",
+                        background="surface.2",
+                        container_min={"24rem": {
+                            "background": "accent.soft",
+                            "border": "accent",
+                        }},
+                    ),
+                ),
+                direction="horizontal",
+                class_name=ui.style(width="18rem", max_width="100%",
+                                    container=True),
+            ),
+            ui.Code('panel = ui.style(container=True)  # the queried '
+                    'ancestor\n'
+                    'tile = ui.style(background="surface.2",\n'
+                    '                container_min={"24rem": {"background": '
+                    '"accent.soft"}})',
+                    block=True, language="python"),
+            gap=3,
+        ),
+        ui.Card(
             ui.Heading("Recipes", level=3),
             ui.Text("ui.recipe() defines a component with named variants; "
                     "each axis becomes a typed keyword argument.",

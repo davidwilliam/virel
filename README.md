@@ -453,6 +453,15 @@ card_style = ui.style(padding=6, radius="lg", background="surface.1",
 ui.Stack(..., class_name=card_style)
 ```
 
+Styles adapt without JavaScript (SPEC 10.7): `md=` and `xl=` vary
+properties by the same viewport breakpoints Grid uses,
+`pointer_coarse=`/`pointer_fine=` adapt to input capability, and
+`container_min={"24rem": {...}}` applies container queries against the
+nearest ancestor declaring `container=True`. Framework defaults handle
+the rest: tap targets grow to 44px on coarse pointers, headings scale
+with the viewport within bounds, and the app chrome respects safe-area
+insets on notched devices.
+
 Recipes build variants on top of style objects: each axis becomes a
 typed keyword argument on the returned component, validated against the
 declared options, with everything else passing through to the base:

@@ -159,3 +159,50 @@ def test_recipe_axes_compose():
     })
     chip = Chip(ui.Text("x"), tone="info", size="lg")
     assert len(chip.attrs["class"].split()) == 3  # v-box + two variants
+
+
+def test_viewport_and_pointer_variants():
+    s = ui.style(padding=2,
+                 md={"padding": 4},
+                 xl={"padding": 6},
+                 pointer_coarse={"padding": 8})
+    assert "@media (min-width: 768px)" in s.css
+    assert "@media (min-width: 1200px)" in s.css
+    assert "@media (pointer: coarse)" in s.css
+    with pytest.raises(VirelCompileError, match="md= takes a dict"):
+        ui.style(padding=2, md=4)
+
+
+def test_container_queries_are_typed():
+    s = ui.style(container=True, background="surface.2",
+                 container_min={"24rem": {"background": "accent.soft"}})
+    assert "container-type: inline-size" in s.css
+    assert "@container (min-width: 24rem)" in s.css
+    assert "background: var(--v-accent-soft)" in s.css
+    sized = ui.style(container="size")
+    assert "container-type: size" in sized.css
+    with pytest.raises(VirelCompileError, match="CSS length"):
+        ui.style(container=True,
+                 container_min={"24rem; }": {"padding": 2}})
+    with pytest.raises(VirelCompileError, match="container"):
+        ui.style(container="block-size")
+
+
+def test_safe_areas_and_touch_targets_ship_by_default():
+    from virel.theme import build_stylesheet
+    css = build_stylesheet()
+    assert "env(safe-area-inset-left" in css
+    assert "@media (pointer: coarse)" in css
+    assert "min-height: 44px" in css
+
+
+def test_viewport_meta_enables_safe_area_insets():
+    from virel.compiler import compile_page
+    from virel.registry import active_registry
+
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("x"))
+
+    html = compile_page(active_registry().pages["/"]).html
+    assert "viewport-fit=cover" in html

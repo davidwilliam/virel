@@ -299,7 +299,8 @@ def _emit_document(root: PageNode, body_html: str, js_module: str,
     inline_scripts = [bootstrap_source]
     head = [
         '<meta charset="utf-8">',
-        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1, '
+        'viewport-fit=cover">',
         f"<title>{_escape(root.title)}</title>",
         f"<script>{bootstrap_source}</script>",
         '<link rel="preload" href="/_virel/fonts/InterVariable.woff2" '

@@ -131,3 +131,30 @@ def test_splitter_divider_moves_with_the_keyboard(page, server_url):
     page.keyboard.press("End")
     assert page.evaluate(
         "document.querySelector('.v-splitter-handle').getAttribute('aria-valuenow')") == "70"
+
+
+def test_container_query_restyles_by_container_width(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Styling").click()
+    box = page.locator(".v-resizable > .v-box")
+    box.wait_for()
+    # Both tabs keep a Resizable in the DOM; target the styling one.
+    holder = "document.querySelector('.v-resizable:has(> .v-box)')"
+    background = (f"getComputedStyle({holder}.firstElementChild)"
+                  ".backgroundColor")
+
+    def settle(width, done):
+        # Polled from Python: the page CSP (correctly) blocks the
+        # injected-eval polling that wait_for_function relies on.
+        page.evaluate(f"{holder}.style.width = '{width}'")
+        for _ in range(40):
+            value = page.evaluate(background)
+            if done(value):
+                return value
+            page.wait_for_timeout(25)
+        return page.evaluate(background)
+
+    narrow = page.evaluate(background)
+    wide = settle("30rem", lambda value: value != narrow)
+    assert wide != narrow
+    assert settle("15rem", lambda value: value == narrow) == narrow
