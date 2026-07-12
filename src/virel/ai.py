@@ -297,10 +297,18 @@ def Trace(spans: list[dict], *, label: str = "Trace") -> Element:
         depth = int(span.get("depth", 0))
         left = 100 * start / total
         width = max(0.75, 100 * duration / total)
+        name_children: list[Node] = []
+        if depth > 0:
+            # A corner guide, so nesting reads as hierarchy rather
+            # than misalignment.
+            name_children.append(Element("span", attrs={
+                "class": "v-ai-span-link", "aria-hidden": "true"}))
+        name_children.append(TextNode(str(span.get("name", "span"))))
         rows.append(Element("div", [
-            Element("span", [TextNode(str(span.get("name", "span")))],
+            Element("span", name_children,
                     attrs={"class": "v-ai-span-name",
-                           "style": f"padding-inline-start: {depth * 16}px"}),
+                           "style": f"padding-inline-start: "
+                                    f"{(depth - 1) * 16 if depth else 0}px"}),
             Element("div", [Element("div", attrs={
                 "class": f"v-ai-span-bar v-ai-span-{status}",
                 "style": f"margin-inline-start: {left:.2f}%; "

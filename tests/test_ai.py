@@ -132,6 +132,8 @@ def test_trace_waterfall_scales_spans():
     assert "margin-inline-start: 25.00%" in html
     assert "v-ai-span-failed" in html
     assert 'role="img"' in html
+    # Nested spans carry a visible hierarchy guide; roots do not.
+    assert html.count("v-ai-span-link") == 1
 
 
 def test_feedback_thumbs_write_state():

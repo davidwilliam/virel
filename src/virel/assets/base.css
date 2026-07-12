@@ -1347,6 +1347,16 @@ a.v-grid-sort:hover { color: var(--v-accent); }
 .v-ai-param-value { min-width: 3ch; font-variant-numeric: tabular-nums; padding-bottom: 6px; }
 .v-ai-trace { display: flex; flex-direction: column; gap: 6px; }
 .v-ai-span { display: grid; grid-template-columns: 11rem 1fr 5rem; align-items: center; gap: calc(var(--v-space) * 3); font-size: 0.875rem; }
+.v-ai-span-name { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v-ai-span-link {
+  width: 10px;
+  height: 12px;
+  flex-shrink: 0;
+  border-inline-start: 1.5px solid var(--v-border-strong);
+  border-bottom: 1.5px solid var(--v-border-strong);
+  border-end-start-radius: 5px;
+  margin-top: -10px;
+}
 .v-ai-span-track { background: var(--v-surface-2); border-radius: 4px; height: 14px; overflow: hidden; }
 .v-ai-span-bar { height: 100%; border-radius: 4px; background: var(--v-accent); }
 .v-ai-span-failed { background: var(--v-danger); }
