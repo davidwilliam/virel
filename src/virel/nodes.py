@@ -170,13 +170,20 @@ class EachNode(Node):
 
     def __init__(self, items: Any, render: Any, tag: str = "div",
                  gap: int | None = None, key: Any = None,
-                 animate: Any = None) -> None:
+                 animate: Any = None, reorderable: bool = False,
+                 on_reorder: Any = None) -> None:
         from .expr import ItemRef, LocalRef, lift
         from .motion import coerce_motion
         self.items = lift(items)
         self.tag = tag
         self.gap = gap
         self.motion = coerce_motion(animate)
+        self.reorderable = reorderable
+        self.on_reorder = on_reorder
+        if reorderable and key is None:
+            raise VirelCompileError(
+                "Each(reorderable=True) requires key= so items keep their "
+                "identity while they move.")
         item = ItemRef(LocalRef("item"))
         template = render(item)
         self.key = lift(key(item)) if key is not None else None
@@ -517,9 +524,15 @@ class Emitter:
             import json as _json
             js_motion = (_json.dumps(node.motion.config()) if node.motion
                          else "null")
+            js_reorder = "true" if node.reorderable else "false"
             self.bindings.append(
                 f'$.bindList("{vid}", () => {node.items.js()} || [], '
-                f"{js_item}, {js_key}, {node.handlers_js()}, {js_motion});")
+                f"{js_item}, {js_key}, {node.handlers_js()}, {js_motion}, "
+                f"{js_reorder});")
+            if node.on_reorder is not None:
+                self.bindings.append(
+                    f'$.on("{vid}", "virel-reorder", '
+                    f"(ev) => {{ {node.on_reorder.js_body()} }});")
             initial = node.items.evaluate(self.env) or []
             rendered = "".join(
                 f'<div class="v-each-item" style="display:contents" data-vi="{index}">'

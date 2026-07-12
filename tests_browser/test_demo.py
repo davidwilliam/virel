@@ -323,3 +323,56 @@ def test_command_palette_opens_filters_and_runs(page, server_url):
     palette_input.fill("zzzz")
     page.get_by_text("No matching commands.").wait_for()
     page.keyboard.press("Escape")
+
+
+def test_list_reorders_from_the_keyboard(page, server_url):
+    _motion_tab(page, server_url)
+    page.get_by_text("Design review").wait_for()
+    head = "document.querySelectorAll('.v-each .v-card')[0].textContent"
+    assert "Design review" in page.evaluate(head)
+
+    handle = page.get_by_label("Reorder item").first
+    handle.focus()
+    page.keyboard.press("Space")       # grab
+    page.keyboard.press("ArrowDown")   # move below the second item
+    page.keyboard.press("Space")       # drop -> state writes back
+    for _ in range(40):
+        if "Ship the docs" in page.evaluate(head):
+            break
+        page.wait_for_timeout(25)
+    assert "Ship the docs" in page.evaluate(head)
+    assert page.evaluate(
+        "document.querySelector('.v-each + [role=\"status\"]').textContent"
+    ) == "Dropped."
+
+    # Escape cancels: grab, move, cancel restores the order.
+    before = page.evaluate(head)
+    handle = page.get_by_label("Reorder item").first
+    handle.focus()
+    page.keyboard.press("Space")
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("Escape")
+    assert page.evaluate(head) == before
+
+
+def test_list_reorders_with_a_pointer_drag(page, server_url):
+    _motion_tab(page, server_url)
+    page.get_by_text("Design review").wait_for()
+    head = "document.querySelectorAll('.v-each .v-card')[0].textContent"
+    first_handle = page.get_by_label("Reorder item").first
+    first_handle.scroll_into_view_if_needed()
+    box = first_handle.bounding_box()
+    second = page.evaluate(
+        "document.querySelectorAll('.v-each .v-card')[1]"
+        ".getBoundingClientRect().bottom")
+
+    page.mouse.move(box["x"] + box["width"] / 2,
+                    box["y"] + box["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(box["x"] + box["width"] / 2, second + 10, steps=12)
+    page.mouse.up()
+    for _ in range(40):
+        if "Design review" not in page.evaluate(head):
+            break
+        page.wait_for_timeout(25)
+    assert "Design review" not in page.evaluate(head)

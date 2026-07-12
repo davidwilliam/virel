@@ -258,11 +258,15 @@ export function esc(value) {
   })[c]);
 }
 
-export function bindList(id, items, renderItem, keyFn, handlers, motion) {
+export function bindList(id, items, renderItem, keyFn, handlers, motion,
+                          reorder) {
   const node = el(id);
   if (!node) return;
   let current = [];
   let hydrated = false;
+  const reordering = reorder
+    ? makeReorderable(node, () => current)
+    : null;
 
   // Item events are delegated from the list container, so handlers
   // survive re-renders and cost one listener per event type.
@@ -273,6 +277,7 @@ export function bindList(id, items, renderItem, keyFn, handlers, motion) {
     }
     for (const eventName of eventNames) {
       node.addEventListener(eventName, (ev) => {
+        if (ev.target.closest(".v-drag-handle")) return;
         const target = ev.target.closest("[data-vh]");
         if (!target || !node.contains(target)) return;
         const wrap = target.closest("[data-vi]");
@@ -398,8 +403,207 @@ export function bindList(id, items, renderItem, keyFn, handlers, motion) {
       if (child) animateClass(child, motion.enter);
     }
 
+    if (reordering) reordering.prepare();
     hydrated = true;
   });
+}
+
+/* ------------------------------------------------------------------ *
+ * List drag-and-drop (SPEC 11.1). Every item gets a drag handle: it
+ * works with a pointer (drag; siblings FLIP out of the way) and from
+ * the keyboard (Space grabs, arrows move, Space drops, Escape
+ * cancels), with changes announced through a status region. On drop
+ * the container dispatches virel-reorder with the reordered items in
+ * detail.items, which the compiled handler writes back into state.
+ * ------------------------------------------------------------------ */
+
+const GRIP_SVG =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" ' +
+  'aria-hidden="true"><circle cx="9" cy="6" r="1.6"/>' +
+  '<circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/>' +
+  '<circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/>' +
+  '<circle cx="15" cy="18" r="1.6"/></svg>';
+
+function makeReorderable(node, currentItems) {
+  const status = document.createElement("div");
+  status.className = "v-sr-only";
+  status.setAttribute("role", "status");
+  node.insertAdjacentElement("afterend", status);
+  const announce = (text) => { status.textContent = text; };
+
+  const wrappers = () =>
+    Array.from(node.querySelectorAll(":scope > [data-vi]"))
+      .filter((wrap) => !wrap.dataset.vexit);
+  const orderedItems = () => {
+    const list = currentItems();
+    return wrappers().map((wrap) => list[Number(wrap.dataset.vi)]);
+  };
+  const dispatch = () => {
+    node.dispatchEvent(new CustomEvent("virel-reorder", {
+      detail: { items: orderedItems() },
+    }));
+  };
+  const flip = (child, fromTop) => {
+    const dy = fromTop - child.getBoundingClientRect().top;
+    if (!dy) return;
+    child.style.transition = "none";
+    child.style.transform = `translateY(${dy}px)`;
+    requestAnimationFrame(() => {
+      child.style.transition = "transform 160ms cubic-bezier(0.16, 1, 0.3, 1)";
+      child.style.transform = "";
+      child.addEventListener("transitionend", () => {
+        child.style.transition = "";
+      }, { once: true });
+    });
+  };
+
+  // Pointer drag from the handle. The wrapper reslots live while the
+  // lifted element follows the pointer; displaced siblings FLIP.
+  node.addEventListener("pointerdown", (down) => {
+    const handle = down.target.closest(".v-drag-handle");
+    if (!handle || down.button !== 0) return;
+    down.preventDefault();
+    const wrap = handle.closest("[data-vi]");
+    const lifted = wrap.firstElementChild;
+    const grabOffset = down.clientY - lifted.getBoundingClientRect().top;
+    try {
+      handle.setPointerCapture(down.pointerId);
+    } catch {}
+    lifted.classList.add("v-drag-lift");
+
+    const track = (ev) => {
+      const rect = lifted.getBoundingClientRect();
+      const base = rect.top - currentShift();
+      lifted.style.transform =
+        `translateY(${ev.clientY - grabOffset - base}px)`;
+      for (const other of wrappers()) {
+        if (other === wrap) continue;
+        const otherChild = other.firstElementChild;
+        if (!otherChild) continue;
+        const box = otherChild.getBoundingClientRect();
+        const middle = box.top + box.height / 2;
+        const before = wrap.compareDocumentPosition(other)
+          & Node.DOCUMENT_POSITION_FOLLOWING;
+        if (before && ev.clientY > middle) {
+          const from = box.top;
+          node.insertBefore(other, wrap);
+          flip(otherChild, from);
+          retarget(ev);
+          break;
+        }
+        if (!before && ev.clientY < middle) {
+          const from = box.top;
+          node.insertBefore(other, wrap.nextElementSibling);
+          flip(otherChild, from);
+          retarget(ev);
+          break;
+        }
+      }
+    };
+    const currentShift = () => {
+      const match = /translateY\(([-0-9.]+)px\)/.exec(lifted.style.transform);
+      return match ? Number(match[1]) : 0;
+    };
+    const retarget = (ev) => {
+      lifted.style.transform = "";
+      const rect = lifted.getBoundingClientRect();
+      lifted.style.transform =
+        `translateY(${ev.clientY - grabOffset - rect.top}px)`;
+    };
+    const drop = () => {
+      document.removeEventListener("pointermove", track);
+      document.removeEventListener("pointerup", drop);
+      document.removeEventListener("pointercancel", drop);
+      lifted.classList.remove("v-drag-lift");
+      lifted.style.transition =
+        "transform 160ms cubic-bezier(0.16, 1, 0.3, 1)";
+      lifted.style.transform = "";
+      lifted.addEventListener("transitionend", () => {
+        lifted.style.transition = "";
+      }, { once: true });
+      dispatch();
+    };
+    // Document-level tracking survives fast pointers leaving the
+    // handle and environments where pointer capture is unavailable.
+    document.addEventListener("pointermove", track);
+    document.addEventListener("pointerup", drop);
+    document.addEventListener("pointercancel", drop);
+  });
+
+  // Keyboard: the handle is a button. Space grabs, arrows move,
+  // Space drops, Escape restores the original order.
+  let grabbed = null;
+  let originalOrder = null;
+  const release = (drop) => {
+    if (!grabbed) return;
+    grabbed.firstElementChild.classList.remove("v-drag-grabbed");
+    if (drop) {
+      dispatch();
+      announce("Dropped.");
+    } else if (originalOrder) {
+      for (const wrap of originalOrder) node.appendChild(wrap);
+      announce("Reorder cancelled.");
+    }
+    grabbed = null;
+    originalOrder = null;
+  };
+  node.addEventListener("keydown", (ev) => {
+    const handle = ev.target.closest(".v-drag-handle");
+    if (!handle) return;
+    const wrap = handle.closest("[data-vi]");
+    if (ev.key === " " || ev.key === "Enter") {
+      if (grabbed === wrap) {
+        release(true);
+      } else {
+        release(false);
+        grabbed = wrap;
+        originalOrder = wrappers();
+        wrap.firstElementChild.classList.add("v-drag-grabbed");
+        announce("Grabbed. Use the arrow keys to move, space to drop, "
+                 + "escape to cancel.");
+      }
+    } else if (grabbed === wrap
+               && (ev.key === "ArrowUp" || ev.key === "ArrowDown")) {
+      const list = wrappers();
+      const index = list.indexOf(wrap);
+      const target = ev.key === "ArrowUp"
+        ? list[index - 1] : list[index + 1];
+      if (target) {
+        const child = target.firstElementChild;
+        const from = child.getBoundingClientRect().top;
+        if (ev.key === "ArrowUp") node.insertBefore(wrap, target);
+        else node.insertBefore(target, wrap);
+        flip(child, from);
+        handle.focus();
+        announce(`Moved to position ${wrappers().indexOf(wrap) + 1} `
+                 + `of ${list.length}.`);
+      }
+    } else if (grabbed === wrap && ev.key === "Escape") {
+      release(false);
+      handle.focus();
+    } else {
+      return;
+    }
+    ev.preventDefault();
+  });
+
+  return {
+    // Re-runs after every reconcile: re-rendered items get their
+    // handle back, new items get one for the first time.
+    prepare() {
+      for (const wrap of wrappers()) {
+        const root = wrap.firstElementChild;
+        if (!root || root.querySelector(":scope > .v-drag-handle")) continue;
+        root.classList.add("v-reorderable-item");
+        const handle = document.createElement("button");
+        handle.type = "button";
+        handle.className = "v-drag-handle";
+        handle.setAttribute("aria-label", "Reorder item");
+        handle.innerHTML = GRIP_SVG;
+        root.prepend(handle);
+      }
+    },
+  };
 }
 
 /* ------------------------------------------------------------------ *

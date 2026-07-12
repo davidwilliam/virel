@@ -625,7 +625,9 @@ def _motion_tab() -> ui.Node:
             ui.Heading("List choreography", level=2, size=3),
             ui.Text("New items animate in, removed items animate out, and "
                     "layout=True FLIPs survivors to their new positions "
-                    "when the list reorders.", muted=True, size="sm"),
+                    "when the list reorders. Drag the grip (or focus it "
+                    "and press Space, arrows, Space) to reorder by hand.",
+                    muted=True, size="sm"),
             ui.Row(
                 ui.Button("Add task", intent="primary", size="sm",
                           on_click=add_task),
@@ -639,6 +641,7 @@ def _motion_tab() -> ui.Node:
                 gap=3,
                 animate=ui.Motion(enter="slide-right", exit="fade",
                                   layout=True),
+                reorderable=True,
             ),
             gap=4,
         ),

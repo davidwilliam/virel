@@ -224,3 +224,55 @@ def test_command_validation():
 
     with pytest.raises(VirelCompileError, match="single letter"):
         compile_page(active_registry().pages["/bad-hotkey"])
+
+
+def test_reorderable_each_wires_state_writeback():
+    @ui.page("/reorder")
+    def reorder_page():
+        tasks = ui.state(["alpha", "beta", "gamma"])
+        return ui.Page(
+            ui.Each(tasks, render=lambda t: ui.Text(t), key=lambda t: t,
+                    reorderable=True),
+        )
+
+    compiled = compile_page(active_registry().pages["/reorder"])
+    assert ", true);" in compiled.js          # bindList reorder flag
+    assert '"virel-reorder"' in compiled.js
+    assert "S.s1.set(ev.detail.items);" in compiled.js
+
+
+def test_reorderable_requires_key_and_writeback_path():
+    @ui.page("/reorder-nokey")
+    def nokey():
+        tasks = ui.state(["a"])
+        return ui.Page(ui.Each(tasks, render=lambda t: ui.Text(t),
+                               reorderable=True))
+
+    with pytest.raises(VirelCompileError, match="key="):
+        compile_page(active_registry().pages["/reorder-nokey"])
+
+    @ui.page("/reorder-nostate")
+    def nostate():
+        return ui.Page(ui.Each([{"id": 1}],
+                               render=lambda t: ui.Text(t["id"]),
+                               key=lambda t: t["id"], reorderable=True))
+
+    with pytest.raises(VirelCompileError, match="on_reorder"):
+        compile_page(active_registry().pages["/reorder-nostate"])
+
+
+def test_reorder_handler_updates_state_in_python():
+    captured = {}
+
+    @ui.page("/reorder-exec")
+    def reorder_exec():
+        tasks = ui.state(["alpha", "beta"])
+        each = ui.Each(tasks, render=lambda t: ui.Text(t), key=lambda t: t,
+                       reorderable=True)
+        captured["each"] = each
+        return ui.Page(each, ui.Text(f"Order: {tasks}"))
+
+    view = ui.test.render(reorder_exec)
+    view._run_handler(captured["each"].on_reorder,
+                      ev={"detail": {"items": ["beta", "alpha"]}})
+    assert view.state("s1") == ["beta", "alpha"]

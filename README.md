@@ -546,7 +546,12 @@ ui.Each(tasks, render=row, key=..., animate=ui.Motion(
 
 `ui.Swipeable` adds gestures: content follows the pointer, springs back
 below the threshold, and slides away firing `on_dismiss` past it, with
-Delete-key parity for keyboard users. Reduced motion collapses every
+Delete-key parity for keyboard users. Lists take
+`Each(reorderable=True)`: every item gets a drag handle for pointer
+drag-and-drop (siblings FLIP out of the way) that equally works from the
+keyboard (Space grabs, arrows move, Space drops, Escape cancels), with
+each change announced to screen readers; the new order writes back into
+the list state automatically. Reduced motion collapses every
 animation to instant by default; `ui.animation(..., essential=True)`
 exempts motion that conveys state (progress, live indicators), and
 `ui.Motion(reduced="none")` removes an animation entirely for those

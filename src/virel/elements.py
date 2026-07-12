@@ -1335,16 +1335,38 @@ def Breadcrumbs(items: list[tuple[str, str | None]]) -> Element:
 
 def Each(items: Any, *, render: Callable[[Any], Any], tag: str = "div",
          gap: int | None = 3, key: Callable[[Any], Any] | None = None,
-         animate: Any = None) -> Node:
+         animate: Any = None, reorderable: bool = False,
+         on_reorder: Any = None) -> Node:
     """Reactive list rendering. ``render`` receives a symbolic item and is
     traced once into a template. Items may carry event handlers (delegated
     from the container). With ``key``, unchanged items keep their DOM nodes
     across re-renders. With ``animate`` (a ui.Motion or preset name), new
     items animate in, removed items animate out, and layout=True makes
-    reordered items glide to their new position."""
+    reordered items glide to their new position.
+
+    ``reorderable=True`` adds drag-and-drop (SPEC 11.1): every item gets
+    a drag handle that also works from the keyboard (Space grabs, arrows
+    move, Space drops, Escape cancels, with changes announced to screen
+    readers). When ``items`` is a ui.state list, the new order writes
+    back automatically; otherwise pass on_reorder=, typically
+    ``ui.set_from_event(items, "detail.items")``."""
+    from .expr import Handler, SetFromEventOp, State
     from .nodes import EachNode
+    handler = None
+    if reorderable:
+        if on_reorder is not None:
+            handler = on_reorder if isinstance(on_reorder, Handler) \
+                else _handler(on_reorder)
+        elif isinstance(items, State):
+            handler = Handler([SetFromEventOp(items.name, "detail.items")])
+        else:
+            raise VirelCompileError(
+                "Each(reorderable=True) over a non-state list needs "
+                "on_reorder=, e.g. ui.set_from_event(items, "
+                "\"detail.items\").")
     return EachNode(items, render, tag=tag, gap=gap, key=key,
-                    animate=animate)
+                    animate=animate, reorderable=reorderable,
+                    on_reorder=handler)
 
 
 def Suspense(resource: Any, *, content: Any, fallback: Any = None,
