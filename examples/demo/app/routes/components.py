@@ -175,9 +175,21 @@ def _feedback_tab() -> ui.Node:
     )
 
 
+_FILES = [
+    {"name": "src", "children": [
+        {"name": "app.py"},
+        {"name": "routes", "children": [
+            {"name": "home.py"}, {"name": "runs.py"}]},
+    ]},
+    {"name": "tests", "children": [{"name": "test_app.py"}]},
+    {"name": "README.md"},
+]
+
+
 def _patterns_tab() -> ui.Node:
     dialog_open = ui.state(False)
     current_page = ui.state(1)
+    picked = ui.state("nothing yet")
     taps = ui.state(0)
 
     return ui.Stack(
@@ -198,6 +210,41 @@ def _patterns_tab() -> ui.Node:
             ),
             ui.Tooltip(ui.Badge("hover me"), text="Tooltips are CSS-only"),
             gap=4,
+        ),
+        ui.Grid(
+            ui.Card(
+                ui.Heading("Tree view", level=2, size=3),
+                ui.Text("Arrow keys move, expand, and collapse; Enter "
+                        "selects.", muted=True, size="sm"),
+                ui.Tree(_FILES,
+                        label=lambda n: n["name"],
+                        on_select=lambda n: picked.set(n["name"]),
+                        aria_label="Project files"),
+                ui.Text(f"Selected: {picked}", muted=True, size="sm"),
+                gap=3,
+            ),
+            ui.Card(
+                ui.Heading("Command palette", level=2, size=3),
+                ui.Text("Press Ctrl or Cmd plus K anywhere on this page: "
+                        "type to filter, arrows to move, Enter to run.",
+                        muted=True, size="sm"),
+                ui.CommandPalette(commands=[
+                    ui.Command("Go to settings", to="/settings",
+                               hint="Navigation"),
+                    ui.Command("Go to runs", to="/runs", hint="Navigation"),
+                    ui.Command("Open the dialog",
+                               on_run=lambda: dialog_open.set(True)),
+                    ui.Command("Raise a toast",
+                               on_run=lambda: ui.notify(
+                                   "Ran from the palette.",
+                                   intent="success")),
+                ]),
+                ui.Code('ui.CommandPalette(commands=[ui.Command(...)])',
+                        block=True, language="python"),
+                gap=3,
+            ),
+            columns={"base": 1, "md": 2},
+            gap=5,
         ),
         ui.Card(
             ui.Heading("Pagination", level=2, size=3),

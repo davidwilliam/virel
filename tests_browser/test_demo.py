@@ -278,3 +278,48 @@ def test_pagination_buttons_drive_state(page, server_url):
         "'.v-pagination [aria-current=\"page\"]').textContent") == "3"
     page.get_by_role("button", name="Next").click()
     page.get_by_text("Showing page 4 of 5").wait_for()
+
+
+def test_tree_keyboard_navigation_and_selection(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Patterns").click()
+    tree = page.locator('[role="tree"]')
+    tree.wait_for()
+
+    first = page.locator('[role="treeitem"]').first
+    first.focus()
+    page.keyboard.press("ArrowDown")   # into src's first child
+    page.keyboard.press("Enter")
+    page.get_by_text("Selected: app.py").wait_for()
+
+    first.focus()
+    page.keyboard.press("ArrowLeft")   # collapse src
+    assert page.evaluate(
+        "document.querySelector('[role=\"treeitem\"]')"
+        ".getAttribute('aria-expanded')") == "false"
+    page.keyboard.press("ArrowRight")  # expand again
+    assert page.evaluate(
+        "document.querySelector('[role=\"treeitem\"]')"
+        ".getAttribute('aria-expanded')") == "true"
+
+
+def test_command_palette_opens_filters_and_runs(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Patterns").click()
+    page.keyboard.press("ControlOrMeta+k")
+    palette_input = page.get_by_label("Search commands")
+    palette_input.wait_for(state="visible")
+
+    palette_input.fill("toast")
+    assert page.evaluate(
+        "document.querySelectorAll('.v-palette-item:not([hidden])').length"
+    ) == 1
+    page.keyboard.press("Enter")
+    page.get_by_text("Ran from the palette.").wait_for()
+    assert not page.evaluate("document.querySelector('.v-palette').open")
+
+    # Filtering to nothing shows the empty state.
+    page.keyboard.press("ControlOrMeta+k")
+    palette_input.fill("zzzz")
+    page.get_by_text("No matching commands.").wait_for()
+    page.keyboard.press("Escape")

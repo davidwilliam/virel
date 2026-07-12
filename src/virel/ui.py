@@ -24,6 +24,8 @@ from .elements import (
     Card,
     Checkbox,
     Code,
+    Command,
+    CommandPalette,
     Container,
     DateField,
     Dialog,
@@ -70,6 +72,7 @@ from .elements import (
     Table,
     Tabs,
     Text,
+    Tree,
     Textarea,
     TextField,
     ThemeToggle,
@@ -161,6 +164,7 @@ __all__ = [
     # interaction patterns
     "Tabs", "Dialog", "Accordion", "Tooltip", "Popover",
     "Menu", "MenuItem", "MenuDivider", "Pagination", "notify",
+    "Tree", "Command", "CommandPalette",
     # data display and status
     "Table", "Stat", "Progress", "Spinner", "Skeleton", "Avatar",
     "Breadcrumbs", "Alert", "Badge", "EmptyState", "ErrorBoundary",

@@ -913,6 +913,161 @@ export function splitter(id) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Tree view (SPEC 11.1): the ARIA tree pattern. Roving tabindex, arrow
+ * navigation, Right/Left expand and collapse, Enter selects.
+ * ------------------------------------------------------------------ */
+
+export function tree(id) {
+  const root = el(id);
+  if (!root) return;
+  const items = () => Array.from(root.querySelectorAll('[role="treeitem"]'));
+  const visible = () => items().filter((item) => {
+    let parent = item.parentElement;
+    while (parent && parent !== root) {
+      if (parent.getAttribute("role") === "group" &&
+          parent.parentElement.getAttribute("aria-expanded") === "false") {
+        return false;
+      }
+      parent = parent.parentElement;
+    }
+    return true;
+  });
+  const focusItem = (item) => {
+    items().forEach((other) => other.setAttribute("tabindex", "-1"));
+    item.setAttribute("tabindex", "0");
+    item.focus();
+  };
+  const first = items()[0];
+  if (first) first.setAttribute("tabindex", "0");
+
+  root.addEventListener("click", (ev) => {
+    const twist = ev.target.closest(".v-tree-twist");
+    if (twist) {
+      const item = twist.closest('[role="treeitem"]');
+      const expanded = item.getAttribute("aria-expanded");
+      if (expanded !== null) {
+        item.setAttribute("aria-expanded",
+                          expanded === "true" ? "false" : "true");
+      }
+      ev.stopPropagation();
+      return;
+    }
+    const row = ev.target.closest(".v-tree-row");
+    if (row) focusItem(row.closest('[role="treeitem"]'));
+  });
+
+  root.addEventListener("keydown", (ev) => {
+    const item = ev.target.closest('[role="treeitem"]');
+    if (!item) return;
+    const list = visible();
+    const index = list.indexOf(item);
+    const expanded = item.getAttribute("aria-expanded");
+    if (ev.key === "ArrowDown" && index < list.length - 1) {
+      focusItem(list[index + 1]);
+    } else if (ev.key === "ArrowUp" && index > 0) {
+      focusItem(list[index - 1]);
+    } else if (ev.key === "ArrowRight" && expanded !== null) {
+      if (expanded === "false") item.setAttribute("aria-expanded", "true");
+      else {
+        const child = item.querySelector('[role="treeitem"]');
+        if (child) focusItem(child);
+      }
+    } else if (ev.key === "ArrowLeft") {
+      if (expanded === "true") item.setAttribute("aria-expanded", "false");
+      else {
+        const parent = item.parentElement.closest('[role="treeitem"]');
+        if (parent) focusItem(parent);
+      }
+    } else if (ev.key === "Home" && list.length) {
+      focusItem(list[0]);
+    } else if (ev.key === "End" && list.length) {
+      focusItem(list[list.length - 1]);
+    } else if (ev.key === "Enter" || ev.key === " ") {
+      const target = item.querySelector(":scope > .v-tree-row .v-tree-label");
+      if (target) target.click();
+    } else {
+      return;
+    }
+    ev.preventDefault();
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Command palette (SPEC 11.1): Ctrl/Cmd+letter opens a modal search
+ * over static commands; typing filters, arrows move the active option,
+ * Enter runs it. The native dialog supplies focus trapping and Escape.
+ * ------------------------------------------------------------------ */
+
+export function palette(id) {
+  const dialog = el(id);
+  if (!dialog) return;
+  const input = dialog.querySelector(".v-palette-input");
+  const empty = dialog.querySelector(".v-palette-empty");
+  const options = Array.from(dialog.querySelectorAll(".v-palette-item"));
+  options.forEach((option, index) => {
+    option.id = `${id}-cmd-${index}`;
+  });
+  let active = -1;
+
+  const shown = () => options.filter((option) => !option.hidden);
+  const mark = (index) => {
+    const list = shown();
+    active = Math.max(0, Math.min(index, list.length - 1));
+    options.forEach((option) => option.classList.remove("v-palette-active"));
+    if (list.length) {
+      list[active].classList.add("v-palette-active");
+      list[active].scrollIntoView({ block: "nearest" });
+      input.setAttribute("aria-activedescendant", list[active].id);
+    } else {
+      input.removeAttribute("aria-activedescendant");
+    }
+  };
+  const filter = () => {
+    const query = input.value.trim().toLowerCase();
+    for (const option of options) {
+      option.hidden = query !== "" && !option.dataset.label.includes(query);
+    }
+    empty.hidden = shown().length > 0;
+    mark(0);
+  };
+  const openPalette = () => {
+    if (dialog.open) return;
+    dialog.showModal();
+    input.value = "";
+    filter();
+    input.focus();
+  };
+
+  const hotkey = (dialog.dataset.hotkey || "k").toLowerCase();
+  const onGlobalKey = (ev) => {
+    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === hotkey) {
+      ev.preventDefault();
+      openPalette();
+    }
+  };
+  document.addEventListener("keydown", onGlobalKey);
+  onDispose(() => document.removeEventListener("keydown", onGlobalKey));
+
+  input.addEventListener("input", filter);
+  dialog.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowDown") mark(active + 1);
+    else if (ev.key === "ArrowUp") mark(active - 1);
+    else if (ev.key === "Enter") {
+      const list = shown();
+      if (list[active]) list[active].click();
+      dialog.close();
+    } else {
+      return;
+    }
+    ev.preventDefault();
+  });
+  dialog.addEventListener("click", (ev) => {
+    if (ev.target.closest(".v-palette-item")) dialog.close();
+    else if (ev.target === dialog) dialog.close(); // backdrop click
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * Notifications (SPEC 11.1): toasts in a polite live region. Screen
  * readers announce them without focus moving; hover pauses the timer;
  * exits reuse the CSS animation pipeline.

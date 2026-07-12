@@ -355,6 +355,130 @@ def Swipeable(*children: Any, on_dismiss: Callable[[], None],
                    runtime_binding="swipeable")
 
 
+def Tree(items: list, *, label: Callable[[Any], str],
+         children: Callable[[Any], list] | None = None,
+         on_select: Callable[[Any], None] | None = None,
+         aria_label: str = "Tree") -> Element:
+    """An accessible tree view (SPEC 11.1) over plain nested data:
+
+        ui.Tree(folders,
+                label=lambda n: n["name"],
+                children=lambda n: n.get("children", []),
+                on_select=lambda n: selected.set(n["name"]))
+
+    Arrow keys move and expand/collapse (the ARIA tree pattern), rows
+    select on click or Enter, and each row's handler is traced with its
+    own node bound."""
+    children_of = children or (lambda node: node.get("children", []))
+
+    def build(nodes: list, depth: int) -> list[Node]:
+        built: list[Node] = []
+        for node in nodes:
+            kids = children_of(node) or []
+            row_children: list[Node] = []
+            if kids:
+                row_children.append(Element(
+                    "span", attrs={"class": "v-tree-twist",
+                                   "aria-hidden": "true"}))
+            events = {}
+            if on_select is not None:
+                events["click"] = _handler(
+                    lambda node=node: on_select(node))
+            row_children.append(Element(
+                "span", [TextNode(str(label(node)))],
+                attrs={"class": "v-tree-label"}, events=events))
+            row = Element("span", row_children,
+                          attrs={"class": "v-tree-row"})
+            item_children: list[Node] = [row]
+            attrs: dict[str, Any] = {"role": "treeitem", "tabindex": "-1",
+                                     "class": "v-tree-item"}
+            if kids:
+                attrs["aria-expanded"] = "true"
+                item_children.append(Element(
+                    "ul", build(kids, depth + 1),
+                    attrs={"role": "group", "class": "v-tree-group"}))
+            built.append(Element("li", item_children, attrs=attrs))
+        return built
+
+    if not items:
+        raise VirelCompileError("Tree needs at least one item.")
+    return Element("ul", build(items, 0),
+                   attrs={"role": "tree", "class": "v-tree",
+                          "aria-label": aria_label},
+                   runtime_binding="tree")
+
+
+class Command:
+    """One command palette entry: a navigation target or an action."""
+
+    def __init__(self, label: str, *, to: str | None = None,
+                 on_run: Callable[[], None] | None = None,
+                 hint: str | None = None) -> None:
+        if (to is None) == (on_run is None):
+            raise VirelCompileError(
+                "Command takes exactly one of to= (a link) or on_run= "
+                "(an action).")
+        if to is not None:
+            from .security import is_safe_url
+            if not is_safe_url(to):
+                raise VirelCompileError(
+                    f"Command target {to!r} uses a blocked URL scheme.")
+        self.label = label
+        self.to = to
+        self.on_run = on_run
+        self.hint = hint
+
+
+def CommandPalette(*, commands: list[Command], hotkey: str = "k",
+                   placeholder: str = "Type a command…") -> Element:
+    """A command palette (SPEC 11.1): Ctrl/Cmd plus the hotkey opens a
+    modal search over the registered commands; typing filters, arrows
+    move, Enter runs. Built on the native dialog element, so focus
+    trapping and Escape come from the browser."""
+    import re as _re
+    if not _re.fullmatch(r"[a-z]", hotkey):
+        raise VirelCompileError("CommandPalette hotkey is a single letter.")
+    if not commands:
+        raise VirelCompileError("CommandPalette needs at least one command.")
+    options: list[Node] = []
+    for command in commands:
+        entry_children: list[Node] = [
+            Element("span", [TextNode(command.label)],
+                    attrs={"class": "v-palette-label"})]
+        if command.hint:
+            entry_children.append(Element(
+                "span", [TextNode(command.hint)],
+                attrs={"class": "v-palette-hint"}))
+        attrs = {"class": "v-palette-item", "role": "option",
+                 "data-label": command.label.lower()}
+        if command.to is not None:
+            entry = Element("a", entry_children,
+                            attrs={**attrs, "href": command.to})
+        else:
+            entry = Element("button", entry_children,
+                            attrs={**attrs, "type": "button"},
+                            events={"click": _handler(command.on_run)})
+        options.append(entry)
+    search = Element("input", attrs={
+        "class": "v-input v-palette-input",
+        "type": "text",
+        "placeholder": placeholder,
+        "role": "combobox",
+        "aria-expanded": "true",
+        "aria-label": "Search commands",
+        "autocomplete": "off",
+    })
+    listbox = Element("div", options,
+                      attrs={"role": "listbox", "class": "v-palette-list",
+                             "aria-label": "Commands"})
+    empty = Element("div", [TextNode("No matching commands.")],
+                    attrs={"class": "v-palette-empty", "hidden": True})
+    return Element("dialog", [search, listbox, empty],
+                   attrs={"class": "v-palette", "data-hotkey": hotkey,
+                          "aria-label": "Command palette"},
+                   runtime_binding="palette")
+
+
 def _css_length(value: str | int) -> str:
     """A CSS length from an int (pixels) or a validated string. Strings
     are restricted to simple lengths so styles cannot be broken out of."""

@@ -438,8 +438,9 @@ built in:
 - Interaction patterns: `Tabs`, `Dialog` (on the native dialog element),
   `Menu`/`MenuItem`/`MenuDivider` (accessible dropdowns with keyboard
   navigation and flip-up placement), `Popover` (anchored non-modal panel
-  with focus management), `Accordion` (on details/summary), `Tooltip`,
-  `Swipeable`, `When`
+  with focus management), `Tree` (the ARIA tree pattern over plain nested
+  data), `CommandPalette` (Ctrl/Cmd+K search over typed commands),
+  `Accordion` (on details/summary), `Tooltip`, `Swipeable`, `When`
 - Data display and status: `Table`, `Stat`, `Progress`, `Spinner`,
   `Skeleton`, `Avatar`, `Badge`, `Alert`, `Breadcrumbs`, `EmptyState`,
   `Pagination` (state-driven buttons or server-rendered windowed links),

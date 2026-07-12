@@ -146,3 +146,81 @@ def test_date_field_kinds():
 
     with pytest.raises(VirelCompileError, match="kind"):
         ui.test.render(bad_kind)
+
+
+_FOLDERS = [
+    {"name": "src", "children": [
+        {"name": "app.py"},
+        {"name": "routes", "children": [{"name": "home.py"}]},
+    ]},
+    {"name": "tests"},
+]
+
+
+def test_tree_builds_the_aria_pattern():
+    @ui.page("/tree")
+    def tree_page():
+        selected = ui.state("")
+        return ui.Page(
+            ui.Tree(_FOLDERS,
+                    label=lambda n: n["name"],
+                    on_select=lambda n: selected.set(n["name"])),
+            ui.Text(f"Selected: {selected}"),
+        )
+
+    view = ui.test.render(tree_page)
+    view.get_by_text("home.py").click()
+    assert "Selected: home.py" in view.query_text()
+
+    html = compile_page(active_registry().pages["/tree"]).html
+    assert 'role="tree"' in html
+    assert 'role="treeitem"' in html
+    assert 'role="group"' in html
+    assert 'aria-expanded="true"' in html
+    assert "$.tree(" in compile_page(active_registry().pages["/tree"]).js
+
+
+def test_tree_requires_items():
+    @ui.page("/empty-tree")
+    def empty_tree():
+        return ui.Page(ui.Tree([], label=lambda n: n["name"]))
+
+    with pytest.raises(VirelCompileError, match="at least one"):
+        compile_page(active_registry().pages["/empty-tree"])
+
+
+def test_command_palette_compiles_commands():
+    @ui.page("/palette")
+    def palette_page():
+        count = ui.state(0)
+        return ui.Page(ui.CommandPalette(commands=[
+            ui.Command("Go to settings", to="/settings", hint="Navigation"),
+            ui.Command("Reset counter",
+                       on_run=lambda: count.set(0)),
+        ]))
+
+    compiled = compile_page(active_registry().pages["/palette"])
+    assert 'role="combobox"' in compiled.html
+    assert 'role="listbox"' in compiled.html
+    assert 'data-label="go to settings"' in compiled.html
+    assert 'href="/settings"' in compiled.html
+    assert "$.palette(" in compiled.js
+
+    view = ui.test.render(palette_page)
+    view.get_by_role("option", name="Reset counter").click()
+    assert view.state("s1") == 0
+
+
+def test_command_validation():
+    with pytest.raises(VirelCompileError, match="exactly one"):
+        ui.Command("Both", to="/x", on_run=lambda: None)
+    with pytest.raises(VirelCompileError, match="blocked URL scheme"):
+        ui.Command("Bad", to="javascript:alert(1)")
+
+    @ui.page("/bad-hotkey")
+    def bad_hotkey():
+        return ui.Page(ui.CommandPalette(
+            commands=[ui.Command("Home", to="/")], hotkey="F1"))
+
+    with pytest.raises(VirelCompileError, match="single letter"):
+        compile_page(active_registry().pages["/bad-hotkey"])
