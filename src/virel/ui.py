@@ -82,6 +82,7 @@ from .elements import (
 )
 from .channels import Channel, ChannelClosed, channel, connect
 from .context import Context, context
+from .datagrid import Column, DataGrid
 from .elements import Each, Island, Suspense, effect, upload
 from .formatting import (collation_key, format_currency, format_date,
                          format_number, format_percent, locale_sorted)
@@ -166,7 +167,8 @@ __all__ = [
     "Menu", "MenuItem", "MenuDivider", "Pagination", "notify",
     "Tree", "Command", "CommandPalette",
     # data display and status
-    "Table", "Stat", "Progress", "Spinner", "Skeleton", "Avatar",
+    "Table", "DataGrid", "Column",
+    "Stat", "Progress", "Spinner", "Skeleton", "Avatar",
     "Breadcrumbs", "Alert", "Badge", "EmptyState", "ErrorBoundary",
     "ErrorState", "Icon", "icon_names",
 ]

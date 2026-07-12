@@ -1117,6 +1117,156 @@ export function splitter(id) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Data grid (SPEC 11.1): the rows are all server-rendered; sorting
+ * reorders the real DOM, filtering hides rows, selection tracks
+ * checkboxes and dispatches virel-selection, paging shows a window.
+ * ------------------------------------------------------------------ */
+
+export function datagrid(id) {
+  const root = el(id);
+  if (!root) return;
+  const body = root.querySelector("tbody");
+  const rows = Array.from(body.querySelectorAll(":scope > tr"));
+  const count = root.querySelector(".v-grid-count");
+  const pageSize = Number(root.dataset.pageSize) || 0;
+  let page = 0;
+  let sortKey = null;
+  let sortDir = 0; // 1 ascending, -1 descending, 0 original order
+  let query = "";
+
+  const matches = (row) =>
+    query === "" || row.textContent.toLowerCase().includes(query);
+
+  const refresh = () => {
+    let live = rows.filter(matches);
+    if (sortDir !== 0 && sortKey !== null) {
+      const heads = Array.from(root.querySelectorAll("th[data-key]"));
+      const columnIndex = heads.findIndex(
+        (th) => th.dataset.key === sortKey);
+      const offset = root.querySelector(".v-grid-selcol") ? 1 : 0;
+      const kind = heads[columnIndex].dataset.kind;
+      const valueOf = (row) => {
+        const cell = row.children[columnIndex + offset];
+        return cell ? cell.dataset.value : "";
+      };
+      live = live.slice().sort((a, b) => {
+        const va = valueOf(a);
+        const vb = valueOf(b);
+        const order = kind === "number"
+          ? Number(va || "-Infinity") - Number(vb || "-Infinity")
+          : va < vb ? -1 : va > vb ? 1 : 0;
+        return order * sortDir;
+      });
+    } else {
+      live = live.slice().sort(
+        (a, b) => Number(a.dataset.index) - Number(b.dataset.index));
+    }
+    const pages = pageSize
+      ? Math.max(1, Math.ceil(live.length / pageSize)) : 1;
+    page = Math.min(page, pages - 1);
+    const start = pageSize ? page * pageSize : 0;
+    const shown = pageSize ? live.slice(start, start + pageSize) : live;
+
+    for (const row of rows) row.hidden = true;
+    // Reordering happens in the real DOM so the table stays a table.
+    for (const row of shown) {
+      body.appendChild(row);
+      row.hidden = false;
+    }
+    if (count) {
+      count.textContent = live.length === rows.length
+        ? `${rows.length} rows` : `${live.length} of ${rows.length} rows`;
+    }
+    const pager = root.querySelector(".v-grid-pages");
+    if (pager) pager.textContent = `Page ${page + 1} of ${pages}`;
+    const previous = root.querySelector(".v-grid-prev");
+    const next = root.querySelector(".v-grid-next");
+    if (previous) previous.disabled = page === 0;
+    if (next) next.disabled = page >= pages - 1;
+    syncSelectAll();
+  };
+
+  // Sorting cycles ascending, descending, back to the original order.
+  root.querySelectorAll("th[data-key]").forEach((th) => {
+    const button = th.querySelector(".v-grid-sort");
+    if (!button) return;
+    button.addEventListener("click", () => {
+      if (sortKey !== th.dataset.key) {
+        sortKey = th.dataset.key;
+        sortDir = 1;
+      } else {
+        sortDir = sortDir === 1 ? -1 : sortDir === -1 ? 0 : 1;
+      }
+      root.querySelectorAll("th[data-key]").forEach((other) => {
+        if (other.getAttribute("aria-sort") !== null) {
+          other.setAttribute("aria-sort",
+            other === th && sortDir !== 0
+              ? (sortDir === 1 ? "ascending" : "descending") : "none");
+        }
+      });
+      refresh();
+    });
+  });
+
+  const filter = root.querySelector(".v-grid-filter");
+  if (filter) {
+    filter.addEventListener("input", () => {
+      query = filter.value.trim().toLowerCase();
+      page = 0;
+      refresh();
+    });
+  }
+  const previous = root.querySelector(".v-grid-prev");
+  const next = root.querySelector(".v-grid-next");
+  if (previous) {
+    previous.addEventListener("click", () => { page--; refresh(); });
+  }
+  if (next) {
+    next.addEventListener("click", () => { page++; refresh(); });
+  }
+
+  // Selection: per-row checkboxes plus a tri-state select-all over the
+  // currently visible rows.
+  const selectAll = root.querySelector(".v-grid-check-all");
+  const rowChecks = () => rows
+    .filter((row) => !row.hidden)
+    .map((row) => row.querySelector(".v-grid-check-row"))
+    .filter(Boolean);
+  const selectedKeys = () => rows
+    .filter((row) => {
+      const check = row.querySelector(".v-grid-check-row");
+      return check && check.checked;
+    })
+    .map((row) => row.dataset.key);
+  const announceSelection = () => {
+    root.dispatchEvent(new CustomEvent("virel-selection", {
+      detail: { keys: selectedKeys() },
+    }));
+    syncSelectAll();
+  };
+  function syncSelectAll() {
+    if (!selectAll) return;
+    const checks = rowChecks();
+    const checked = checks.filter((check) => check.checked).length;
+    selectAll.checked = checks.length > 0 && checked === checks.length;
+    selectAll.indeterminate = checked > 0 && checked < checks.length;
+  }
+  if (selectAll) {
+    selectAll.addEventListener("change", () => {
+      for (const check of rowChecks()) check.checked = selectAll.checked;
+      announceSelection();
+    });
+    body.addEventListener("change", (ev) => {
+      if (ev.target.classList.contains("v-grid-check-row")) {
+        announceSelection();
+      }
+    });
+  }
+
+  refresh();
+}
+
+/* ------------------------------------------------------------------ *
  * Tree view (SPEC 11.1): the ARIA tree pattern. Roving tabindex, arrow
  * navigation, Right/Left expand and collapse, Enter selects.
  * ------------------------------------------------------------------ */

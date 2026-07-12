@@ -1039,3 +1039,50 @@ html[data-theme="dark"] .v-theme-toggle svg[data-icon="dark"] { display: inline;
   outline-offset: 2px;
   border-radius: var(--v-radius-md);
 }
+
+/* Data grid (SPEC 11.1) */
+.v-datagrid { display: flex; flex-direction: column; gap: calc(var(--v-space) * 3); }
+.v-grid-toolbar {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--v-space) * 3);
+  flex-wrap: wrap;
+}
+.v-grid-filter { max-width: 18rem; }
+.v-grid-count { color: var(--v-fg-muted); font-size: 0.875rem; margin-inline-start: auto; }
+.v-grid-sort {
+  font: inherit;
+  font-weight: 600;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.v-grid-sort::after {
+  content: "";
+  width: 0;
+  height: 0;
+  border-inline: 4px solid transparent;
+  border-top: 5px solid var(--v-border-strong);
+  opacity: 0;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+th[aria-sort="ascending"] .v-grid-sort::after { opacity: 1; transform: rotate(180deg); }
+th[aria-sort="descending"] .v-grid-sort::after { opacity: 1; }
+th[aria-sort] .v-grid-sort:hover::after { opacity: 0.5; }
+.v-grid-sort:focus-visible { outline: 2px solid var(--v-ring); outline-offset: 2px; border-radius: 3px; }
+.v-grid-align-end { text-align: end; }
+.v-grid-align-end .v-grid-sort { flex-direction: row-reverse; }
+.v-grid-selcol { width: 2.2rem; }
+.v-grid-check { accent-color: var(--v-accent); width: 15px; height: 15px; }
+.v-grid-table tbody tr:has(.v-grid-check-row:checked) { background: var(--v-accent-soft); }
+.v-grid-pager {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--v-space) * 3);
+}
+.v-grid-pages { color: var(--v-fg-muted); font-size: 0.875rem; }

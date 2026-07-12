@@ -376,3 +376,38 @@ def test_list_reorders_with_a_pointer_drag(page, server_url):
             break
         page.wait_for_timeout(25)
     assert "Design review" not in page.evaluate(head)
+
+
+def test_datagrid_sorts_filters_selects_and_pages(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Data").click()
+    grid = page.locator(".v-datagrid")
+    grid.wait_for()
+    first_model = ("document.querySelector('.v-datagrid tbody tr:not([hidden])')"
+                   ".children[1].textContent")
+
+    # Sort by score ascending, then descending.
+    page.get_by_role("button", name="Score").click()
+    assert page.evaluate(first_model) == "baseline"
+    page.get_by_role("button", name="Score").click()
+    assert page.evaluate(first_model) == "atlas-large"
+    assert page.evaluate(
+        "document.querySelector('th[data-key=\"score\"]')"
+        ".getAttribute('aria-sort')") == "descending"
+
+    # Filter narrows the row count.
+    page.get_by_label("Filter rows").fill("extract")
+    for _ in range(40):
+        if "3 of 12 rows" in page.locator(".v-grid-count").text_content():
+            break
+        page.wait_for_timeout(25)
+    assert "3 of 12 rows" in page.locator(".v-grid-count").text_content()
+    page.get_by_label("Filter rows").fill("")
+
+    # Select all visible rows; the count reaches Python state.
+    page.get_by_label("Select all rows").check()
+    page.get_by_text("Selected rows: 6").wait_for()
+
+    # Page forward: the pager advances and new rows appear.
+    page.get_by_role("button", name="Next").click()
+    assert "Page 2 of 2" in page.locator(".v-grid-pages").text_content()

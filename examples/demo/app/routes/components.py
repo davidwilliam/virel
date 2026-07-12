@@ -102,7 +102,27 @@ def _forms_tab() -> ui.Node:
     )
 
 
+_RUN_ROWS = [
+    {"model": f"{name}", "dataset": ds, "score": score, "started": day}
+    for name, ds, score, day in [
+        ("atlas-large", "qa-hard-v2", 0.93, "2026-07-10"),
+        ("atlas-small", "qa-hard-v2", 0.87, "2026-07-11"),
+        ("baseline", "qa-hard-v2", 0.71, "2026-07-08"),
+        ("atlas-large", "summarize-v1", 0.89, "2026-07-09"),
+        ("atlas-small", "summarize-v1", 0.83, "2026-07-09"),
+        ("baseline", "summarize-v1", 0.64, "2026-07-07"),
+        ("atlas-large", "extract-v3", 0.95, "2026-07-12"),
+        ("atlas-small", "extract-v3", 0.90, "2026-07-12"),
+        ("baseline", "extract-v3", 0.77, "2026-07-06"),
+        ("atlas-large", "reasoning-v2", 0.81, "2026-07-11"),
+        ("atlas-small", "reasoning-v2", 0.74, "2026-07-10"),
+        ("baseline", "reasoning-v2", 0.58, "2026-07-05"),
+    ]
+]
+
+
 def _data_tab() -> ui.Node:
+    chosen = ui.state([])
     return ui.Stack(
         ui.Grid(
             ui.Stat(label="Runs", value="1,284", hint="last 30 days"),
@@ -119,6 +139,29 @@ def _data_tab() -> ui.Node:
                 ["baseline", "qa-hard-v2", "0.71", ui.Badge("regression", intent="danger")],
             ],
             caption="Latest evaluation runs",
+        ),
+        ui.Card(
+            ui.Heading("Data grid", level=2, size=3),
+            ui.Text("Click a header to sort (ascending, descending, back "
+                    "to original), filter across all cells, select rows, "
+                    "and page through the results.", muted=True, size="sm"),
+            ui.DataGrid(
+                _RUN_ROWS,
+                columns=[
+                    ui.Column("model", "Model"),
+                    ui.Column("dataset", "Dataset"),
+                    ui.Column("score", "Score", kind="number"),
+                    ui.Column("started", "Started", kind="date"),
+                ],
+                key="model",
+                filterable=True,
+                page_size=6,
+                selectable=True,
+                on_selection=ui.set_from_event(chosen, "detail.keys"),
+            ),
+            ui.Text(f"Selected rows: {ui.length(chosen)}", muted=True,
+                    size="sm"),
+            gap=3,
         ),
         ui.Text("Syntax-highlighted code (compiled server-side, zero JS)",
                 muted=True, size="sm"),

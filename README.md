@@ -441,11 +441,13 @@ built in:
   with focus management), `Tree` (the ARIA tree pattern over plain nested
   data), `CommandPalette` (Ctrl/Cmd+K search over typed commands),
   `Accordion` (on details/summary), `Tooltip`, `Swipeable`, `When`
-- Data display and status: `Table`, `Stat`, `Progress`, `Spinner`,
-  `Skeleton`, `Avatar`, `Badge`, `Alert`, `Breadcrumbs`, `EmptyState`,
-  `Pagination` (state-driven buttons or server-rendered windowed links),
-  `Icon` (a built-in inline SVG set), plus `ui.notify` toasts raised from
-  any handler into a polite live region
+- Data display and status: `Table`, `DataGrid` (sortable typed columns,
+  filtering, row selection with select-all, client-side paging over
+  server-rendered rows), `Stat`, `Progress`, `Spinner`, `Skeleton`,
+  `Avatar`, `Badge`, `Alert`, `Breadcrumbs`, `EmptyState`, `Pagination`
+  (state-driven buttons or server-rendered windowed links), `Icon` (a
+  built-in inline SVG set), plus `ui.notify` toasts raised from any
+  handler into a polite live region
 
 `ui.Code` highlights source at compile time using theme-aware token colors,
 so code blocks ship as plain HTML spans with no client JavaScript:
