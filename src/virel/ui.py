@@ -25,6 +25,7 @@ from .elements import (
     Checkbox,
     Code,
     Container,
+    DateField,
     Dialog,
     Divider,
     DownloadButton,
@@ -46,6 +47,8 @@ from .elements import (
     Nav,
     NumberField,
     Page,
+    Pagination,
+    Popover,
     Progress,
     RadioGroup,
     Row,
@@ -89,6 +92,7 @@ from .registry import (Request, build, client, component, deny, layout,
                        page,
                        redirect, server, shared, use_css, use_guard,
                        use_middleware, use_static, web_component)
+from .notifications import notify
 from .motion import (Easing, Keyframes, Motion, animation, keyframes,
                      spring, transition)
 from .styles import Style, recipe, style
@@ -149,11 +153,11 @@ __all__ = [
     # forms
     "form", "Form", "FormActions", "SubmitButton",
     # form controls
-    "Button", "TextField", "Select", "Checkbox", "Textarea",
+    "Button", "TextField", "Select", "Checkbox", "Textarea", "DateField",
     "NumberField", "Slider", "Switch", "RadioGroup", "ThemeToggle",
     # interaction patterns
-    "Tabs", "Dialog", "Accordion", "Tooltip",
-    "Menu", "MenuItem", "MenuDivider",
+    "Tabs", "Dialog", "Accordion", "Tooltip", "Popover",
+    "Menu", "MenuItem", "MenuDivider", "Pagination", "notify",
     # data display and status
     "Table", "Stat", "Progress", "Spinner", "Skeleton", "Avatar",
     "Breadcrumbs", "Alert", "Badge", "EmptyState", "ErrorBoundary",

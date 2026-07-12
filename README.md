@@ -423,14 +423,18 @@ built in:
   (with optional sidebar that becomes an off-canvas drawer on small
   screens, and footer), `Footer`, `Hero`, `Divider`, `Spacer`
 - Form controls: `Button`, `TextField`, `Textarea`, `NumberField`, `Select`,
-  `Checkbox`, `Switch`, `RadioGroup`, `Slider`
+  `DateField` (platform date/time/datetime pickers, zero JS), `Checkbox`,
+  `Switch`, `RadioGroup`, `Slider`
 - Interaction patterns: `Tabs`, `Dialog` (on the native dialog element),
   `Menu`/`MenuItem`/`MenuDivider` (accessible dropdowns with keyboard
-  navigation and flip-up placement), `Accordion` (on details/summary),
-  `Tooltip`, `When`
+  navigation and flip-up placement), `Popover` (anchored non-modal panel
+  with focus management), `Accordion` (on details/summary), `Tooltip`,
+  `Swipeable`, `When`
 - Data display and status: `Table`, `Stat`, `Progress`, `Spinner`,
   `Skeleton`, `Avatar`, `Badge`, `Alert`, `Breadcrumbs`, `EmptyState`,
-  `Icon` (a built-in inline SVG set)
+  `Pagination` (state-driven buttons or server-rendered windowed links),
+  `Icon` (a built-in inline SVG set), plus `ui.notify` toasts raised from
+  any handler into a polite live region
 
 `ui.Code` highlights source at compile time using theme-aware token colors,
 so code blocks ship as plain HTML spans with no client JavaScript:

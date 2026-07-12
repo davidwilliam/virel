@@ -227,3 +227,54 @@ def test_reduced_motion_still_completes_exit(page, server_url):
             break
         page.wait_for_timeout(25)
     assert hidden
+
+
+def test_toast_notifications_appear_and_dismiss(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Feedback").click()
+    page.get_by_role("button", name="Success").click()
+    toast = page.get_by_text("Deployment complete.")
+    toast.wait_for()
+    assert page.evaluate(
+        "document.querySelector('.v-toasts').getAttribute('aria-live')"
+    ) == "polite"
+    page.get_by_label("Dismiss notification").click()
+    for _ in range(40):
+        if not toast.is_visible():
+            break
+        page.wait_for_timeout(25)
+    assert not toast.is_visible()
+
+
+def test_popover_opens_and_escape_restores_focus(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Patterns").click()
+    trigger = page.get_by_role("button", name="Popover")
+    trigger.click()
+    page.get_by_text("Anchored panel").wait_for()
+    assert page.evaluate(
+        "document.querySelector('.v-popover > button')"
+        ".getAttribute('aria-expanded')") == "true"
+    page.keyboard.press("Escape")
+    for _ in range(40):
+        if not page.get_by_text("Anchored panel").is_visible():
+            break
+        page.wait_for_timeout(25)
+    assert not page.get_by_text("Anchored panel").is_visible()
+    assert page.evaluate("document.activeElement.textContent") == "Popover"
+
+
+def test_pagination_buttons_drive_state(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Patterns").click()
+    page.get_by_text("Showing page 1 of 5").wait_for()
+    page.get_by_role("button", name="3", exact=True).click()
+    page.get_by_text("Showing page 3 of 5").wait_for()
+    assert page.evaluate(
+        "document.querySelectorAll("
+        "'.v-pagination [aria-current=\"page\"]').length") == 1
+    assert page.evaluate(
+        "document.querySelector("
+        "'.v-pagination [aria-current=\"page\"]').textContent") == "3"
+    page.get_by_role("button", name="Next").click()
+    page.get_by_text("Showing page 4 of 5").wait_for()

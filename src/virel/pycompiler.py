@@ -310,6 +310,8 @@ class FnCompiler:
             return OpStmt(self._compile_upload(call))
         if marker == "set_preference":
             return OpStmt(self._compile_set_preference(call))
+        if marker == "notify":
+            return OpStmt(self._compile_notify(call))
         if isinstance(call.func, ast.Attribute):
             target = self._try_resolve_node(call.func.value)
             attr = call.func.attr
@@ -354,6 +356,30 @@ class FnCompiler:
             "calls (action.call/action.stream), and resource.refresh() may "
             "be used as statements.",
         )
+
+    def _compile_notify(self, call: ast.Call) -> Any:
+        from .notifications import _INTENTS, NotifyOp
+        if len(call.args) != 1:
+            raise self.error(call, "ui.notify takes a message plus optional "
+                                   "intent= and duration=.")
+        message = self.expr(call.args[0])
+        intent, duration = "neutral", 5000
+        for keyword in call.keywords:
+            value = keyword.value
+            if keyword.arg == "intent" and isinstance(value, ast.Constant) \
+                    and value.value in _INTENTS:
+                intent = value.value
+            elif keyword.arg == "duration" and isinstance(value, ast.Constant) \
+                    and isinstance(value.value, int) \
+                    and not isinstance(value.value, bool) \
+                    and 0 <= value.value <= 60_000:
+                duration = value.value
+            else:
+                raise self.error(
+                    call, "ui.notify options are intent= (neutral, primary, "
+                          "success, danger) and duration= (0..60000 ms) as "
+                          "literals.")
+        return NotifyOp(message, intent, duration)
 
     def _compile_set_preference(self, call: ast.Call) -> Any:
         from .theme import SetPreferenceOp, _PREFERENCE_KEYS

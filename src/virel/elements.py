@@ -704,6 +704,166 @@ def TextField(state: Any, *, label: str, placeholder: str = "",
     return Element("label", children, attrs={"class": "v-field"})
 
 
+def DateField(state: Any, *, label: str, kind: str = "date",
+              min: str | None = None, max: str | None = None,
+              description: str | None = None) -> Element:
+    """Date selection (SPEC 11.1) on the platform's date input: the
+    browser supplies the localized, accessible calendar, the state holds
+    the ISO string, and no JavaScript ships for it."""
+    import re as _re
+    kinds = {"date": r"\d{4}-\d{2}-\d{2}",
+             "time": r"\d{2}:\d{2}(:\d{2})?",
+             "datetime": r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?"}
+    if kind not in kinds:
+        raise VirelCompileError("DateField kind must be 'date', 'time', or "
+                                "'datetime'.")
+    for name, value in (("min", min), ("max", max)):
+        if value is not None and not _re.fullmatch(kinds[kind], value):
+            raise VirelCompileError(
+                f"DateField {name}={value!r} does not match the ISO format "
+                f"for kind={kind!r}.")
+    state, extra_attrs, error_node = _unwrap_field(state, "DateField")
+    attrs: dict[str, Any] = {
+        "class": "v-input",
+        "type": "datetime-local" if kind == "datetime" else kind,
+        "min": min, "max": max,
+    }
+    attrs.update(extra_attrs)
+    input_el = Element(
+        "input",
+        attrs=attrs,
+        events={"input": Handler([SetFromEventOp(state.name, "target.value")])},
+        bound_props={"value": state},
+    )
+    children: list[Node] = [
+        Element("span", [TextNode(label)], attrs={"class": "v-label"}),
+        input_el,
+    ]
+    if description:
+        children.append(Element("span", [TextNode(description)],
+                                attrs={"class": "v-hint"}))
+    if error_node is not None:
+        children.append(error_node)
+    return Element("label", children, attrs={"class": "v-field"})
+
+
+def Popover(*, trigger: Any, content: Any, align: str = "start") -> Element:
+    """An anchored, non-modal floating panel (SPEC 11.1): click the
+    trigger to open, Escape or clicking outside closes and restores
+    focus, and the panel flips upward when space below runs out."""
+    if align not in ("start", "end"):
+        raise VirelCompileError("Popover align must be 'start' or 'end'.")
+    panel = Element("div", normalize_children(
+        content if isinstance(content, (list, tuple)) else (content,)),
+        attrs={"class": "v-popover-panel"})
+    return Element("div", [*normalize_children((trigger,)), panel],
+                   attrs={"class": f"v-popover v-popover-{align}"},
+                   runtime_binding="popover")
+
+
+def Pagination(page: Any, pages: int, *, href: Callable[[int], str] | None = None,
+               label: str = "Pagination") -> Element:
+    """Page navigation (SPEC 11.1). Two modes matching how the page is
+    rendered:
+
+    - ``href=`` (server-rendered): ``page`` is the current page number
+      and each entry is a real link built by the callable, with the
+      classic windowed layout and ellipses.
+    - state mode (client): ``page`` is reactive state; number buttons
+      write to it, with aria-current tracking the value. Lists longer
+      than ten pages get previous/next controls and a live counter.
+    """
+    if not isinstance(pages, int) or pages < 1:
+        raise VirelCompileError("Pagination pages must be a positive int.")
+
+    def item(child: Node, current: bool = False) -> Element:
+        classes = "v-page-item" + (" v-page-current" if current else "")
+        return Element("li", [child], attrs={"class": classes})
+
+    entries: list[Node] = []
+    if href is not None:
+        if not isinstance(page, int) or not 1 <= page <= pages:
+            raise VirelCompileError(
+                "With href=, page is the current page number (1-based).")
+        from .security import is_safe_url
+        window = _page_window(page, pages)
+        for token in window:
+            if token == "gap":
+                entries.append(item(Element(
+                    "span", [TextNode("…")],
+                    attrs={"class": "v-page-gap", "aria-hidden": "true"})))
+                continue
+            target = href(token)
+            if not is_safe_url(target):
+                raise VirelCompileError(
+                    f"Pagination link {target!r} uses a blocked URL scheme.")
+            attrs = {"href": target, "class": "v-page-link"}
+            if token == page:
+                attrs["aria-current"] = "page"
+            entries.append(item(Element("a", [TextNode(str(token))],
+                                        attrs=attrs), current=token == page))
+    else:
+        from .expr import (BinOp, Compare, FormatString, Handler as _Handler,
+                           Lit, SetOp, cond)
+        if pages <= 10:
+            for number in range(1, pages + 1):
+                button = Element(
+                    "button", [TextNode(str(number))],
+                    attrs={"type": "button", "class": "v-page-link",
+                           "aria-current": cond(Compare("==", page, Lit(number)),
+                                                "page", False)},
+                    events={"click": _Handler([SetOp(page.name, Lit(number))])},
+                )
+                entries.append(item(button))
+        prev_button = Element(
+            "button", [TextNode("Previous")],
+            attrs={"type": "button", "class": "v-page-link v-page-step",
+                   "disabled": Compare("<=", page, Lit(1))},
+            events={"click": _Handler([SetOp(
+                page.name, cond(Compare(">", page, Lit(1)),
+                                BinOp("-", page, Lit(1)), Lit(1)))])},
+        )
+        next_button = Element(
+            "button", [TextNode("Next")],
+            attrs={"type": "button", "class": "v-page-link v-page-step",
+                   "disabled": Compare(">=", page, Lit(pages))},
+            events={"click": _Handler([SetOp(
+                page.name, cond(Compare("<", page, Lit(pages)),
+                                BinOp("+", page, Lit(1)), Lit(pages)))])},
+        )
+        entries.insert(0, item(prev_button))
+        if pages > 10:
+            counter = Element(
+                "span",
+                [BindText(FormatString(["Page ", page, f" of {pages}"]))],
+                attrs={"class": "v-page-counter"})
+            entries.append(item(counter))
+        entries.append(item(next_button))
+
+    return Element(
+        "nav",
+        [Element("ul", entries, attrs={"class": "v-pagination-list"})],
+        attrs={"class": "v-pagination", "aria-label": label},
+    )
+
+
+def _page_window(page: int, pages: int) -> list:
+    """The classic pagination window: first, last, and a neighborhood
+    around the current page, with gaps where pages are elided."""
+    if pages <= 7:
+        return list(range(1, pages + 1))
+    window: list = [1]
+    start = max(2, page - 1)
+    end = min(pages - 1, page + 1)
+    if start > 2:
+        window.append("gap")
+    window.extend(range(start, end + 1))
+    if end < pages - 1:
+        window.append("gap")
+    window.append(pages)
+    return window
+
+
 def Select(state: Any, *, label: str, options: list[str] | None = None) -> Element:
     from .forms import FieldRef
     if isinstance(state, FieldRef) and options is None:

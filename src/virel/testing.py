@@ -84,6 +84,8 @@ class TestView:
             self.channel_sends: list[tuple[str, dict]] = []
             # Design preferences changed by handlers (ui.set_preference).
             self.preferences: dict[str, str | None] = {}
+            # Toasts raised by handlers (ui.notify).
+            self.notifications: list[dict[str, Any]] = []
             if fetch_resources:
                 # Simulate the browser's initial load: every resource fetches
                 # (running the real server action) unless server rendering
@@ -118,6 +120,7 @@ class TestView:
         working.pop("__files__", None)
         self.channel_sends.extend(working.pop("__channel_sends__", []))
         self.preferences.update(working.pop("__preferences__", {}))
+        self.notifications.extend(working.pop("__notifications__", []))
         for action_name in working.pop("__invalidated__", []):
             for res in self.resources.values():
                 if res.action.name == action_name:

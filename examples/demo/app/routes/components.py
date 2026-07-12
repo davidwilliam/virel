@@ -71,6 +71,7 @@ def _forms_tab() -> ui.Node:
     role = ui.state("editor")
     notes = ui.state("")
     volume = ui.state(40)
+    due = ui.state("2026-07-15")
     plan = ui.state("starter")
     notify = ui.state(True)
     terms = ui.state(False)
@@ -83,6 +84,8 @@ def _forms_tab() -> ui.Node:
             ui.Select(role, label="Role", options=["viewer", "editor", "admin"]),
             ui.Textarea(notes, label="Notes", placeholder="Anything worth recording…"),
             ui.NumberField(seats, label="Seats", min=1, max=50),
+            ui.DateField(due, label="Due date", min="2026-01-01",
+                         description="The platform calendar, no JS shipped."),
             gap=4,
         ),
         ui.Stack(
@@ -132,6 +135,19 @@ def _data_tab() -> ui.Node:
 
 def _feedback_tab() -> ui.Node:
     return ui.Stack(
+        ui.Text("Toast notifications", muted=True, size="sm"),
+        ui.Row(
+            ui.Button("Notify", size="sm",
+                      on_click=lambda: ui.notify("Report generated.")),
+            ui.Button("Success", size="sm",
+                      on_click=lambda: ui.notify("Deployment complete.",
+                                                 intent="success")),
+            ui.Button("Danger", size="sm",
+                      on_click=lambda: ui.notify("The run failed; check "
+                                                 "the logs.",
+                                                 intent="danger")),
+            gap=3, wrap=True,
+        ),
         ui.Alert("Neutral status message.", intent="neutral"),
         ui.Alert("Something worth highlighting.", intent="primary"),
         ui.Alert("The run completed successfully.", intent="success"),
@@ -161,6 +177,7 @@ def _feedback_tab() -> ui.Node:
 
 def _patterns_tab() -> ui.Node:
     dialog_open = ui.state(False)
+    current_page = ui.state(1)
     taps = ui.state(0)
 
     return ui.Stack(
@@ -169,8 +186,28 @@ def _patterns_tab() -> ui.Node:
         ui.Row(
             ui.Button("Open dialog", intent="primary",
                       on_click=lambda: dialog_open.set(True)),
+            ui.Popover(
+                trigger=ui.Button("Popover"),
+                content=ui.Stack(
+                    ui.Heading("Anchored panel", level=4),
+                    ui.Text("Escape or a click outside closes this and "
+                            "returns focus to the trigger.",
+                            muted=True, size="sm"),
+                    gap=2,
+                ),
+            ),
             ui.Tooltip(ui.Badge("hover me"), text="Tooltips are CSS-only"),
             gap=4,
+        ),
+        ui.Card(
+            ui.Heading("Pagination", level=3),
+            ui.Text("State-driven page controls; disabled edges, "
+                    "aria-current on the active page.",
+                    muted=True, size="sm"),
+            ui.Pagination(current_page, 5, label="Demo pages"),
+            ui.Text(f"Showing page {current_page} of 5", muted=True,
+                    size="sm"),
+            gap=3,
         ),
         ui.Dialog(
             ui.Text("Dialogs use the native dialog element, so focus "

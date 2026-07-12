@@ -912,6 +912,116 @@ export function splitter(id) {
   handle.addEventListener("dblclick", () => apply(initial));
 }
 
+/* ------------------------------------------------------------------ *
+ * Notifications (SPEC 11.1): toasts in a polite live region. Screen
+ * readers announce them without focus moving; hover pauses the timer;
+ * exits reuse the CSS animation pipeline.
+ * ------------------------------------------------------------------ */
+
+let toastRegion = null;
+
+export function notify(message, opts = {}) {
+  if (!toastRegion || !toastRegion.isConnected) {
+    toastRegion = document.createElement("div");
+    toastRegion.className = "v-toasts";
+    toastRegion.setAttribute("role", "status");
+    toastRegion.setAttribute("aria-live", "polite");
+    document.body.appendChild(toastRegion);
+  }
+  const toast = document.createElement("div");
+  toast.className = "v-toast v-toast-" + (opts.intent || "neutral");
+  const text = document.createElement("span");
+  text.className = "v-toast-text";
+  text.textContent = String(message);
+  toast.appendChild(text);
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "v-toast-close";
+  close.setAttribute("aria-label", "Dismiss notification");
+  close.innerHTML =
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  toast.appendChild(close);
+
+  let timer = null;
+  const dismiss = () => {
+    if (toast.__closing) return;
+    toast.__closing = true;
+    clearTimeout(timer);
+    toast.classList.add("v-toast-exit");
+    if (getComputedStyle(toast).animationName === "none") {
+      toast.remove();
+      return;
+    }
+    toast.addEventListener("animationend", () => toast.remove(),
+                           { once: true });
+  };
+  close.addEventListener("click", dismiss);
+  const duration = opts.duration == null ? 5000 : opts.duration;
+  if (duration > 0) {
+    timer = setTimeout(dismiss, duration);
+    toast.addEventListener("mouseenter", () => clearTimeout(timer));
+    toast.addEventListener("mouseleave", () => {
+      if (!toast.__closing) timer = setTimeout(dismiss, duration);
+    });
+  }
+  toastRegion.appendChild(toast);
+}
+
+/* ------------------------------------------------------------------ *
+ * Popover (SPEC 11.1): an anchored non-modal panel. Click toggles,
+ * Escape and outside clicks close, focus moves into the panel on open
+ * and back to the trigger on close, and the panel flips upward when
+ * space below runs out.
+ * ------------------------------------------------------------------ */
+
+export function popover(id) {
+  const node = el(id);
+  if (!node) return;
+  const trigger = node.firstElementChild;
+  const panel = node.querySelector(":scope > .v-popover-panel");
+  if (!trigger || !panel) return;
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.setAttribute("aria-expanded", "false");
+
+  const close = (refocus) => {
+    if (!node.classList.contains("v-popover-open")) return;
+    node.classList.remove("v-popover-open", "v-popover-up");
+    trigger.setAttribute("aria-expanded", "false");
+    document.removeEventListener("pointerdown", onOutside, true);
+    if (refocus) trigger.focus();
+  };
+  const onOutside = (ev) => {
+    if (!node.contains(ev.target)) close(false);
+  };
+  const open = () => {
+    node.classList.add("v-popover-open");
+    trigger.setAttribute("aria-expanded", "true");
+    const rect = trigger.getBoundingClientRect();
+    const panelHeight = panel.offsetHeight || 240;
+    if (rect.bottom + panelHeight + 16 > window.innerHeight
+        && rect.top > panelHeight) {
+      node.classList.add("v-popover-up");
+    }
+    document.addEventListener("pointerdown", onOutside, true);
+    const focusable = panel.querySelector(
+      "button, [href], input, select, textarea, [tabindex]");
+    if (focusable) focusable.focus();
+  };
+  trigger.addEventListener("click", () => {
+    if (node.classList.contains("v-popover-open")) close(true);
+    else open();
+  });
+  node.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && node.classList.contains("v-popover-open")) {
+      ev.stopPropagation();
+      close(true);
+    }
+  });
+  onDispose(() => close(false));
+}
+
 export function menu(id) {
   const wrap = el(id);
   if (!wrap || wrap.__virelMenu) return;
