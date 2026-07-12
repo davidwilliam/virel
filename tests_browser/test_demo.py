@@ -690,3 +690,21 @@ def test_fragment_script_mounts_inside_a_host_page(page, server_url):
         + "</body></html>")
     page.get_by_role("button", name="Add").click()
     page.get_by_text("Count: 1").wait_for()
+
+
+def test_inspector_shows_the_enriched_panel(page, server_url):
+    page.goto(f"{server_url}/counter")
+    page.get_by_role("button", name="Increment").click()
+    # Open the inspector (Alt+V).
+    page.keyboard.press("Alt+v")
+    page.get_by_role("button", name="Close inspector").wait_for()
+    panel_text = page.evaluate(
+        "document.querySelector('[aria-label=\"Close inspector\"]')"
+        ".closest('div').parentElement.textContent")
+    for section in ("component tree", "live state", "derived",
+                    "server actions", "accessibility", "dom mapping",
+                    "style tokens"):
+        assert section in panel_text, f"inspector missing {section!r}"
+    assert "--v-accent" in panel_text          # style tokens
+    assert "data-v=" in panel_text             # DOM mapping
+    assert "no accessibility warnings" in panel_text

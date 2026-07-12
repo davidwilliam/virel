@@ -122,6 +122,9 @@ def compile_page(page: Page, params: dict[str, Any] | None = None,
             "resources": [r.to_ir() for r in ctx.resources.values()],
             "tree": root.to_ir(),
         }
+        ir["actions"] = _actions_in_bindings(
+            _emit_page_js(ctx, emitter, dev=True) or "")
+        ir["accessibility"] = {"warnings": a11y_warnings}
 
         js = _emit_page_js(ctx, emitter, dev=dev, versioned=hashed)
         actions_used = _actions_in_bindings(emitter.bindings)

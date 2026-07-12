@@ -63,6 +63,21 @@ const escHtml = (s) => String(s).replace(/[&<>]/g,
 const paint = (color, text) =>
   `<span style="color:${color}">${escHtml(text)}</span>`;
 
+function nodeMeta(node) {
+  // Props, reactive dependencies, and hydration boundary, inline.
+  let bits = [];
+  const props = { ...(node.attrs || {}), ...(node.bound_props || {}) };
+  const names = Object.keys(props).filter((k) => k !== "class");
+  if (names.length) {
+    bits.push(paint(P.dim, names.slice(0, 4).map(
+      (k) => k + "=" + String(props[k]).slice(0, 22)).join(" ")));
+  }
+  if (node.depends_on) {
+    bits.push(paint(P.expr, "\\u2192 " + node.depends_on.join(",")));
+  }
+  return bits.length ? "  " + bits.join("  ") : "";
+}
+
 function describeNode(node, depth) {
   const pad = "  ".repeat(depth);
   let lines = [];
@@ -70,6 +85,7 @@ function describeNode(node, depth) {
     let head = pad + paint(P.dim, "<") + paint(P.tag, node.tag) + paint(P.dim, ">");
     if (node.component) head += "  " + paint(P.comp, node.component);
     if (node.source) head += "  " + paint(P.src, node.source.split("/").pop());
+    head += nodeMeta(node);
     lines.push(head);
     (node.children || []).forEach((c) => lines.push(...describeNode(c, depth + 1)));
   } else if (node.kind === "when") {
@@ -83,10 +99,11 @@ function describeNode(node, depth) {
     lines.push(pad + paint(P.kw, "each ") + paint(P.expr, node.items));
     (node.template || []).forEach((c) => lines.push(...describeNode(c, depth + 1)));
   } else if (node.kind === "island") {
-    lines.push(pad + paint(P.kw, "island ") + paint(P.expr, node.load));
+    lines.push(pad + paint(P.kw, "island ") +
+               paint(P.tag, "[hydrate: " + node.load + "]"));
     (node.children || []).forEach((c) => lines.push(...describeNode(c, depth + 1)));
   } else if (node.kind === "bind_text") {
-    lines.push(pad + paint(P.expr, "{ " + node.expr + " }"));
+    lines.push(pad + paint(P.expr, "{ " + node.expr + " }") + nodeMeta(node));
   } else if (node.kind === "text") {
     const text = node.text.trim();
     if (text) lines.push(pad + paint(P.text, JSON.stringify(text.slice(0, 48))));
@@ -94,6 +111,20 @@ function describeNode(node, depth) {
     (node.children || []).forEach((c) => lines.push(...describeNode(c, depth)));
   }
   return lines;
+}
+
+function domMapping() {
+  // Every reactive binding attaches to a data-v element; show the map.
+  const nodes = document.querySelectorAll("[data-v]");
+  if (!nodes.length) return paint(P.dim, "(no bound DOM nodes)");
+  return Array.from(nodes).slice(0, 40).map((n) =>
+    paint(P.comp, "data-v=" + n.getAttribute("data-v")) +
+    paint(P.dim, " -> <" + n.tagName.toLowerCase() + ">")).join("\\n");
+}
+
+function listBlock(items, empty) {
+  if (!items || !items.length) return paint(P.dim, empty);
+  return items.join("\\n");
 }
 
 function liveStates() {
@@ -126,23 +157,47 @@ async function toggleInspector() {
   const section = (title) =>
     "<div style='color:" + P.dim + ";text-transform:uppercase;font-size:10.5px;" +
     "letter-spacing:.08em;margin:18px 0 6px'>" + title + "</div>";
+  const pre = (content) =>
+    "<pre style='white-space:pre-wrap;margin:0'>" + content + "</pre>";
+  const resources = (ir.resources || []).map((r) =>
+    paint(P.comp, r.name || r.id) + paint(P.dim,
+      " server_render=" + !!r.server_render));
+  const actions = (ir.actions || []).map((a) =>
+    paint(P.comp, a.name) + paint(P.dim,
+      (a.streaming ? " streaming" : "") + (a.download ? " download" : "")));
+  const derived = (ir.derived || []).map((d) =>
+    paint(P.comp, d.name) + paint(P.dim, " = ") + paint(P.expr, d.js));
+  const a11y = ir.accessibility && ir.accessibility.warnings || [];
+  const a11yText = a11y.length
+    ? a11y.map((w) => paint(P.expr, w)).join("\\n")
+    : paint(P.text, "no accessibility warnings");
+  const tokens = Object.entries(ir.tokens || {}).slice(0, 24).map(
+    ([k, v]) => paint(P.comp, k) + paint(P.dim, ": ") + paint(P.text, v));
+
   panel.innerHTML =
     "<div style='display:flex;align-items:center;gap:10px;padding:12px 16px;" +
     "border-bottom:1px solid #2a2b3d;background:#1a1b26'>" +
     "<span style='color:#7aa2f7;font-weight:700'>virel</span>" +
     "<span style='color:" + P.fg + "'>" + escHtml(ir.route) + "</span>" +
-    "<span style='color:" + P.dim + "'>render=" + escHtml(ir.render) +
+    "<span style='color:" + P.dim + "'>render=" +
+    escHtml(ir.render_mode || ir.render) +
     " &middot; ir v" + escHtml(ir.version) + "</span>" +
     "<span style='flex:1'></span>" +
     "<button id='virel-close' aria-label='Close inspector' style='border:0;" +
     "background:#2a2b3d;color:" + P.fg + ";border-radius:6px;padding:4px 10px;" +
     "cursor:pointer;font:inherit'>Esc</button></div>" +
     "<div style='overflow:auto;padding:4px 16px 24px'>" +
-    section("live state") +
-    "<pre style='white-space:pre-wrap;margin:0'>" + liveStates() + "</pre>" +
-    section("component tree") +
+    section("component tree (props, source, \\u2192 dependencies)") +
     "<pre style='white-space:pre;margin:0'>" +
-    describeNode(ir.tree, 0).join("\\n") + "</pre></div>";
+    describeNode(ir.tree, 0).join("\\n") + "</pre>" +
+    section("live state") + pre(liveStates()) +
+    section("derived") + pre(listBlock(derived, "(none)")) +
+    section("resources") + pre(listBlock(resources, "(none)")) +
+    section("server actions") + pre(listBlock(actions, "(none)")) +
+    section("accessibility") + pre(a11yText) +
+    section("dom mapping") + pre(domMapping()) +
+    section("style tokens") + pre(listBlock(tokens, "(default theme)")) +
+    "</div>";
   document.body.appendChild(panel);
   panel.querySelector("#virel-close").addEventListener("click", closeInspector);
 }
@@ -276,6 +331,21 @@ class VirelASGIApp:
                                   inline_js=page.is_dynamic)
             from .plugins import inspector_panels
             payload = dict(result.ir)
+            payload["render_mode"] = result.render_mode
+            payload["actions"] = [
+                {"name": name,
+                 "streaming": self.registry.actions[name].stream_response,
+                 "download": self.registry.actions[name].download}
+                for name in result.server_actions
+                if name in self.registry.actions]
+            # Style tokens for the inspector's design panel (SPEC 15.3).
+            theme = self.registry.theme or Theme()
+            import re as _re
+            tokens = {}
+            for match in _re.finditer(r"(--v-[\w-]+):\s*([^;]+);",
+                                      theme.css_tokens()):
+                tokens.setdefault(match.group(1), match.group(2).strip())
+            payload["tokens"] = tokens
             panels = inspector_panels()
             if panels:
                 payload["plugins"] = panels

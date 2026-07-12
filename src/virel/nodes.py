@@ -25,6 +25,19 @@ class Node:
         raise NotImplementedError
 
 
+_STATE_READ_RE = None
+
+
+def _state_reads(js: str) -> set[str]:
+    """State names an expression's JS reads, for the inspector's
+    reactive-dependency view. State reads serialize as S.<name>.get()."""
+    global _STATE_READ_RE
+    if _STATE_READ_RE is None:
+        import re
+        _STATE_READ_RE = re.compile(r"S\.(\w+)\.get\(\)")
+    return set(_STATE_READ_RE.findall(js))
+
+
 def normalize_children(children: tuple[Any, ...]) -> list[Node]:
     """Coerce component-call children into IR nodes.
 
@@ -70,7 +83,11 @@ class BindText(Node):
         self.expr = expr
 
     def to_ir(self) -> dict[str, Any]:
-        return {"kind": "bind_text", "expr": self.expr.js()}
+        ir = {"kind": "bind_text", "expr": self.expr.js()}
+        deps = _state_reads(self.expr.js())
+        if deps:
+            ir["depends_on"] = sorted(deps)
+        return ir
 
 
 class RawHTML(Node):
@@ -116,14 +133,22 @@ class Element(Node):
             ir["component"] = self.component
         if self.source:
             ir["source"] = self.source
+        deps: set[str] = set()
         if self.attrs:
             ir["attrs"] = {
                 k: (v.js() if isinstance(v, Expr) else v) for k, v in self.attrs.items()
             }
+            for value in self.attrs.values():
+                if isinstance(value, Expr):
+                    deps |= _state_reads(value.js())
         if self.bound_props:
             ir["bound_props"] = {k: v.js() for k, v in self.bound_props.items()}
+            for value in self.bound_props.values():
+                deps |= _state_reads(value.js())
         if self.events:
             ir["events"] = {k: h.to_ir() for k, h in self.events.items()}
+        if deps:
+            ir["depends_on"] = sorted(deps)
         if self.children:
             ir["children"] = [c.to_ir() for c in self.children]
         return ir
