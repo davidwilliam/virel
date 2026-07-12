@@ -60,10 +60,12 @@ def _alpha(color: str, alpha: float) -> str:
 
 def _readable_fg(base: str) -> str:
     """White text on anything but genuinely light colors. A pure WCAG
-    ratio comparison prefers dark text on mid-tone colors like emerald,
-    which reads worse in practice; a luminance threshold matches how
-    every major design system resolves this."""
-    return "#ffffff" if _luminance(base) < 0.4 else "#16181d"
+    ratio comparison prefers dark text on mid-tone colors like emerald
+    and amber, which reads worse in practice; a luminance threshold
+    matches how every major design system resolves this. The cutoff sits
+    just above amber (0.44) so saturated mid-tones get white text while
+    yellows and pale tints (0.5 and up) keep dark text."""
+    return "#ffffff" if _luminance(base) < 0.46 else "#16181d"
 
 
 @dataclass(frozen=True)

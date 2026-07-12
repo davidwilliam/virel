@@ -130,8 +130,10 @@ def test_color_scale_derives_every_token_from_one_hex():
 
 
 def test_color_scale_picks_readable_foreground_by_contrast():
-    assert ui.Color.scale("#f59e0b").fg == "#16181d"  # amber: dark text
     assert ui.Color.scale("#4f46e5").fg == "#ffffff"  # indigo: white text
+    assert ui.Color.scale("#f59e0b").fg == "#ffffff"  # amber: white text
+    assert ui.Color.scale("#eab308").fg == "#16181d"  # yellow: dark text
+    assert ui.Color.scale("#e2e8f0").fg == "#16181d"  # pale tint: dark
 
 
 def test_typed_color_roles_flow_into_both_modes():
@@ -244,11 +246,11 @@ def test_bootstrap_restores_all_preferences_before_paint():
 
 
 def test_mid_tone_accents_get_white_text():
-    # A pure WCAG ratio comparison would pick dark text on emerald; the
-    # readability threshold matches shipped design systems instead.
+    # A pure WCAG ratio comparison would pick dark text on emerald and
+    # amber; the readability threshold matches shipped design systems.
     assert ui.Color.scale("#059669").fg == "#ffffff"   # emerald
     assert ui.Color.scale("#e11d48").fg == "#ffffff"   # rose
-    assert ui.Color.scale("#f59e0b").fg == "#16181d"   # amber stays dark
+    assert ui.Color.scale("#f59e0b").fg == "#ffffff"   # amber
 
 
 def test_color_scale_can_flip_between_modes():
