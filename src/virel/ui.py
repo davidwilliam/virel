@@ -121,6 +121,7 @@ from .theme import (Color, ColorScale, Font, FontFace, GoogleFont, Space,
                     Theme, set_preference)
 from . import ai
 from . import unsafe
+from .browsertest import BrowserPage, browser_page
 from . import testing as test
 
 
@@ -163,6 +164,7 @@ __all__ = [
     "spring", "Easing", "Swipeable",
     "FontFace", "GoogleFont", "set_preference",
     "Node", "VirelCompileError", "test", "ai", "preview", "Preview",
+    "BrowserPage", "browser_page",
     "render_fragment", "Fragment", "as_custom_element",
     "messages", "t",
     "format_number", "format_currency", "format_percent", "format_date",

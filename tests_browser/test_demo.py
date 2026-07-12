@@ -768,3 +768,26 @@ def test_hot_reload_falls_back_when_shape_changes(page, server_url):
     page.reload()
     page.wait_for_timeout(400)
     assert not page.get_by_text("state preserved").is_visible()
+
+
+def test_browserpage_wrapper_matches_the_spec_api(page, server_url):
+    from virel import ui
+    # The SPEC 16.2 example, verbatim in shape, over the invite page.
+    bp = ui.browser_page(page, base_url=server_url)
+    bp.goto("/invite")
+    bp.field("Email").fill("person@example.com")
+    bp.select("Role").choose("editor")
+    bp.button("Send invitation").click()
+    bp.expect_text("Invitation sent")
+    # The raw Playwright page stays reachable.
+    assert bp.raw is page
+
+
+def test_browserpage_role_and_link_helpers(page, server_url):
+    from virel import ui
+    bp = ui.browser_page(page, base_url=server_url)
+    bp.goto("/counter")
+    bp.button("Increment").click()
+    bp.button("Increment").click()
+    bp.expect_text("Count: 2")
+    bp.expect_no_text("Count: 5")

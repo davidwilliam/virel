@@ -717,6 +717,25 @@ def test_invitation_flow():
 Hidden elements cannot be interacted with, disabled buttons refuse clicks,
 and streaming actions are drained synchronously, so tests stay deterministic.
 
+## Testing modes
+
+Component tests run without a browser through `ui.test.render`, which
+returns a view queryable by role, label, and text; queries scope to any
+element, so `dialog.get_by_label("Email")` searches only the dialog.
+`mock_action` and `mock_stream` give deterministic control of
+server-action responses, errors, retry sequences, streaming chunks, and
+latency (advancing a `TestClock` without real waiting), and `batch()`
+coalesces state changes so effects fire once. Helpers cover the required
+modes: `ui.test.assert_accessible`, `ui.test.assert_bundle_under` (a
+JavaScript byte budget), `ui.test.assert_serializable` (the IR
+round-trips with a stable version), and `ui.test.snapshot` (server-
+rendered HTML regression).
+
+Browser tests use `ui.browser_page`, a role-first wrapper over
+Playwright: `page.button("Save").click()`, `page.field("Email").fill(...)`,
+`page.select("Role").choose("editor")`, `page.expect_text(...)`, with the
+raw Playwright page reachable through `page.raw`.
+
 ## Development
 
 The whole check suite lives in one script, and CI runs exactly that script,

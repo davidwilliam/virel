@@ -691,3 +691,96 @@ def render(fn: Callable[..., Any], *, fetch_resources: bool = True,
     from .plugins import run_test_hooks
     run_test_hooks(view)
     return view
+
+
+# ---------------------------------------------------------------------------
+# Required test modes without a browser (SPEC 16.3)
+# ---------------------------------------------------------------------------
+
+def _compile(fn: Callable[..., Any], **params: Any):
+    from .compiler import compile_page
+    from .nodes import PageNode
+    from .registry import Page as PageRecord
+
+    def wrapped():
+        from .elements import Page
+        result = fn(**params)
+        return result if isinstance(result, PageNode) else Page(result)
+
+    return compile_page(PageRecord(path="/__test__", fn=wrapped,
+                                   render="auto"))
+
+
+def assert_accessible(fn: Callable[..., Any], **params: Any) -> None:
+    """Fail if compiling the page raises an accessibility error or
+    produces any accessibility warning (SPEC 16.3 accessibility). The
+    same audit `virel check` runs, at strict level."""
+    from .registry import active_registry
+    previous = active_registry().strict_accessibility
+    active_registry().strict_accessibility = False
+    try:
+        compiled = _compile(fn, **params)
+    finally:
+        active_registry().strict_accessibility = previous
+    if compiled.warnings:
+        raise AssertionError(
+            "accessibility warnings:\n  " + "\n  ".join(compiled.warnings))
+
+
+def assert_bundle_under(fn: Callable[..., Any], *, page_bytes: int,
+                        **params: Any) -> int:
+    """Fail if the page's JavaScript module exceeds a byte budget
+    (SPEC 16.3 performance budgets). Returns the actual size."""
+    compiled = _compile(fn, **params)
+    size = len(compiled.js or "")
+    if size > page_bytes:
+        raise AssertionError(
+            f"page module is {size} bytes, over the {page_bytes}-byte "
+            "budget.")
+    return size
+
+
+def assert_serializable(fn: Callable[..., Any], **params: Any) -> dict:
+    """Fail if the compiled IR does not round-trip through JSON with a
+    stable version (SPEC 16.3 serialization compatibility). Returns the
+    IR."""
+    import json
+    from .nodes import IR_VERSION
+    compiled = _compile(fn, **params)
+    ir = compiled.ir
+    reloaded = json.loads(json.dumps(ir))
+    if reloaded != ir:
+        raise AssertionError("IR does not round-trip through JSON.")
+    if ir.get("version") != IR_VERSION:
+        raise AssertionError(
+            f"IR version {ir.get('version')} != current {IR_VERSION}.")
+    return ir
+
+
+def snapshot(fn: Callable[..., Any], name: str, *,
+             update: bool = False, **params: Any) -> None:
+    """Server-rendered HTML snapshot for visual/structural regression
+    (SPEC 16.3 visual regression), stored under tests/__snapshots__.
+    The first run records; later runs compare and fail on a difference.
+    Run with update=True (or VIREL_UPDATE_SNAPSHOTS=1) to rewrite."""
+    import os
+    import re
+    from pathlib import Path
+    compiled = _compile(fn, **params)
+    body = compiled.body_html
+    # Drop compiler-generated ids so the snapshot tracks structure, not
+    # incidental numbering.
+    body = re.sub(r'data-v="\d+"', 'data-v', body)
+    slug = re.sub(r"[^a-zA-Z0-9_.-]", "_", name)
+    directory = Path("tests") / "__snapshots__"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{slug}.html"
+    should_update = update or os.environ.get("VIREL_UPDATE_SNAPSHOTS")
+    if not path.exists() or should_update:
+        path.write_text(body, "utf-8")
+        return
+    stored = path.read_text("utf-8")
+    if stored != body:
+        raise AssertionError(
+            f"snapshot {name!r} changed. Review the diff, then rerun with "
+            "update=True or VIREL_UPDATE_SNAPSHOTS=1 to accept it.")
