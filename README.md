@@ -416,6 +416,14 @@ ui.Code(snippet, block=True, language="python")
 
 Run `virel schema <Name>` for the machine-readable schema of any component.
 
+Third-party web components integrate through typed bindings generated from
+their custom elements manifests (`virel bind`), and static assets that live
+outside the project's public directory, such as a vendored package or files
+shipped inside an installed Python package, are mounted with
+`ui.use_static("/vendor/widgets", path)`. The dev server, the ASGI app, and
+`virel build` all serve the mounted directory at that prefix. The demo binds
+to the stand-in vendor package in `examples/third-party-widgets` this way.
+
 ## Testing
 
 Component tests run from pytest without a browser. Queries follow

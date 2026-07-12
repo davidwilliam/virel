@@ -212,3 +212,56 @@ def test_watch_token_tracks_public_assets(tmp_path):
     os.utime(asset, (stamp, stamp))
     after = asgi_request(app, "GET", "/_virel/reload-token").json["token"]
     assert after != before
+
+
+def test_static_mount_serves_files_outside_public(tmp_path):
+    vendor = tmp_path / "vendor-pkg"
+    vendor.mkdir()
+    (vendor / "widget.js").write_text("export const x = 1;")
+    (tmp_path / "secret.txt").write_text("top secret")
+    ui.use_static("/vendor/widgets", vendor)
+
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("x"))
+
+    app = _app()
+    response = asgi_request(app, "GET", "/vendor/widgets/widget.js")
+    assert response.status == 200
+    assert "x = 1" in response.text
+    assert response.headers["cache-control"] == "no-store"
+    escape = asgi_request(app, "GET", "/vendor/widgets/../secret.txt")
+    assert escape.status == 404
+
+
+def test_static_mount_rejects_reserved_and_missing_paths(tmp_path):
+    import pytest
+    from virel.expr import VirelCompileError
+
+    with pytest.raises(VirelCompileError, match="outside /public"):
+        ui.use_static("/public/vendor", tmp_path)
+    with pytest.raises(VirelCompileError, match="outside /public"):
+        ui.use_static("/_virel/vendor", tmp_path)
+    with pytest.raises(VirelCompileError, match="does not exist"):
+        ui.use_static("/vendor", tmp_path / "nowhere")
+
+
+def test_watch_token_tracks_static_mounts(tmp_path):
+    import os
+
+    vendor = tmp_path / "vendor-pkg"
+    vendor.mkdir()
+    asset = vendor / "widget.js"
+    asset.write_text("export const x = 1;")
+    ui.use_static("/vendor/widgets", vendor)
+
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("x"))
+
+    app = _app()
+    before = asgi_request(app, "GET", "/_virel/reload-token").json["token"]
+    stamp = asset.stat().st_mtime + 10
+    os.utime(asset, (stamp, stamp))
+    after = asgi_request(app, "GET", "/_virel/reload-token").json["token"]
+    assert after != before

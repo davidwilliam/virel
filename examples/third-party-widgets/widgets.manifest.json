@@ -3,7 +3,7 @@
   "modules": [
     {
       "kind": "javascript-module",
-      "path": "public/widgets.js",
+      "path": "widgets.js",
       "declarations": [
         {
           "kind": "class",

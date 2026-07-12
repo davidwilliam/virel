@@ -7,7 +7,7 @@ from virel import ui
 # Inline SVG sparkline driven by a comma-separated values attribute.
 SparkLine = ui.web_component(
     tag="spark-line",
-    module="/public/widgets.js",
+    module="/vendor/widgets/widgets.js",
     props={
         "values": str,
         "stroke": str,
@@ -17,7 +17,7 @@ SparkLine = ui.web_component(
 # Self-updating relative timestamp.
 RelativeTime = ui.web_component(
     tag="relative-time",
-    module="/public/widgets.js",
+    module="/vendor/widgets/widgets.js",
     props={
         "datetime": str,
     },

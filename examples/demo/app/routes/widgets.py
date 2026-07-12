@@ -1,11 +1,13 @@
 """Third-party web components integrated through typed bindings
-(SPEC 13.1). All three elements are plain vanilla custom elements (see
-public/); their bindings are generated from custom elements manifests:
+(SPEC 13.1). All three elements are plain vanilla custom elements from
+the stand-in vendor package in ../third-party-widgets, mounted at
+/vendor/widgets in app.py; their bindings are generated from the
+package's custom elements manifests:
 
-    virel bind star-rating.manifest.json \
-        --module /public/star-rating.js --out app/bindings.py
-    virel bind widgets.manifest.json \
-        --module /public/widgets.js --out app/widgets_bindings.py
+    virel bind ../third-party-widgets/star-rating.manifest.json \
+        --module /vendor/widgets/star-rating.js --out app/bindings.py
+    virel bind ../third-party-widgets/widgets.manifest.json \
+        --module /vendor/widgets/widgets.js --out app/widgets_bindings.py
 """
 
 import datetime

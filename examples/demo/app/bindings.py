@@ -8,7 +8,7 @@ from virel import ui
 # Events: on_rating_changed
 StarRating = ui.web_component(
     tag="star-rating",
-    module="/public/star-rating.js",
+    module="/vendor/widgets/star-rating.js",
     props={
         "value": float,
         "max": float,

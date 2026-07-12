@@ -4,7 +4,7 @@
   "modules": [
     {
       "kind": "javascript-module",
-      "path": "public/star-rating.js",
+      "path": "star-rating.js",
       "declarations": [
         {
           "kind": "class",

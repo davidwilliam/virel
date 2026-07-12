@@ -172,6 +172,9 @@ def cmd_build(args: argparse.Namespace) -> None:
     public = config.get("app", {}).get("public")
     if public and (root / public).is_dir():
         shutil.copytree(root / public, dist / "public")
+    for prefix, directory in registry.static_mounts.items():
+        shutil.copytree(directory, dist / prefix.lstrip("/"),
+                        dirs_exist_ok=True)
 
     runtime_size = len(runtime_js().encode())
     print(f"Built {len(report.pages)} route(s) → {dist}")

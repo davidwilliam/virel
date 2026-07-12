@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import inspect
 import re
+from pathlib import Path
 from typing import Any, Callable
 
 from .expr import (
@@ -383,6 +384,8 @@ class AppRegistry:
         self.middleware: list[Callable[[Any], Any]] = []
         # WebSocket channels (@ui.channel).
         self.channels: dict[str, Any] = {}
+        # Extra static directories by URL prefix (ui.use_static).
+        self.static_mounts: dict[str, Path] = {}
 
     def match_page(self, path: str) -> tuple[Page, dict[str, str]] | None:
         page = self.pages.get(path)
@@ -481,6 +484,32 @@ def use_guard(fn: Callable[..., Any]) -> None:
     """Install a guard that runs before every page and server action,
     ahead of any route-specific guard."""
     active_registry().default_guard = fn
+
+
+def use_static(route: str, directory: str | Path) -> None:
+    """Serve a directory of static files under a URL prefix, in addition
+    to the application's own public directory. This is how assets that
+    live outside the project root reach the browser: vendored third-party
+    packages, files shipped inside an installed Python package, shared
+    design assets, and so on.
+
+        ui.use_static("/vendor/widgets", Path(__file__).parent / "widgets")
+
+    The dev server and the ASGI app serve the directory with the same
+    caching and path-traversal rules as /public/, and `virel build`
+    copies it into dist/ at the same prefix.
+    """
+    prefix = route.rstrip("/")
+    reserved = not prefix or prefix.startswith(("/public", "/_virel"))
+    if not route.startswith("/") or reserved:
+        raise VirelCompileError(
+            f"Static route must be an absolute prefix outside /public and "
+            f"/_virel, got {route!r}.")
+    resolved = Path(directory).resolve()
+    if not resolved.is_dir():
+        raise VirelCompileError(
+            f"Static directory for {prefix!r} does not exist: {resolved}")
+    active_registry().static_mounts[prefix] = resolved
 
 
 def client(fn: Callable[..., Any]) -> ClientFunction:

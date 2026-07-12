@@ -299,8 +299,16 @@ class VirelASGIApp:
                                      scope, receive, send)
             return
         if self.public_dir and path.startswith("/public/"):
-            await self._serve_public(path.removeprefix("/public/"), scope, send)
+            await self._serve_static(self.public_dir,
+                                     path.removeprefix("/public/"),
+                                     scope, send)
             return
+        for prefix, directory in self.registry.static_mounts.items():
+            if path.startswith(prefix + "/"):
+                await self._serve_static(directory,
+                                         path.removeprefix(prefix + "/"),
+                                         scope, send)
+                return
         if method not in ("GET", "HEAD"):
             await self._send_text(send, 405, "method not allowed")
             return
@@ -881,15 +889,15 @@ class VirelASGIApp:
 
     # -- static assets ------------------------------------------------------------
 
-    async def _serve_public(self, relative: str, scope: Scope,
+    async def _serve_static(self, base_dir: Path, relative: str, scope: Scope,
                             send: Send) -> None:
-        base = self.public_dir.resolve()
+        base = base_dir.resolve()
         target = (base / relative).resolve()
         if not str(target).startswith(str(base)) or not target.is_file():
             await self._send_text(send, 404, "not found")
             return
         content_type = _guess_type(target.name)
-        # Public files are not content-versioned, so browsers must never hold
+        # Static files are not content-versioned, so browsers must never hold
         # a stale copy: dev disables caching outright, production forces a
         # revalidation round-trip answered by the ETag.
         stat = target.stat()
@@ -919,8 +927,13 @@ class VirelASGIApp:
                     continue
         # Static assets are part of the page too; a new or edited public file
         # must trigger the same dev reload as a code change.
-        if self.public_dir and self.public_dir.is_dir():
-            for path in self.public_dir.rglob("*"):
+        asset_dirs = list(self.registry.static_mounts.values())
+        if self.public_dir:
+            asset_dirs.append(self.public_dir)
+        for directory in asset_dirs:
+            if not directory.is_dir():
+                continue
+            for path in directory.rglob("*"):
                 try:
                     latest = max(latest, path.stat().st_mtime)
                 except OSError:
