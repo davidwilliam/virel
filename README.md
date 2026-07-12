@@ -92,8 +92,14 @@ chunked HTTP from an async generator.
 virel new <name>       scaffold an application
 virel dev              development server with reload
 virel build            build for a target: --target static | asgi
+virel preview          serve the built dist/ locally
 virel check            compile every route and report diagnostics
+virel test             run the project's test suite
 virel routes           list routes and rendering modes
+virel graph            render the route and dependency graph
+virel doctor           check the environment and project health
+virel migrate          generate migration patches for API changes
+virel deploy           generate deployment artifacts (asgi | static)
 virel inspect <route>  print the intermediate representation as JSON
 virel schema <name>    print a component schema as JSON (--list for all)
 virel context          generate a compact context pack for an agent

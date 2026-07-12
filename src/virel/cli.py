@@ -249,6 +249,114 @@ def cmd_routes(args: argparse.Namespace) -> None:
         print(f"{page.path:35s} render={page.render}{dynamic}  -> {page.fn.__module__}.{page.name}")
 
 
+def cmd_preview(args: argparse.Namespace) -> None:
+    """Serve the built dist/ directory locally (SPEC 15.1), so a
+    production build can be verified before deployment."""
+    root = Path.cwd()
+    dist = root / "dist"
+    if not dist.exists():
+        _fail("no dist/ directory; run `virel build` first.")
+    import functools
+    import http.server
+    import socketserver
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler,
+                                directory=str(dist))
+    with socketserver.TCPServer((args.host, args.port), handler) as httpd:
+        print(f"virel preview: http://{args.host}:{args.port} "
+              f"(serving {dist})")
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass
+
+
+def cmd_test(args: argparse.Namespace) -> None:
+    """Run the project's test suite (SPEC 15.1), a thin wrapper over
+    pytest so agents and humans have one command."""
+    import subprocess
+    command = [sys.executable, "-m", "pytest"]
+    if args.filter:
+        command += ["-k", args.filter]
+    if args.paths:
+        command += args.paths
+    raise SystemExit(subprocess.run(command).returncode)
+
+
+def cmd_doctor(args: argparse.Namespace) -> None:
+    """Check the environment and project health (SPEC 15.1)."""
+    from .doctor import run_doctor
+    report = run_doctor(Path.cwd())
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        ok = True
+        for check in report["checks"]:
+            mark = {"ok": "ok  ", "warn": "warn", "fail": "FAIL"}[
+                check["status"]]
+            print(f"{mark}  {check['name']}: {check['detail']}")
+            if check["status"] == "fail":
+                ok = False
+        print(report["summary"])
+        if not ok:
+            raise SystemExit(1)
+
+
+def cmd_graph(args: argparse.Namespace) -> None:
+    """Render the route and server-action dependency graph (SPEC 15.1)."""
+    _load_app(Path.cwd())
+    from .graph import build_graph, graph_dot, graph_text
+    graph = build_graph()
+    if args.format == "json":
+        print(json.dumps(graph, indent=2))
+    elif args.format == "dot":
+        print(graph_dot(graph))
+    else:
+        print(graph_text(graph))
+
+
+def cmd_migrate(args: argparse.Namespace) -> None:
+    """Generate migration patches for deprecated or renamed APIs
+    (SPEC 15.1, 14.4)."""
+    from .migrate import available_migrations, run_migration
+    if args.list or not args.name:
+        print("Available migrations:")
+        for name, description in available_migrations().items():
+            print(f"  {name}: {description}")
+        return
+    root = Path.cwd()
+    try:
+        patches = run_migration(args.name, root, apply=args.apply)
+    except VirelCompileError as error:
+        _fail(str(error))
+    if not patches:
+        print("No changes needed.")
+        return
+    for patch in patches:
+        print(f"{'applied' if args.apply else 'would change'}: "
+              f"{patch['path']} ({patch['changes']} change(s))")
+        if args.diff and not args.apply:
+            print(patch["diff"])
+    if not args.apply:
+        print(f"\nRun with --apply to write {len(patches)} file(s).")
+
+
+def cmd_deploy(args: argparse.Namespace) -> None:
+    """Generate deployment artifacts for a target (SPEC 15.1)."""
+    root = Path.cwd()
+    config = _load_app(root)
+    from .deploy import generate_artifacts
+    try:
+        written = generate_artifacts(root, config, target=args.target)
+    except VirelCompileError as error:
+        _fail(str(error))
+    print(f"Wrote {len(written)} deployment artifact(s) for "
+          f"{args.target}:")
+    for path in written:
+        print(f"  {path}")
+    print("\nReview the generated files, then follow their header notes "
+          "to deploy.")
+
+
 def cmd_inspect(args: argparse.Namespace) -> None:
     _load_app(Path.cwd())
     registry = active_registry()
@@ -437,6 +545,45 @@ def main(argv: list[str] | None = None) -> None:
 
     p_routes = sub.add_parser("routes", help="list routes")
     p_routes.set_defaults(fn=cmd_routes)
+
+    p_preview = sub.add_parser(
+        "preview", help="serve the built dist/ directory locally")
+    p_preview.add_argument("--host", default="127.0.0.1")
+    p_preview.add_argument("--port", type=int, default=8000)
+    p_preview.set_defaults(fn=cmd_preview)
+
+    p_test = sub.add_parser("test", help="run the project's test suite")
+    p_test.add_argument("paths", nargs="*", help="test paths (default: all)")
+    p_test.add_argument("-k", dest="filter", help="pytest -k filter")
+    p_test.set_defaults(fn=cmd_test)
+
+    p_doctor = sub.add_parser(
+        "doctor", help="check the environment and project health")
+    p_doctor.add_argument("--json", action="store_true")
+    p_doctor.set_defaults(fn=cmd_doctor)
+
+    p_graph = sub.add_parser(
+        "graph", help="render the route and dependency graph")
+    p_graph.add_argument("--format", choices=["text", "json", "dot"],
+                         default="text")
+    p_graph.set_defaults(fn=cmd_graph)
+
+    p_migrate = sub.add_parser(
+        "migrate", help="generate migration patches for API changes")
+    p_migrate.add_argument("name", nargs="?", help="migration name")
+    p_migrate.add_argument("--list", action="store_true",
+                           help="list available migrations")
+    p_migrate.add_argument("--apply", action="store_true",
+                           help="write the changes (default: dry run)")
+    p_migrate.add_argument("--diff", action="store_true",
+                           help="show a unified diff in a dry run")
+    p_migrate.set_defaults(fn=cmd_migrate)
+
+    p_deploy = sub.add_parser(
+        "deploy", help="generate deployment artifacts for a target")
+    p_deploy.add_argument("--target", choices=["asgi", "static"],
+                          default="asgi")
+    p_deploy.set_defaults(fn=cmd_deploy)
 
     p_inspect = sub.add_parser("inspect", help="print the UI IR for a route")
     p_inspect.add_argument("route")
