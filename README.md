@@ -78,6 +78,7 @@ virel dev
 | `/files` | Multipart upload with progress, file download |
 | `/stream` | Text streams, structured events, SSE, a WebSocket channel |
 | `/widgets` | Web component bound via a generated typed binding |
+| `/ai` | The AI component package over a simulated streaming model |
 | `/settings` | Nested layout, sidebar shell, request context from a guard |
 | `/projects/{id}` | Dynamic route with typed query parameters |
 
@@ -602,6 +603,24 @@ shipped inside an installed Python package, are mounted with
 `ui.use_static("/vendor/widgets", path)`. The dev server, the ASGI app, and
 `virel build` all serve the mounted directory at that prefix. The demo binds
 to the stand-in vendor package in `examples/third-party-widgets` this way.
+
+## AI components
+
+`ui.ai` is the AI product package (SPEC 12.4): sixteen UI primitives,
+not an agent framework. `Response` renders streaming text with a cursor
+tied to a state, `PromptEditor` submits on Ctrl/Cmd+Enter with a
+multimodal accessory slot, `Timeline` lays out role-aware message
+bubbles, `ToolCall` shows structured calls and results, `Citations`
+lists scheme-checked sources, `TokenMeter` computes live cost from
+streaming counts, `ModelSelect` and `Parameters` cover run controls,
+`Recorder` captures microphone audio into an ordinary upload field,
+`ImageViewer` opens a lightbox, `EvalTable` preconfigures the data grid
+for runs, `Trace` draws a waterfall of spans with no JavaScript,
+`Feedback` writes thumbs into state, `Approval` gates actions behind an
+explicit human click, and `JobProgress` tracks long-running work fed by
+a streaming action. Everything wires to the same states and server
+actions as the rest of the framework, so swapping the model behind an
+action changes nothing in the UI.
 
 ## Testing
 

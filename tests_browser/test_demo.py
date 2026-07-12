@@ -543,3 +543,56 @@ def test_library_figure_or_its_fallback_renders(page, server_url):
         "[...document.querySelectorAll('.v-alert')].some(a => "
         "a.textContent.includes('Install matplotlib'))")
     assert has_figure or has_hint
+
+
+def test_ai_prompt_streams_into_the_response(page, server_url):
+    page.goto(f"{server_url}/ai")
+    page.get_by_label("Prompt").fill("What is the refund policy?")
+    page.keyboard.press("ControlOrMeta+Enter")
+    # The cursor pulses while streaming, then the done signal hides it.
+    page.locator(".v-ai-cursor").wait_for(state="visible")
+    page.get_by_text("prorated to the day").wait_for(timeout=15000)
+    for _ in range(80):
+        if not page.locator(".v-ai-cursor").is_visible():
+            break
+        page.wait_for_timeout(50)
+    assert not page.locator(".v-ai-cursor").is_visible()
+
+
+def test_ai_feedback_and_approval(page, server_url):
+    page.goto(f"{server_url}/ai")
+    page.get_by_role("button", name="Thumbs up").click()
+    assert page.evaluate(
+        "document.querySelector('[aria-label=\"Thumbs up\"]')"
+        ".getAttribute('aria-pressed')") == "true"
+    page.get_by_role("button", name="Approve").click()
+    page.get_by_text("Decision: approved").wait_for()
+
+
+def test_ai_recorder_captures_fake_audio(page, server_url):
+    page.goto(f"{server_url}/ai")
+    record = page.get_by_role("button", name="Record")
+    record.scroll_into_view_if_needed()
+    record.click()
+    page.get_by_text("Recording…").wait_for()
+    page.wait_for_timeout(400)
+    page.get_by_role("button", name="Stop").click()
+    page.get_by_text("Recorded").wait_for()
+    files = page.evaluate(
+        "document.querySelector('.v-ai-recorder input[type=file]')"
+        ".files.length")
+    assert files == 1
+
+
+def test_ai_job_progress_updates(page, server_url):
+    page.goto(f"{server_url}/ai")
+    badge = page.locator(".v-ai-job .v-badge:visible").first
+    assert "running" in badge.text_content()
+    page.get_by_role("button", name="Finish").click()
+    for _ in range(40):
+        visible = page.locator(".v-ai-job .v-badge:visible").first
+        if "done" in visible.text_content():
+            break
+        page.wait_for_timeout(25)
+    assert "done" in page.locator(
+        ".v-ai-job .v-badge:visible").first.text_content()

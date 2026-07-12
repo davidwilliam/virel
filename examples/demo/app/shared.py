@@ -19,6 +19,7 @@ def app_nav() -> ui.Node:
         ui.Link("Files", to="/files"),
         ui.Link("Stream", to="/stream"),
         ui.Link("Widgets", to="/widgets"),
+        ui.Link("AI", to="/ai"),
         ui.Link("Settings", to="/settings"),
     )
 

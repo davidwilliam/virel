@@ -439,18 +439,27 @@ def _first_descendant_label(node: Element) -> str | None:
 
 
 def _label_text(label_el: Element) -> str | None:
+    """The first labeling span anywhere under the label element; some
+    controls (Slider) nest theirs inside layout rows."""
+    def find(node: Node) -> str | None:
+        if isinstance(node, Element):
+            if node.tag in ("span", "legend"):
+                classes = str(node.attrs.get("class", ""))
+                if "v-label" in classes or node.tag == "legend":
+                    texts = [c.text for c in node.children
+                             if isinstance(c, TextNode)]
+                    if texts:
+                        return " ".join(texts)
+            for child in node.children:
+                found = find(child)
+                if found:
+                    return found
+        return None
+
     for child in label_el.children:
-        if isinstance(child, Element) and child.tag in ("span", "legend"):
-            classes = child.attrs.get("class", "")
-            if "v-label" in str(classes) or child.tag == "legend":
-                texts = [c.text for c in child.children if isinstance(c, TextNode)]
-                if texts:
-                    return " ".join(texts)
-    for child in label_el.children:
-        if isinstance(child, Element) and child.tag == "legend":
-            texts = [c.text for c in child.children if isinstance(c, TextNode)]
-            if texts:
-                return " ".join(texts)
+        found = find(child)
+        if found:
+            return found
     return None
 
 

@@ -114,6 +114,7 @@ from .motion import (Easing, Keyframes, Motion, animation, keyframes,
 from .styles import Style, recipe, style
 from .theme import (Color, ColorScale, Font, FontFace, GoogleFont, Space,
                     Theme, set_preference)
+from . import ai
 from . import testing as test
 
 
@@ -152,7 +153,7 @@ __all__ = [
     "Motion", "keyframes", "Keyframes", "animation", "transition",
     "spring", "Easing", "Swipeable",
     "FontFace", "GoogleFont", "set_preference",
-    "Node", "VirelCompileError", "test",
+    "Node", "VirelCompileError", "test", "ai",
     "messages", "t",
     "format_number", "format_currency", "format_percent", "format_date",
     "locale_sorted", "collation_key", "records",

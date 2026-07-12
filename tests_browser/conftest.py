@@ -48,7 +48,10 @@ def server_url():
 @pytest.fixture(scope="session")
 def browser():
     with playwright_api.sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
+        browser = playwright.chromium.launch(args=[
+            "--use-fake-device-for-media-stream",
+            "--use-fake-ui-for-media-stream",
+        ])
         yield browser
         browser.close()
 

@@ -2615,3 +2615,102 @@ export function figure(id) {
     URL.revokeObjectURL(link.href);
   });
 }
+
+/* ------------------------------------------------------------------ *
+ * AI product components (SPEC 12.4)
+ * ------------------------------------------------------------------ */
+
+// Prompt editor: Ctrl/Cmd+Enter submits.
+export function prompt_editor(id) {
+  const root = el(id);
+  if (!root) return;
+  const area = root.querySelector("textarea");
+  const send = root.querySelector(".v-btn-primary");
+  if (!area || !send) return;
+  area.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
+      ev.preventDefault();
+      send.click();
+    }
+  });
+}
+
+// Audio recorder: MediaRecorder delivers the take into the sibling
+// file input, so the ordinary upload flow carries it to the server.
+export function recorder(id) {
+  const root = el(id);
+  if (!root) return;
+  const toggle = root.querySelector(".v-ai-rec-toggle");
+  const status = root.querySelector(".v-ai-rec-time");
+  const input = root.querySelector('input[type="file"]');
+  if (!toggle || !input) return;
+  let media = null;
+  let timer = null;
+  let startedAt = 0;
+
+  const stop = () => {
+    if (media && media.state !== "inactive") media.stop();
+  };
+  const reset = (text) => {
+    clearInterval(timer);
+    toggle.querySelector("span").textContent = "Record";
+    if (text !== undefined) status.textContent = text;
+  };
+
+  toggle.addEventListener("click", async () => {
+    if (media && media.state === "recording") {
+      stop();
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      status.textContent = "Microphone unavailable.";
+      return;
+    }
+    const chunks = [];
+    media = new MediaRecorder(stream);
+    media.ondataavailable = (ev) => chunks.push(ev.data);
+    media.onstop = () => {
+      stream.getTracks().forEach((track) => track.stop());
+      const blob = new Blob(chunks, { type: media.mimeType || "audio/webm" });
+      const file = new File([blob], "recording.webm",
+                            { type: blob.type });
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      input.files = transfer.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      reset(`Recorded ${((Date.now() - startedAt) / 1000).toFixed(1)}s.`);
+    };
+    media.start();
+    startedAt = Date.now();
+    toggle.querySelector("span").textContent = "Stop";
+    status.textContent = "Recording… 0.0s";
+    timer = setInterval(() => {
+      status.textContent =
+        `Recording… ${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+    }, 100);
+  });
+  onDispose(() => { stop(); clearInterval(timer); });
+}
+
+// Image viewer: a runtime lightbox on the native dialog.
+export function lightbox(id) {
+  const root = el(id);
+  if (!root) return;
+  const opener = root.querySelector(".v-ai-image-open");
+  const image = root.querySelector("img");
+  if (!opener || !image) return;
+  opener.addEventListener("click", () => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "v-ai-lightbox";
+    const full = image.cloneNode(true);
+    full.removeAttribute("width");
+    dialog.appendChild(full);
+    dialog.addEventListener("click", () => dialog.close());
+    dialog.addEventListener("close", () => dialog.remove());
+    document.body.appendChild(dialog);
+    dialog.showModal();
+  });
+}
