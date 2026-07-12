@@ -107,7 +107,7 @@ from .registry import (Request, build, client, component, deny, layout,
                        page,
                        redirect, server, shared, use_accessibility,
                        use_css, use_guard,
-                       use_middleware, use_static, web_component)
+                       use_middleware, use_policy, use_static, web_component)
 from .notebook import Preview, preview
 from .notifications import notify
 from .motion import (Easing, Keyframes, Motion, animation, keyframes,
@@ -116,6 +116,7 @@ from .styles import Style, recipe, style
 from .theme import (Color, ColorScale, Font, FontFace, GoogleFont, Space,
                     Theme, set_preference)
 from . import ai
+from . import unsafe
 from . import testing as test
 
 
@@ -144,7 +145,7 @@ __all__ = [
     "page", "layout", "component", "server", "client", "shared", "build",
     "web_component",
     "use_guard", "use_middleware", "use_static", "use_css",
-    "use_accessibility", "redirect", "deny",
+    "use_accessibility", "use_policy", "unsafe", "redirect", "deny",
     "Request",
     "channel", "connect", "Channel", "ChannelClosed",
     "context", "Context",

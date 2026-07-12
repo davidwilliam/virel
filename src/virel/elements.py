@@ -41,7 +41,8 @@ def _handler(fn: Callable[[], None] | Handler) -> Any:
     calls). Named functions go through the AST client compiler and may use
     the full client subset, including if/elif/else and for-loops.
     """
-    if isinstance(fn, Handler):
+    from .unsafe import RawJavaScript
+    if isinstance(fn, (Handler, RawJavaScript)):
         return fn
     from .pycompiler import CompiledHandler, compile_handler
     if isinstance(fn, CompiledHandler):
@@ -772,6 +773,11 @@ def Nav(*children: Any, label: str = "Main") -> Element:
 
 
 def unsafe_html(markup: str, *, reason: str) -> RawHTML:
+    from .registry import active_registry
+    if not active_registry().policy.get("raw_html", True):
+        raise VirelCompileError(
+            "Raw HTML is prohibited by policy "
+            "(ui.use_policy(raw_html=False)).")
     return RawHTML(markup, reason)
 
 

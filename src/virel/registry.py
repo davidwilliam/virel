@@ -397,6 +397,9 @@ class AppRegistry:
         self.custom_css: list[str] = []
         # Strict accessibility: audit warnings become compile errors.
         self.strict_accessibility = False
+        # Policy switches (SPEC 13.3, 18): escape hatches and plugin
+        # capabilities that a deployment may prohibit.
+        self.policy: dict[str, Any] = {}
 
     def match_page(self, path: str) -> tuple[Page, dict[str, str]] | None:
         page = self.pages.get(path)
@@ -495,6 +498,22 @@ def use_guard(fn: Callable[..., Any]) -> None:
     """Install a guard that runs before every page and server action,
     ahead of any route-specific guard."""
     active_registry().default_guard = fn
+
+
+def use_policy(**flags: Any) -> None:
+    """Set deployment policy switches (SPEC 13.3): currently
+    raw_javascript and raw_html (both default True) and
+    plugin_capabilities (a set restricting what plugins may do).
+
+        ui.use_policy(raw_javascript=False)
+    """
+    known = {"raw_javascript", "raw_html", "plugin_capabilities"}
+    unknown = set(flags) - known
+    if unknown:
+        raise VirelCompileError(
+            f"Unknown policy flag(s) {sorted(unknown)}; known: "
+            f"{', '.join(sorted(known))}.")
+    active_registry().policy.update(flags)
 
 
 def use_accessibility(*, strict: bool = True) -> None:
