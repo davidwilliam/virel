@@ -1283,3 +1283,14 @@ thead .v-grid-pin { z-index: 3; }
 a.v-grid-sort { color: inherit; text-decoration: none; font-weight: 600; }
 a.v-grid-sort:hover { color: var(--v-accent); }
 .v-grid-filter-form { display: inline; }
+
+/* Figure container (SPEC 12.3) */
+.v-figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--v-space) * 2);
+}
+.v-figure-svg { width: 100%; height: auto; display: block; }
+.v-figure-toolbar { display: flex; justify-content: flex-end; }
+.v-figure-caption { color: var(--v-fg-muted); font-size: 0.875rem; }

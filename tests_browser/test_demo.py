@@ -529,3 +529,17 @@ def test_grid_csv_export_downloads(page, server_url):
     path = download.path()
     content = open(path).read()
     assert '"model"' in content and '"atlas-large"' in content
+
+
+def test_library_figure_or_its_fallback_renders(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Data").click()
+    page.get_by_text("Library figures").wait_for()
+    # The browser CI environment installs only the browser extra, so the
+    # card may show the graceful fallback instead of the SVG.
+    has_figure = page.evaluate(
+        "!!document.querySelector('.v-figure svg[role=\"img\"]')")
+    has_hint = page.evaluate(
+        "[...document.querySelectorAll('.v-alert')].some(a => "
+        "a.textContent.includes('Install matplotlib'))")
+    assert has_figure or has_hint

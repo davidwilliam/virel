@@ -41,6 +41,8 @@ _IMPLICIT_ROLES = {
     "form": "form",
     "fieldset": "group",
     "img": "img",
+    "figure": "figure",
+    "article": "article",
     "ul": "list",
     "ol": "list",
     "li": "listitem",

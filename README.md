@@ -309,6 +309,14 @@ ui.use_theme(ui.Theme(
 ))
 ```
 
+Established visualization libraries plug in without shipping their
+JavaScript (SPEC 12.3): `ui.Figure` renders matplotlib and seaborn
+figures, Altair charts (through vl-convert), and Plotly figures (through
+kaleido) to sanitized, responsive, labeled SVG server-side, with an
+optional SVG export button and click events; `ui.figure_style()` returns
+matplotlib rcParams built from the active theme so library output
+follows the design tokens.
+
 Six looks ship built in: `ui.Theme.preset("indigo")` (the default),
 `"mono"` (black and white), `"emerald"`, `"blue"`, `"rose"`, and
 `"amber"`. A preset is an ordinary theme: use one as the application

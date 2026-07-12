@@ -2592,3 +2592,26 @@ export async function stream(name, args, onChunk, onDone, options) {
   if (tail) onChunk(tail);
   if (onDone) onDone();
 }
+
+/* ------------------------------------------------------------------ *
+ * Figure (SPEC 12.3): the export contract downloads the SVG exactly
+ * as rendered.
+ * ------------------------------------------------------------------ */
+
+export function figure(id) {
+  const root = el(id);
+  if (!root) return;
+  const button = root.querySelector(".v-figure-export");
+  const svg = root.querySelector("svg");
+  if (!button || !svg) return;
+  button.addEventListener("click", () => {
+    const blob = new Blob(
+      ['<?xml version="1.0" encoding="UTF-8"?>\n' + svg.outerHTML],
+      { type: "image/svg+xml" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "figure.svg";
+    link.click();
+    URL.revokeObjectURL(link.href);
+  });
+}

@@ -109,6 +109,13 @@ def _forms_tab() -> ui.Node:
 import dataclasses as _dataclasses
 import datetime as _datetime
 
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as _plt
+except ImportError:
+    _plt = None
+
 
 @_dataclasses.dataclass
 class _RunRecord:
@@ -150,6 +157,24 @@ _FLEET_ROWS = [
      "latency_ms": 120 + (i * 17) % 900}
     for i in range(2000)
 ]
+
+
+def _library_figure() -> ui.Node:
+    if _plt is None:
+        return ui.Alert("Install matplotlib to render this card: "
+                        "pip install matplotlib", intent="neutral")
+    latencies = [row["latency_ms"] for row in _FLEET_ROWS]
+    with _plt.rc_context(ui.figure_style()):
+        fig, ax = _plt.subplots(figsize=(6.4, 2.6))
+        ax.hist(latencies, bins=24)
+        ax.set_xlabel("latency (ms)")
+    node = ui.Figure(fig, label="Latency distribution across the fleet",
+                     caption="A matplotlib histogram, themed by "
+                             "ui.figure_style and exported as compiled "
+                             "SVG.",
+                     export=True)
+    _plt.close(fig)
+    return node
 
 
 def _data_tab() -> ui.Node:
@@ -249,6 +274,16 @@ def _data_tab() -> ui.Node:
             ),
             columns={"base": 1, "md": 2},
             gap=5,
+        ),
+        ui.Card(
+            ui.Heading("Library figures", level=2, size=3),
+            ui.Text("Established Python plotting libraries render "
+                    "server-side into the same container contract: "
+                    "matplotlib and seaborn natively, Altair through "
+                    "vl-convert, Plotly through kaleido.",
+                    muted=True, size="sm"),
+            _library_figure(),
+            gap=3,
         ),
         ui.Row(
             ui.Button("Take the tour", intent="primary",
