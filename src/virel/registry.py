@@ -414,6 +414,9 @@ class AppRegistry:
         # Registered plugins (SPEC 13.5) and the components they add.
         self.plugins: list[Any] = []
         self.plugin_components: dict[str, Callable[..., Any]] = {}
+        # Test-mode server-action overrides (SPEC 16.4): name -> callable
+        # that stands in for the real function during ui.test.render.
+        self._action_overrides: dict[str, Callable[..., Any]] = {}
 
     def match_page(self, path: str) -> tuple[Page, dict[str, str]] | None:
         page = self.pages.get(path)

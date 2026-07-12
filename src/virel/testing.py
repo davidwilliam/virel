@@ -55,7 +55,122 @@ _INPUT_ROLES = {
 }
 
 
-class TestView:
+class TestClock:
+    """A deterministic clock (SPEC 16.4): time only moves when a test
+    advances it, so timer-, latency-, and frame-dependent logic is
+    reproducible. Times are in milliseconds."""
+
+    __test__ = False
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self._timers: list[tuple[float, Callable[[], None]]] = []
+        self._frames: list[Callable[[], None]] = []
+
+    def advance(self, ms: float) -> None:
+        target = self.now + ms
+        while self._timers:
+            self._timers.sort(key=lambda t: t[0])
+            due, callback = self._timers[0]
+            if due > target:
+                break
+            self._timers.pop(0)
+            self.now = due
+            callback()
+        self.now = target
+
+    def set_timeout(self, callback: Callable[[], None], ms: float) -> None:
+        self._timers.append((self.now + ms, callback))
+
+    def request_frame(self, callback: Callable[[], None]) -> None:
+        self._frames.append(callback)
+
+    def flush_frames(self) -> None:
+        frames, self._frames = self._frames, []
+        for callback in frames:
+            callback()
+
+
+class _Batch:
+    """Coalesces state changes so effects fire once at the end."""
+
+    __test__ = False
+
+    def __init__(self, view: "TestView") -> None:
+        self.view = view
+
+    def __enter__(self) -> "TestView":
+        self.view._batching = True
+        return self.view
+
+    def __exit__(self, *exc: Any) -> None:
+        self.view._batching = False
+        self.view._fire_effects()
+
+
+class _Queryable:
+    """Role/label/text queries shared by the whole view and by any
+    single element (so ``dialog.get_by_label(...)`` scopes to the
+    dialog). Each host provides ``_candidates()``."""
+
+    __test__ = False
+
+    def _candidates(self) -> list["TestElement"]:
+        raise NotImplementedError
+
+    def get_by_role(self, role: str, *,
+                    name: str | None = None) -> "TestElement":
+        matches = self.get_all_by_role(role, name=name)
+        return self._single(matches, f"role={role!r}"
+                            + (f" name={name!r}" if name else ""))
+
+    def get_all_by_role(self, role: str, *,
+                        name: str | None = None) -> list["TestElement"]:
+        return [
+            e for e in self._candidates()
+            if e.role == role and (name is None or e.accessible_name == name)
+        ]
+
+    def get_by_label(self, label: str) -> "TestElement":
+        matches = [
+            e for e in self._candidates()
+            if e.node.tag in ("input", "select", "textarea")
+            and e.label_text == label
+        ]
+        return self._single(matches, f"label={label!r}")
+
+    def get_by_text(self, text: str) -> "TestElement":
+        matches = [e for e in self._candidates() if e.own_text() == text]
+        if matches:
+            inner = [
+                e for e in matches
+                if not any(other is not e and _contains(e.node, other.node)
+                           for other in matches)
+            ]
+            return self._single(inner, f"text={text!r}")
+        matches = [e for e in self._candidates() if text in e.text()]
+        matches.sort(key=lambda e: len(e.text()))
+        return self._single(matches[:1], f"text={text!r}")
+
+    def _single(self, matches: list["TestElement"],
+                description: str) -> "TestElement":
+        if len(matches) == 1:
+            return matches[0]
+        if not matches:
+            available = sorted({
+                f"{e.role}:{e.accessible_name}" for e in self._candidates()
+                if e.role and e.accessible_name
+            })
+            raise AssertionError(
+                f"No element matches {description}. Elements with roles: "
+                + (", ".join(available) or "(none)")
+            )
+        raise AssertionError(
+            f"{len(matches)} elements match {description}; expected "
+            "exactly one.")
+
+
+class TestView(_Queryable):
     __test__ = False  # keep pytest from collecting this class
 
     def __init__(self, fn: Callable[..., Any], params: dict[str, Any] | None = None,
@@ -88,6 +203,11 @@ class TestView:
             self.preferences: dict[str, str | None] = {}
             # Toasts raised by handlers (ui.notify).
             self.notifications: list[dict[str, Any]] = []
+            # Deterministic controls (SPEC 16.4).
+            self.clock = TestClock()
+            self.action_calls: list[dict[str, Any]] = []
+            self._mocked_actions: set[str] = set()
+            self._batching = False
             if fetch_resources:
                 # Simulate the browser's initial load: every resource fetches
                 # (running the real server action) unless server rendering
@@ -129,7 +249,17 @@ class TestView:
                     res.fetch_into(working)
         for name in self.states:
             self.env[name] = working[name]
+        # In a batch, defer effects so several mutations settle as one
+        # concurrent update (SPEC 16.4).
+        if self._batching:
+            return
+        self._fire_effects(before, scope)
+
+    def _fire_effects(self, before: dict | None = None,
+                      scope: dict[str, Any] | None = None) -> None:
         # Effects fire when their dependencies changed, like the browser.
+        if before is None:
+            before = {id(eff): [None] for eff in self.effects}
         for _ in range(5):
             fired = False
             for eff in self.effects:
@@ -145,63 +275,97 @@ class TestView:
             if not fired:
                 break
 
+    # -- deterministic control (SPEC 16.4) --------------------------------------
+
+    def mock_action(self, name: str, *, returns: Any = None,
+                    raises: Any = None,
+                    sequence: list[Any] | None = None,
+                    latency: float = 0.0) -> None:
+        """Replace a server action's behavior for this view. ``returns``
+        gives a fixed response, ``raises`` an exception (test error and
+        retry paths), and ``sequence`` a per-call list of responses or
+        exceptions (a value that is an Exception is raised) so a
+        first-call failure then success models a retry. ``latency`` is
+        recorded and advances the test clock, without real waiting."""
+        from .registry import active_registry
+        registry = active_registry()
+        if name not in registry.actions:
+            raise AssertionError(f"no server action named {name!r}")
+        calls = self.action_calls
+        clock = self.clock
+        steps = list(sequence) if sequence is not None else None
+
+        def override(**kwargs: Any) -> Any:
+            calls.append({"name": name, "args": kwargs,
+                          "at": clock.now})
+            if latency:
+                clock.advance(latency)
+            if steps is not None:
+                if not steps:
+                    raise AssertionError(
+                        f"mock_action {name!r} sequence exhausted")
+                item = steps.pop(0)
+                if isinstance(item, BaseException):
+                    raise item
+                return item
+            if raises is not None:
+                raise raises
+            return returns
+
+        registry._action_overrides[name] = override
+        self._mocked_actions.add(name)
+
+    def mock_stream(self, name: str, chunks: list[Any], *,
+                    latency: float = 0.0) -> None:
+        """Replace a streaming action so it yields exactly ``chunks``
+        (SPEC 16.4 streaming-chunk control)."""
+        from .registry import active_registry
+        registry = active_registry()
+        if name not in registry.actions:
+            raise AssertionError(f"no server action named {name!r}")
+        calls = self.action_calls
+        clock = self.clock
+        sequence = list(chunks)
+
+        def override(**kwargs: Any):
+            calls.append({"name": name, "args": kwargs, "at": clock.now})
+            for chunk in sequence:
+                if latency:
+                    clock.advance(latency)
+                yield chunk
+
+        registry._action_overrides[name] = override
+        self._mocked_actions.add(name)
+
+    def batch(self) -> "_Batch":
+        """A context that applies several state changes as one concurrent
+        update, firing effects once at the end (SPEC 16.4)."""
+        return _Batch(self)
+
+    def close(self) -> None:
+        """Remove this view's action overrides."""
+        from .registry import active_registry
+        overrides = active_registry()._action_overrides
+        for name in self._mocked_actions:
+            overrides.pop(name, None)
+        self._mocked_actions.clear()
+
+    def __enter__(self) -> "TestView":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()
+
     # -- queries -----------------------------------------------------------------
 
-    def get_by_role(self, role: str, *, name: str | None = None) -> "TestElement":
-        matches = self.get_all_by_role(role, name=name)
-        return self._single(matches, f"role={role!r}"
-                            + (f" name={name!r}" if name else ""))
-
-    def get_all_by_role(self, role: str, *, name: str | None = None) -> list["TestElement"]:
-        return [
-            e for e in self._walk()
-            if e.role == role and (name is None or e.accessible_name == name)
-        ]
-
-    def get_by_label(self, label: str) -> "TestElement":
-        matches = [
-            e for e in self._walk()
-            if e.node.tag in ("input", "select", "textarea")
-            and e.label_text == label
-        ]
-        return self._single(matches, f"label={label!r}")
-
-    def get_by_text(self, text: str) -> "TestElement":
-        matches = [e for e in self._walk() if e.own_text() == text]
-        if matches:
-            # Prefer the innermost element: drop any match that contains
-            # another match.
-            inner = [
-                e for e in matches
-                if not any(other is not e and _contains(e.node, other.node)
-                           for other in matches)
-            ]
-            return self._single(inner, f"text={text!r}")
-        matches = [e for e in self._walk() if text in e.text()]
-        matches.sort(key=lambda e: len(e.text()))
-        return self._single(matches[:1], f"text={text!r}")
+    def _candidates(self) -> list["TestElement"]:
+        return self._walk()
 
     def query_text(self) -> str:
         """All visible text in the view, for coarse assertions."""
         env = self.eval_env()
         return " ".join(_node_text(self.root, env, visible_only=True,
                                    view=self)).strip()
-
-    def _single(self, matches: list["TestElement"], description: str) -> "TestElement":
-        if len(matches) == 1:
-            return matches[0]
-        if not matches:
-            available = sorted({
-                f"{e.role}:{e.accessible_name}" for e in self._walk()
-                if e.role and e.accessible_name
-            })
-            raise AssertionError(
-                f"No element matches {description}. Elements with roles: "
-                + (", ".join(available) or "(none)")
-            )
-        raise AssertionError(
-            f"{len(matches)} elements match {description}; expected exactly one."
-        )
 
     # -- traversal ---------------------------------------------------------------
 
@@ -242,7 +406,7 @@ class TestView:
         return found
 
 
-class TestElement:
+class TestElement(_Queryable):
     __test__ = False
 
     def __init__(self, view: TestView, node: Element,
@@ -253,6 +417,11 @@ class TestElement:
         self.conditions = conditions
         self.label_text = label
         self.scope = scope or {}  # item bindings when inside a ui.Each
+
+    def _candidates(self) -> list["TestElement"]:
+        # Scoped queries: this element's own subtree (SPEC 16.1).
+        return [e for e in self.view._walk()
+                if e.node is self.node or _contains(self.node, e.node)]
 
     def _env(self) -> dict[str, Any]:
         return self.view.eval_env() | self.scope

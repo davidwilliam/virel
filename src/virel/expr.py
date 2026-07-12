@@ -740,7 +740,9 @@ class CallOp:
     def execute(self, env: dict[str, Any], ev: Any = None) -> None:
         """Test-mode execution: call the Python function synchronously."""
         from .registry import active_registry
-        action = active_registry().actions[self.action]
+        registry = active_registry()
+        action = registry.actions[self.action]
+        run = registry._action_overrides.get(self.action, action.fn)
         args = {k: v.evaluate(env) for k, v in self.args.items()}
         previous = None
         if self.optimistic is not None:
@@ -748,7 +750,7 @@ class CallOp:
             previous = env.get(state.name)
             env[state.name] = value.evaluate(env)
         try:
-            result = action.fn(**args)
+            result = run(**args)
             if inspect_isawaitable(result):
                 result = _run_coroutine(result)
         except Exception as error:
@@ -855,9 +857,11 @@ class StreamOp:
     def execute(self, env: dict[str, Any], ev: Any = None) -> None:
         """Test-mode execution: drain the stream synchronously."""
         from .registry import active_registry, to_jsonable
-        action = active_registry().actions[self.action]
+        registry = active_registry()
+        action = registry.actions[self.action]
+        run = registry._action_overrides.get(self.action, action.fn)
         args = {k: v.evaluate(env) for k, v in self.args.items()}
-        chunks = _collect_stream(action.fn(**args))
+        chunks = _collect_stream(run(**args))
         if self.events:
             events = [to_jsonable(c) for c in chunks
                       if isinstance(c, (dict, list))]
