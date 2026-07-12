@@ -241,6 +241,70 @@ def cmd_check(args: argparse.Namespace) -> None:
         raise SystemExit(1)
     print(f"{len(registry.pages)} route(s) compile cleanly.")
 
+    # Performance-budget enforcement (SPEC 17.2): CI fails when the app
+    # exceeds its configured budgets.
+    budgets = _budget_config()
+    if budgets is not False:
+        from .budgets import measure
+        report = measure(budgets or None)
+        for check in report["checks"]:
+            if not check["ok"]:
+                print(f"FAIL  budget {check['name']}: "
+                      f"{check['actual']} > {check['budget']} bytes gzip")
+        if not report["ok"]:
+            raise SystemExit(1)
+        print(f"budgets ok (runtime {report['runtime_gzip']} B, "
+              f"app {report['app_gzip']} B gzip)")
+
+
+def _budget_config() -> dict | bool:
+    """Budgets from virel.toml [budgets]. Returns False to disable
+    (enabled = false), a dict of overrides, or {} for defaults."""
+    import tomllib
+    config_path = Path.cwd() / "virel.toml"
+    if not config_path.exists():
+        return {}
+    try:
+        section = tomllib.loads(config_path.read_text("utf-8")).get(
+            "budgets", {})
+    except Exception:
+        return {}
+    if section.get("enabled") is False:
+        return False
+    return {k: v for k, v in section.items()
+            if k != "enabled" and isinstance(v, int)}
+
+
+def cmd_budget(args: argparse.Namespace) -> None:
+    """Report performance-budget measurements (SPEC 17.2)."""
+    _load_app(Path.cwd())
+    from .budgets import component_bundle_cost, measure
+    budgets = _budget_config()
+    report = measure(budgets or None)
+    if args.json:
+        report["component_cost"] = component_bundle_cost()
+        print(json.dumps(report, indent=2))
+        return
+    print(f"runtime:      {report['runtime_gzip']:>6} B gzip  "
+          f"(budget {report['budgets']['runtime_gzip']})")
+    print(f"largest page: {report['largest_page_gzip']:>6} B gzip  "
+          f"(budget {report['budgets']['page_gzip']})")
+    print(f"app total:    {report['app_gzip']:>6} B gzip  "
+          f"(budget {report['budgets']['app_gzip']})")
+    print()
+    for entry in sorted(report["pages"], key=lambda p: -p["page_gzip"]):
+        flag = "  OVER" if entry["over_budget"] else ""
+        print(f"  {entry['route']:30s} {entry['page_gzip']:>6} B{flag}")
+    print("\nComponent bundle cost (runtime helpers, gzip bytes):")
+    for name, cost in sorted(component_bundle_cost().items(),
+                             key=lambda kv: -kv[1]):
+        if cost:
+            print(f"  {name:22s} {cost:>5} B")
+    print("\n" + ("All budgets pass." if report["ok"]
+                  else "Some budgets exceeded."))
+    if not report["ok"]:
+        raise SystemExit(1)
+
 
 def cmd_routes(args: argparse.Namespace) -> None:
     _load_app(Path.cwd())
@@ -567,6 +631,11 @@ def main(argv: list[str] | None = None) -> None:
         "doctor", help="check the environment and project health")
     p_doctor.add_argument("--json", action="store_true")
     p_doctor.set_defaults(fn=cmd_doctor)
+
+    p_budget = sub.add_parser(
+        "budget", help="report performance-budget measurements")
+    p_budget.add_argument("--json", action="store_true")
+    p_budget.set_defaults(fn=cmd_budget)
 
     p_graph = sub.add_parser(
         "graph", help="render the route and dependency graph")

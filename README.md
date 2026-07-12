@@ -98,6 +98,7 @@ virel test             run the project's test suite
 virel routes           list routes and rendering modes
 virel graph            render the route and dependency graph
 virel doctor           check the environment and project health
+virel budget           report gzip bundle sizes against budgets
 virel migrate          generate migration patches for API changes
 virel deploy           generate deployment artifacts (asgi | static)
 virel inspect <route>  print the intermediate representation as JSON
