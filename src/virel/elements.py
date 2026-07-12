@@ -157,6 +157,144 @@ def Card(*children: Any, gap: int = 3, align: str = "stretch",
                                               f"align-items: {_ALIGN[align]}")})
 
 
+def Wrap(*children: Any, gap: int = 3, align: str = "start",
+         class_name: str | None = None) -> Element:
+    """A row that wraps onto new lines as space runs out."""
+    return Element("div", normalize_children(children),
+                   attrs={"class": _classes("v-wrap", class_name),
+                          "style": _gap_style(gap,
+                                              f"align-items: {_ALIGN[align]}")})
+
+
+def Cluster(*children: Any, gap: int = 2, justify: str = "start",
+            align: str = "center", class_name: str | None = None) -> Element:
+    """A group of related items (tags, actions, metadata) with a
+    consistent gap, wrapping and justified as one unit."""
+    extra = (f"align-items: {_ALIGN[align]}; "
+             f"justify-content: {_JUSTIFY[justify]}")
+    return Element("div", normalize_children(children),
+                   attrs={"class": _classes("v-cluster", class_name),
+                          "style": _gap_style(gap, extra)})
+
+
+def Center(*children: Any, min_height: str | None = None,
+           class_name: str | None = None) -> Element:
+    """Centers its content on both axes."""
+    style = f"min-height: {_css_length(min_height)}" if min_height else None
+    return Element("div", normalize_children(children),
+                   attrs={"class": _classes("v-center", class_name),
+                          "style": style})
+
+
+def Sidebar(aside: Any, content: Any, *, width: str = "16rem",
+            side: str = "left", gap: int = 5,
+            class_name: str | None = None) -> Element:
+    """The sidebar layout pattern: an aside with a preferred width next
+    to fluid content, stacking automatically when the content column
+    would drop below a readable measure. No media query involved, so it
+    works at any nesting depth."""
+    if side not in ("left", "right"):
+        raise VirelCompileError("Sidebar side must be 'left' or 'right'.")
+    aside_el = Element("div", normalize_children((aside,)),
+                       attrs={"class": "v-sidebar-aside"})
+    main_el = Element("div", normalize_children((content,)),
+                      attrs={"class": "v-sidebar-main"})
+    ordered = [aside_el, main_el] if side == "left" else [main_el, aside_el]
+    style = _gap_style(gap, f"--v-sidebar-w: {_css_length(width)}")
+    return Element("div", ordered,
+                   attrs={"class": _classes("v-sidebar-layout", class_name),
+                          "style": style})
+
+
+def AspectRatio(*children: Any, ratio: str = "16/9",
+                class_name: str | None = None) -> Element:
+    """Reserves a fixed width-to-height ratio; media children fill it."""
+    import re as _re
+    if not _re.fullmatch(r"\d+(\.\d+)?(\s*/\s*\d+(\.\d+)?)?", str(ratio)):
+        raise VirelCompileError(
+            f"AspectRatio ratio must look like '16/9' or '1', got {ratio!r}.")
+    return Element("div", normalize_children(children),
+                   attrs={"class": _classes("v-aspect", class_name),
+                          "style": f"aspect-ratio: {ratio}"})
+
+
+def ScrollArea(*children: Any, max_height: str | None = None,
+               axis: str = "y", class_name: str | None = None) -> Element:
+    """A scrolling region with styled scrollbars and contained
+    overscroll, so inner scrolling never chains to the page."""
+    if axis not in ("x", "y", "both"):
+        raise VirelCompileError("ScrollArea axis must be 'x', 'y', or 'both'.")
+    style = f"max-height: {_css_length(max_height)}" if max_height else None
+    return Element("div", normalize_children(children),
+                   attrs={"class": _classes(f"v-scroll v-scroll-{axis}",
+                                            class_name),
+                          "style": style, "tabindex": "0"})
+
+
+def Resizable(*children: Any, direction: str = "both",
+              class_name: str | None = None) -> Element:
+    """A container the user can resize by dragging its corner. Pure CSS."""
+    suffix = {"both": "both", "horizontal": "h", "vertical": "v"}.get(direction)
+    if suffix is None:
+        raise VirelCompileError("Resizable direction must be 'both', "
+                                "'horizontal', or 'vertical'.")
+    return Element("div", normalize_children(children),
+                   attrs={"class": _classes(f"v-resizable v-resizable-{suffix}",
+                                            class_name)})
+
+
+def Splitter(first: Any, second: Any, *, direction: str = "row",
+             initial: int = 50, min_size: int = 20, max_size: int = 80,
+             class_name: str | None = None) -> Element:
+    """Two panes separated by a draggable divider. The divider is a
+    keyboard-operable separator: arrow keys move it, Home/End snap to
+    the limits, double-click resets."""
+    if direction not in ("row", "column"):
+        raise VirelCompileError("Splitter direction must be 'row' or "
+                                "'column'.")
+    if not 0 <= min_size <= initial <= max_size <= 100:
+        raise VirelCompileError("Splitter sizes must satisfy 0 <= min_size "
+                                "<= initial <= max_size <= 100.")
+    handle = Element("div", attrs={
+        "class": "v-splitter-handle",
+        "role": "separator",
+        "tabindex": "0",
+        "aria-label": "Resize panels",
+        "aria-orientation": "vertical" if direction == "row" else "horizontal",
+        "aria-valuemin": str(min_size),
+        "aria-valuemax": str(max_size),
+        "aria-valuenow": str(initial),
+    })
+    panes = [
+        Element("div", normalize_children((first,)),
+                attrs={"class": "v-splitter-first"}),
+        handle,
+        Element("div", normalize_children((second,)),
+                attrs={"class": "v-splitter-second"}),
+    ]
+    classes = "v-splitter" + (" v-splitter-col" if direction == "column" else "")
+    return Element("div", panes,
+                   attrs={"class": _classes(classes, class_name),
+                          "style": f"--v-split: {initial}%",
+                          "data-min": str(min_size),
+                          "data-max": str(max_size),
+                          "data-initial": str(initial)},
+                   runtime_binding="splitter")
+
+
+def _css_length(value: str | int) -> str:
+    """A CSS length from an int (pixels) or a validated string. Strings
+    are restricted to simple lengths so styles cannot be broken out of."""
+    if isinstance(value, int):
+        return f"{value}px"
+    import re as _re
+    if not _re.fullmatch(r"\d+(\.\d+)?(px|rem|em|vh|vw|ch|%)", str(value)):
+        raise VirelCompileError(
+            f"Expected a CSS length like '16rem' or an int of pixels, "
+            f"got {value!r}.")
+    return value
+
+
 def Divider() -> Element:
     return Element("hr", attrs={"class": "v-divider"})
 

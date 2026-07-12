@@ -212,6 +212,92 @@ def _broken_panel() -> ui.Node:
     return ui.Text(ui.length(broken))
 
 
+def _layout_tab() -> ui.Node:
+    lorem = ("Composable layout primitives cover the space between a "
+             "single flex row and a full app shell. ")
+    return ui.Stack(
+        ui.Card(
+            ui.Heading("Splitter", level=3),
+            ui.Text("Drag the divider, or focus it and use the arrow "
+                    "keys; double-click resets.", muted=True, size="sm"),
+            ui.Splitter(
+                ui.Stack(ui.Heading("Navigator", level=4),
+                         ui.Text(lorem, muted=True, size="sm"), gap=2),
+                ui.Stack(ui.Heading("Editor", level=4),
+                         ui.Text(lorem * 3, muted=True, size="sm"), gap=2),
+                initial=35, min_size=20, max_size=70,
+            ),
+            gap=3,
+        ),
+        ui.Card(
+            ui.Heading("Sidebar pattern", level=3),
+            ui.Text("The aside keeps its width while the content stays "
+                    "fluid; both stack when space runs out, with no media "
+                    "query.", muted=True, size="sm"),
+            ui.Sidebar(
+                ui.Card(ui.Text("Aside", size="sm"), gap=2),
+                ui.Card(ui.Text(lorem * 2, muted=True, size="sm"), gap=2),
+                width="12rem", gap=4,
+            ),
+            gap=3,
+        ),
+        ui.Grid(
+            ui.Card(
+                ui.Heading("Center", level=3),
+                ui.Center(ui.Badge("Centered on both axes",
+                                   intent="primary"),
+                          min_height="8rem"),
+                gap=3,
+            ),
+            ui.Card(
+                ui.Heading("AspectRatio", level=3),
+                ui.AspectRatio(
+                    ui.Center(ui.Icon("play", size=28)),
+                    ratio="16/9",
+                ),
+                gap=3,
+            ),
+            ui.Card(
+                ui.Heading("Resizable", level=3),
+                ui.Resizable(
+                    ui.Text("Drag the corner to resize this box.",
+                            muted=True, size="sm"),
+                ),
+                gap=3,
+            ),
+            columns={"base": 1, "md": 3},
+            gap=5,
+        ),
+        ui.Grid(
+            ui.Card(
+                ui.Heading("ScrollArea", level=3),
+                ui.ScrollArea(
+                    ui.Stack(*[ui.Text(f"Row {i + 1}", size="sm")
+                               for i in range(20)], gap=2),
+                    max_height="10rem",
+                ),
+                gap=3,
+            ),
+            ui.Card(
+                ui.Heading("Wrap and Cluster", level=3),
+                ui.Wrap(*[ui.Badge(name) for name in
+                          ("alpha", "bravo", "charlie", "delta", "echo",
+                           "foxtrot", "golf", "hotel")], gap=2),
+                ui.Cluster(
+                    ui.Button("Save", intent="primary", size="sm"),
+                    ui.Button("Preview", size="sm"),
+                    ui.Button("Discard", emphasis="ghost", size="sm"),
+                    gap=2,
+                ),
+                gap=4,
+            ),
+            columns={"base": 1, "md": 2},
+            gap=5,
+        ),
+        gap=6,
+    )
+
+
 def _icons_tab() -> ui.Node:
     tiles = [
         ui.Card(
@@ -239,6 +325,7 @@ def components() -> ui.Node:
                     "Data": _data_tab(),
                     "Feedback": _feedback_tab(),
                     "Patterns": _patterns_tab(),
+                    "Layout": _layout_tab(),
                     "Icons": _icons_tab(),
                 }, label="Component groups"),
             ),

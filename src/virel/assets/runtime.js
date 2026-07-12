@@ -643,6 +643,58 @@ export function select(id) {
  * state, keyboard interaction, click-outside, and flip-up placement.
  * ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ *
+ * Splitter (SPEC 10.3): a draggable, keyboard-operable divider between
+ * two panes. The position lives in the --v-split custom property; all
+ * listeners sit on the splitter's own nodes, so navigation disposal is
+ * automatic with the DOM.
+ * ------------------------------------------------------------------ */
+
+export function splitter(id) {
+  const root = el(id);
+  if (!root) return;
+  const handle = root.querySelector(":scope > .v-splitter-handle");
+  if (!handle) return;
+  const vertical = root.classList.contains("v-splitter-col");
+  const min = Number(root.dataset.min || 20);
+  const max = Number(root.dataset.max || 80);
+  const initial = Number(root.dataset.initial || 50);
+  let value = initial;
+  const apply = (next) => {
+    value = Math.min(max, Math.max(min, next));
+    root.style.setProperty("--v-split", value + "%");
+    handle.setAttribute("aria-valuenow", String(Math.round(value)));
+  };
+  handle.addEventListener("pointerdown", (down) => {
+    down.preventDefault();
+    handle.setPointerCapture(down.pointerId);
+    const move = (ev) => {
+      const rect = root.getBoundingClientRect();
+      const ratio = vertical
+        ? (ev.clientY - rect.top) / rect.height
+        : (ev.clientX - rect.left) / rect.width;
+      apply(ratio * 100);
+    };
+    const stop = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", stop);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", stop);
+  });
+  handle.addEventListener("keydown", (ev) => {
+    const back = vertical ? "ArrowUp" : "ArrowLeft";
+    const forward = vertical ? "ArrowDown" : "ArrowRight";
+    if (ev.key === back) apply(value - 2);
+    else if (ev.key === forward) apply(value + 2);
+    else if (ev.key === "Home") apply(min);
+    else if (ev.key === "End") apply(max);
+    else return;
+    ev.preventDefault();
+  });
+  handle.addEventListener("dblclick", () => apply(initial));
+}
+
 export function menu(id) {
   const wrap = el(id);
   if (!wrap || wrap.__virelMenu) return;

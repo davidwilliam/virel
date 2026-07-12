@@ -49,6 +49,53 @@ p { margin: 0; }
 
 .v-divider { border: 0; border-top: 1px solid var(--v-border); margin: 0; width: 100%; }
 
+.v-wrap, .v-cluster { display: flex; flex-wrap: wrap; }
+
+.v-center { display: grid; place-items: center; }
+
+/* Sidebar pattern: the aside keeps its preferred width and the content
+ * stays fluid; when the content column would drop below a readable
+ * measure both wrap into a stack. No media query, so it composes at any
+ * nesting depth. */
+.v-sidebar-layout { display: flex; flex-wrap: wrap; }
+.v-sidebar-layout > .v-sidebar-aside { flex-basis: var(--v-sidebar-w, 16rem); flex-grow: 1; min-width: 0; }
+.v-sidebar-layout > .v-sidebar-main { flex-basis: 0; flex-grow: 999; min-inline-size: 60%; }
+
+.v-aspect { overflow: hidden; }
+.v-aspect > img, .v-aspect > video, .v-aspect > iframe {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.v-aspect > :not(img):not(video):not(iframe) { width: 100%; height: 100%; }
+
+.v-scroll { overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--v-border-strong) transparent; }
+.v-scroll:focus-visible { outline: 2px solid var(--v-ring); outline-offset: 2px; }
+.v-scroll-y { overflow-y: auto; overflow-x: hidden; }
+.v-scroll-x { overflow-x: auto; overflow-y: hidden; }
+.v-scroll-both { overflow: auto; }
+.v-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.v-scroll::-webkit-scrollbar-thumb { background: var(--v-border-strong); border-radius: 4px; }
+
+.v-resizable { overflow: auto; border: 1px solid var(--v-border); border-radius: var(--v-radius-md); }
+.v-resizable-both { resize: both; }
+.v-resizable-h { resize: horizontal; }
+.v-resizable-v { resize: vertical; }
+
+.v-splitter { display: flex; min-width: 0; }
+.v-splitter.v-splitter-col { flex-direction: column; }
+.v-splitter > .v-splitter-first { flex: 0 0 var(--v-split, 50%); min-width: 0; min-height: 0; overflow: auto; }
+.v-splitter > .v-splitter-second { flex: 1 1 0; min-width: 0; min-height: 0; overflow: auto; }
+.v-splitter > .v-splitter-handle {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  touch-action: none;
+  background: var(--v-border);
+  border-radius: 3px;
+  transition: background 120ms ease;
+}
+.v-splitter.v-splitter-col > .v-splitter-handle { cursor: row-resize; }
+.v-splitter > .v-splitter-handle:hover,
+.v-splitter > .v-splitter-handle:focus-visible { background: var(--v-accent); outline: none; }
+
 /* Text */
 .v-muted { color: var(--v-fg-muted); }
 .v-text-sm { font-size: 0.875rem; }

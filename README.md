@@ -407,10 +407,12 @@ the browser with full locale data.
 The library covers the essentials in four groups, all with accessibility
 built in:
 
-- Layout and chrome: `Stack`, `Row`, `Grid`, `Container`, `Section`,
-  `Card`, `AppShell` (with optional sidebar that becomes an off-canvas
-  drawer on small screens, and footer), `Footer`, `Hero`, `Divider`,
-  `Spacer`
+- Layout and chrome: `Stack`, `Row`, `Grid`, `Wrap`, `Cluster`, `Center`,
+  `Sidebar` (aside plus fluid content, stacking without media queries),
+  `AspectRatio`, `ScrollArea`, `Resizable`, `Splitter` (draggable,
+  keyboard-operable panes), `Container`, `Section`, `Card`, `AppShell`
+  (with optional sidebar that becomes an off-canvas drawer on small
+  screens, and footer), `Footer`, `Hero`, `Divider`, `Spacer`
 - Form controls: `Button`, `TextField`, `Textarea`, `NumberField`, `Select`,
   `Checkbox`, `Switch`, `RadioGroup`, `Slider`
 - Interaction patterns: `Tabs`, `Dialog` (on the native dialog element),

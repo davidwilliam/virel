@@ -94,3 +94,23 @@ def test_design_preferences_switch_and_persist(page, server_url):
     page.get_by_role("button", name="Default", exact=True).click()
     assert page.evaluate("document.documentElement.dataset.brand") is None
     assert page.evaluate(accent) == before
+
+
+def test_splitter_divider_moves_with_the_keyboard(page, server_url):
+    page.goto(f"{server_url}/components")
+    page.get_by_role("tab", name="Layout").click()
+    handle = page.locator(".v-splitter-handle")
+    handle.wait_for()
+    before = page.evaluate(
+        "document.querySelector('.v-splitter').style.getPropertyValue('--v-split')")
+    handle.focus()
+    page.keyboard.press("ArrowRight")
+    page.keyboard.press("ArrowRight")
+    after = page.evaluate(
+        "document.querySelector('.v-splitter').style.getPropertyValue('--v-split')")
+    assert before == "35%" and after == "39%"
+    assert page.evaluate(
+        "document.querySelector('.v-splitter-handle').getAttribute('aria-valuenow')") == "39"
+    page.keyboard.press("End")
+    assert page.evaluate(
+        "document.querySelector('.v-splitter-handle').getAttribute('aria-valuenow')") == "70"

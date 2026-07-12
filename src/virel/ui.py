@@ -11,6 +11,9 @@ from typing import Any, Callable
 from .expr import Derived, State, VirelCompileError, cond, length, not_
 from .elements import (
     Accordion,
+    AspectRatio,
+    Center,
+    Cluster,
     Alert,
     AppShell,
     Avatar,
@@ -51,7 +54,12 @@ from .elements import (
     Slider,
     Spacer,
     Spinner,
+    Resizable,
+    ScrollArea,
+    Sidebar,
+    Splitter,
     Stack,
+    Wrap,
     Stat,
     Switch,
     Table,
@@ -119,6 +127,8 @@ __all__ = [
     "format_number", "format_currency", "format_percent", "format_date",
     # layout
     "Page", "Stack", "Row", "Grid", "Container", "Section", "Card",
+    "Wrap", "Cluster", "Center", "Sidebar", "AspectRatio", "ScrollArea",
+    "Resizable", "Splitter",
     "Divider", "Spacer", "AppShell", "Footer", "Hero",
     # semantic elements
     "Heading", "Text", "Code", "Link", "LinkButton", "Image", "List", "Nav",
