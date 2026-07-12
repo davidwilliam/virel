@@ -320,6 +320,27 @@ def extract_message_keys(package_dir: Path) -> tuple[set[str], list[str]]:
     return keys, dynamic
 
 
+def cmd_element(args: argparse.Namespace) -> None:
+    """Export a component as a standard custom element (SPEC 13.4)."""
+    _load_app(Path.cwd())
+    module_name, _, fn_name = args.function.partition(":")
+    if not fn_name:
+        _fail("Use module:function, e.g. app.routes.home:pricing_card")
+    import importlib
+    try:
+        module = importlib.import_module(module_name)
+        fn = getattr(module, fn_name)
+    except (ImportError, AttributeError) as error:
+        _fail(f"Cannot import {args.function!r}: {error}")
+    from .embed import as_custom_element
+    source = as_custom_element(fn, tag=args.tag)
+    if args.out:
+        Path(args.out).write_text(source, encoding="utf-8")
+        print(f"Wrote {args.tag} ({len(source)} bytes) to {args.out}")
+    else:
+        print(source)
+
+
 def cmd_messages(args: argparse.Namespace) -> None:
     """Extraction tooling (SPEC 11.3): compare the message keys the app
     uses against every registered catalog."""
@@ -399,6 +420,14 @@ def main(argv: list[str] | None = None) -> None:
     p_schema = sub.add_parser("schema", help="print a component schema as JSON")
     p_schema.add_argument("component")
     p_schema.set_defaults(fn=cmd_schema)
+
+    p_element = sub.add_parser(
+        "element", help="export a component as a standard custom element")
+    p_element.add_argument("function", help="module:function to compile")
+    p_element.add_argument("--tag", required=True,
+                           help="custom element tag, e.g. virel-counter")
+    p_element.add_argument("--out", help="write the module to this file")
+    p_element.set_defaults(fn=cmd_element)
 
     p_messages = sub.add_parser(
         "messages", help="extract ui.t keys and audit catalogs per locale")

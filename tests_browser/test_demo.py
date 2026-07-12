@@ -621,3 +621,72 @@ def test_notebook_preview_bundle_is_interactive(page, server_url):
     page.get_by_role("button", name="Increment").click()
     page.get_by_role("button", name="Increment").click()
     page.get_by_text("Count: 2").wait_for()
+
+
+def _embed_source(kind):
+    import subprocess
+    import sys
+    return subprocess.run(
+        [sys.executable, "-c", (
+            "from virel import ui\n"
+            "def counter():\n"
+            "    count = ui.state(0)\n"
+            "    return ui.Card(\n"
+            "        ui.Text(f'Count: {count}'),\n"
+            "        ui.Button('Add',\n"
+            "                  on_click=lambda: count.update(\n"
+            "                      lambda c: c + 1)),\n"
+            "        gap=3,\n"
+            "    )\n"
+            f"print(ui.{kind})\n")],
+        capture_output=True, text=True, check=True).stdout
+
+
+def test_custom_element_instances_have_independent_state(page, server_url):
+    source = _embed_source(
+        "as_custom_element(counter, tag='virel-counter')")
+    page.set_content(
+        "<html><body>"
+        "<h1>A host page that is not Virel</h1>"
+        "<virel-counter id='one'></virel-counter>"
+        "<virel-counter id='two'></virel-counter>"
+        f"<script type='module'>{source}</script>"
+        "</body></html>")
+    first = page.locator("#one")
+    second = page.locator("#two")
+    first.get_by_role("button", name="Add").wait_for()
+
+    first.get_by_role("button", name="Add").click()
+    first.get_by_role("button", name="Add").click()
+    second.get_by_role("button", name="Add").click()
+    assert "Count: 2" in first.locator(".v-card").text_content()
+    assert "Count: 1" in second.locator(".v-card").text_content()
+
+
+def test_fragment_script_mounts_inside_a_host_page(page, server_url):
+    import subprocess
+    import sys
+    payload = subprocess.run(
+        [sys.executable, "-c", (
+            "import json\n"
+            "from virel import ui\n"
+            "def counter():\n"
+            "    count = ui.state(0)\n"
+            "    return ui.Card(\n"
+            "        ui.Text(f'Count: {count}'),\n"
+            "        ui.Button('Add',\n"
+            "                  on_click=lambda: count.update(\n"
+            "                      lambda c: c + 1)),\n"
+            "    )\n"
+            "f = ui.render_fragment(counter)\n"
+            "print(json.dumps({'html': f.html, 'script': f.script}))\n")],
+        capture_output=True, text=True, check=True).stdout
+    import json
+    fragment = json.loads(payload)
+    page.set_content(
+        "<html><body><main>Existing content</main>"
+        + fragment["html"]
+        + f"<script type='module'>{fragment['script']}</script>"
+        + "</body></html>")
+    page.get_by_role("button", name="Add").click()
+    page.get_by_text("Count: 1").wait_for()

@@ -49,6 +49,20 @@ export function onDispose(fn) {
   disposers.push(fn);
 }
 
+// Run a mount under its own scope and return a disposer for exactly
+// the effects it created: embedded instances (custom elements,
+// fragments) unmount without touching each other (SPEC 13.4).
+export function captureScope(fn) {
+  const previous = mountScope;
+  mountScope = [];
+  fn();
+  const scope = mountScope;
+  mountScope = previous;
+  return () => {
+    for (const run of scope) run.disposed = true;
+  };
+}
+
 // Everything a page module binds belongs to its mount scope. Client
 // navigation disposes the scope before mounting the next page, so effects
 // from a previous page never fire against a swapped-out DOM.
@@ -122,8 +136,17 @@ export function computed(fn) {
   return { get: inner.get };
 }
 
+// Bindings resolve inside the current root: the document for pages,
+// a shadow root or container for embedded fragments and custom
+// elements (SPEC 13.4).
+let rootScope = document;
+
+export function setRoot(node) {
+  rootScope = node || document;
+}
+
 function el(id) {
-  const node = document.querySelector(`[data-v="${id}"]`);
+  const node = rootScope.querySelector(`[data-v="${id}"]`);
   if (!node) console.warn(`virel: missing element for binding id ${id}`);
   return node;
 }

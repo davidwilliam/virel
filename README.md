@@ -622,6 +622,19 @@ a streaming action. Everything wires to the same states and server
 actions as the rest of the framework, so swapping the model behind an
 action changes nothing in the UI.
 
+## Embedding in existing applications
+
+Virel drops into pages that are not Virel (SPEC 13.4).
+`ui.render_fragment(fn)` compiles a component to a static HTML fragment
+for any server template, plus a self-contained script when interactive;
+`ui.as_custom_element(fn, tag="virel-counter")` (or `virel element` on
+the CLI) compiles it to a standard custom element any framework or CMS
+can use as a plain tag. Both scope their bindings to their own
+container, so several instances coexist with independent state, render
+into a shadow root with the compiled stylesheet adopted, and dispose
+cleanly on disconnect. Islands cover the in-page form, and route-level
+mounting goes through `virel.integrations` (PathMount, ASGI).
+
 ## Notebooks
 
 `ui.preview(fn)` renders a page or component inline in Jupyter through
