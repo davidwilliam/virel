@@ -37,7 +37,7 @@ class Column:
         self.sortable = sortable
 
 
-def DataGrid(rows: list[dict], *, columns: list[Column],
+def DataGrid(rows: Any, *, columns: list[Column] | None = None,
              key: str | None = None, caption: str | None = None,
              filterable: bool = False, page_size: int | None = None,
              selectable: bool = False,
@@ -55,8 +55,10 @@ def DataGrid(rows: list[dict], *, columns: list[Column],
     adds a search box over all cells, page_size= pages the rows client
     side, and selectable= adds a checkbox column with select-all; the
     grid dispatches virel-selection with the selected row keys."""
-    if not isinstance(rows, list):
-        raise VirelCompileError("DataGrid rows must be a list of dicts.")
+    from .data import infer_columns, records
+    rows = records(rows)
+    if columns is None:
+        columns = infer_columns(rows)
     if not columns:
         raise VirelCompileError("DataGrid needs at least one Column.")
     for column in columns:

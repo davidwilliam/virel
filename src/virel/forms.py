@@ -21,6 +21,7 @@ server always revalidates against the model and returns field-scoped errors.
 from __future__ import annotations
 
 import dataclasses
+import enum
 import re
 import typing
 from typing import Any
@@ -51,7 +52,13 @@ def _pydantic_base_model() -> type | None:
         return None
 
 
+def _is_typeddict(annotation: Any) -> bool:
+    return typing.is_typeddict(annotation)
+
+
 def is_model_type(annotation: Any) -> bool:
+    if _is_typeddict(annotation):
+        return True
     if not isinstance(annotation, type):
         return False
     if dataclasses.is_dataclass(annotation):
@@ -92,10 +99,21 @@ def analyze_model(model: type) -> list[FieldSpec]:
         return _analyze_pydantic(model)
     if dataclasses.is_dataclass(model):
         return _analyze_dataclass(model)
+    if _is_typeddict(model):
+        return _analyze_typeddict(model)
     raise VirelCompileError(
-        f"ui.form requires a Pydantic model or a dataclass; got "
+        f"ui.form requires a Pydantic model, dataclass, or TypedDict; got "
         f"{model!r}. Define the input shape as a class with typed fields."
     )
+
+
+def _analyze_typeddict(model: type) -> list[FieldSpec]:
+    hints = typing.get_type_hints(model)
+    required_keys = getattr(model, "__required_keys__", frozenset(hints))
+    return [
+        _build_spec(name, annotation, name in required_keys, _MISSING)
+        for name, annotation in hints.items()
+    ]
 
 
 def _analyze_pydantic(model: type) -> list[FieldSpec]:
@@ -129,6 +147,9 @@ def _build_spec(name: str, annotation: Any, required: bool, default: Any) -> Fie
     if origin is typing.Literal:
         options = [str(v) for v in typing.get_args(annotation)]
         input_type = "select"
+    elif isinstance(annotation, type) and issubclass(annotation, enum.Enum):
+        options = [str(member.value) for member in annotation]
+        input_type = "select"
     elif annotation is bool:
         input_type = "checkbox"
     elif annotation in (int, float):
@@ -157,7 +178,7 @@ def validate_model(model: type, data: dict[str, Any]) -> tuple[Any, dict[str, st
             return model(**data), {}
         except Exception as error:
             return None, _pydantic_errors(error)
-    return _validate_dataclass(model, data)
+    return _validate_fields(model, data)
 
 
 def _pydantic_errors(error: Any) -> dict[str, str]:
@@ -169,7 +190,9 @@ def _pydantic_errors(error: Any) -> dict[str, str]:
     return field_errors or {"_root": str(error)}
 
 
-def _validate_dataclass(model: type, data: dict[str, Any]) -> tuple[Any, dict[str, str]]:
+def _validate_fields(model: type, data: dict[str, Any]) -> tuple[Any, dict[str, str]]:
+    """Shared validation for dataclasses and TypedDicts: both construct
+    from keyword values once every field coerces."""
     specs = analyze_model(model)
     errors: dict[str, str] = {}
     values: dict[str, Any] = {}
@@ -195,6 +218,12 @@ def _validate_dataclass(model: type, data: dict[str, Any]) -> tuple[Any, dict[st
 
 
 def _coerce(spec: FieldSpec, raw: Any) -> tuple[Any, str | None]:
+    annotation = spec.annotation
+    if isinstance(annotation, type) and issubclass(annotation, enum.Enum):
+        for member in annotation:
+            if str(member.value) == str(raw):
+                return member, None
+        return None, f"Must be one of: {', '.join(spec.options or [])}."
     if spec.options is not None:
         if str(raw) not in spec.options:
             return None, f"Must be one of: {', '.join(spec.options)}."

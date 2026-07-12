@@ -328,6 +328,24 @@ security policy handled automatically; `ui.Font(..., src=...)` registers
 font files the project serves itself. The lower-level `ui.GoogleFont` and
 `ui.FontFace` entries remain available on `Theme(fonts=[...])`.
 
+## Working with Python data
+
+The shapes Python programs already hold flow straight into the UI
+(SPEC 12.1). `ui.records` normalizes lists of dicts, dataclasses,
+Pydantic models, TypedDicts, and NamedTuples, plus pandas, Polars, and
+Arrow tables and NumPy structured arrays, into plain records; detection
+is duck-typed, so none of those libraries becomes a dependency. The
+data grid accepts any of them directly and infers typed columns from
+the values, chart series accept any numeric sequence, and `ui.form`
+models can be Pydantic classes, dataclasses, or TypedDicts, with enum
+fields becoming validated selects:
+
+```python
+ui.DataGrid(df, key="model")               # a DataFrame, columns inferred
+ui.Chart("line", [ui.Series("Pass rate", points=scores)])  # a NumPy array
+form = ui.form(InviteInput, submit=invite) # Pydantic, dataclass, TypedDict
+```
+
 ## Loading data
 
 `ui.resource` turns a server action into a reactive value with loading and

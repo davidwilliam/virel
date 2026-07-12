@@ -89,6 +89,7 @@ from .elements import (
 )
 from .channels import Channel, ChannelClosed, channel, connect
 from .charts import Chart, Series
+from .data import records
 from .context import Context, context
 from .datagrid import Column, DataGrid
 from .elements import Each, Island, Suspense, effect, upload
@@ -152,7 +153,7 @@ __all__ = [
     "Node", "VirelCompileError", "test",
     "messages", "t",
     "format_number", "format_currency", "format_percent", "format_date",
-    "locale_sorted", "collation_key",
+    "locale_sorted", "collation_key", "records",
     # layout
     "Page", "Stack", "Row", "Grid", "Container", "Section", "Card",
     "Wrap", "Cluster", "Center", "Sidebar", "AspectRatio", "ScrollArea",

@@ -106,8 +106,23 @@ def _forms_tab() -> ui.Node:
     )
 
 
+import dataclasses as _dataclasses
+import datetime as _datetime
+
+
+@_dataclasses.dataclass
+class _RunRecord:
+    """Rows reach the grid as typed records (SPEC 12.1): dataclasses,
+    Pydantic models, TypedDicts, and DataFrames all normalize the same
+    way through ui.records."""
+    model: str
+    dataset: str
+    score: float
+    started: _datetime.date
+
+
 _RUN_ROWS = [
-    {"model": f"{name}", "dataset": ds, "score": score, "started": day}
+    _RunRecord(name, ds, score, _datetime.date.fromisoformat(day))
     for name, ds, score, day in [
         ("atlas-large", "qa-hard-v2", 0.93, "2026-07-10"),
         ("atlas-small", "qa-hard-v2", 0.87, "2026-07-11"),

@@ -33,14 +33,21 @@ class Series:
         if (points is None) == (value is None):
             raise VirelCompileError(
                 "Series takes exactly one of points=[...] or value=.")
-        values = points if points is not None else [value]
+        values = list(points) if points is not None else [value]
         cleaned = []
         for point in values:
-            if isinstance(point, bool) or not isinstance(point, (int, float)):
+            # Any numeric sequence works: lists, NumPy arrays, pandas
+            # Series (SPEC 12.1). Booleans are rejected, not coerced.
+            if isinstance(point, bool):
                 raise VirelCompileError(
                     f"Series {label!r} points must be numbers, "
                     f"got {point!r}.")
-            cleaned.append(float(point))
+            try:
+                cleaned.append(float(point))
+            except (TypeError, ValueError):
+                raise VirelCompileError(
+                    f"Series {label!r} points must be numbers, "
+                    f"got {point!r}.") from None
         self.label = label
         self.points = cleaned
         self.value = cleaned[0] if points is None else None
