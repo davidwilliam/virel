@@ -13,4 +13,5 @@ StarRating = ui.web_component(
         "value": float,
         "max": float,
     },
+    events=["rating-changed"],
 )

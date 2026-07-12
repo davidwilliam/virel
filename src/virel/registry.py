@@ -326,7 +326,9 @@ class ClientFunction:
 class WebComponentType:
     """Typed binding for a standard web component (SPEC 13.1)."""
 
-    def __init__(self, tag: str, module: str, props: dict[str, type] | None = None) -> None:
+    def __init__(self, tag: str, module: str,
+                 props: dict[str, type] | None = None,
+                 events: list[str] | None = None) -> None:
         if "-" not in tag:
             raise VirelCompileError(
                 f"Custom element tag {tag!r} must contain a hyphen (web "
@@ -335,6 +337,9 @@ class WebComponentType:
         self.tag = tag
         self.module = module
         self.props = props or {}
+        # Declared event names (SPEC 13.1). When present, on_* handlers
+        # are validated against them.
+        self.events = list(events or [])
 
     def __call__(self, **props: Any) -> "Any":
         from .nodes import Element
@@ -344,7 +349,13 @@ class WebComponentType:
         bound: dict[str, Any] = {}
         for key, value in props.items():
             if key.startswith("on_"):
-                events[key[3:].replace("_", "-")] = elements._handler(value)
+                event_name = key[3:].replace("_", "-")
+                if self.events and event_name not in self.events:
+                    raise VirelCompileError(
+                        f"Web component {self.tag!r} declares no event "
+                        f"{event_name!r}. Declared events: "
+                        f"{', '.join(sorted(self.events))}.")
+                events[event_name] = elements._handler(value)
                 continue
             if self.props and key not in self.props:
                 raise VirelCompileError(
@@ -631,5 +642,7 @@ def component(fn: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
-def web_component(tag: str, module: str, props: dict[str, type] | None = None) -> WebComponentType:
-    return WebComponentType(tag, module, props)
+def web_component(tag: str, module: str,
+                  props: dict[str, type] | None = None,
+                  events: list[str] | None = None) -> WebComponentType:
+    return WebComponentType(tag, module, props, events)

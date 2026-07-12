@@ -104,3 +104,125 @@ def test_generated_binding_works_in_a_page():
 
     view = ui.test.render(page)
     assert "chosen:" in view.query_text()
+
+
+def _fake_npm(files: dict[str, str], package="@vendor/rating",
+              version="2.1.0"):
+    """A fake registry fetcher serving one package built in memory."""
+    import io
+    import json as _json
+    import tarfile
+
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for name, content in files.items():
+            data = content.encode()
+            info = tarfile.TarInfo(name=f"package/{name}")
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+    tarball = buffer.getvalue()
+    metadata = _json.dumps({
+        "dist-tags": {"latest": version},
+        "versions": {version: {
+            "dist": {"tarball": "https://registry.npmjs.org/fake.tgz"}}},
+    }).encode()
+
+    def fetch(url):
+        return tarball if url.endswith(".tgz") else metadata
+
+    return fetch
+
+
+_MANIFEST = """{
+  "schemaVersion": "1.0.0",
+  "modules": [{
+    "kind": "javascript-module",
+    "path": "dist/rating.js",
+    "declarations": [{
+      "kind": "class", "customElement": true, "tagName": "vendor-rating",
+      "summary": "A rating control.",
+      "attributes": [{"name": "value", "type": {"text": "number"}}],
+      "events": [{"name": "rating-changed"}]
+    }]
+  }]
+}"""
+
+
+def test_bind_npm_vendors_and_generates(tmp_path):
+    from virel.bind import bind_npm
+
+    fetch = _fake_npm({
+        "package.json": '{"name": "@vendor/rating", "module": '
+                        '"dist/rating.js", "style": "dist/rating.css", '
+                        '"customElements": "custom-elements.json"}',
+        "custom-elements.json": _MANIFEST,
+        "dist/rating.js": "customElements.define('vendor-rating', "
+                          "class extends HTMLElement {});",
+        "dist/rating.css": ".vendor-rating { display: block; }",
+    })
+    source, vendor_dir = bind_npm("@vendor/rating", tmp_path, fetcher=fetch)
+    assert (vendor_dir / "dist" / "rating.js").exists()
+    assert 'ui.use_static("/vendor/rating", _VENDOR)' in source
+    assert '@import url("/vendor/rating/dist/rating.css");' in source
+    assert 'module="/vendor/rating/dist/rating.js"' in source
+    assert 'events=["rating-changed"]' in source
+    assert 'ui.Island(load="visible")' in source  # lazy-loading guidance
+    assert "@vendor/rating@2.1.0" in source
+
+    # The generated file is importable and registers the mount.
+    bindings = tmp_path / "app" / "bindings_rating.py"
+    bindings.parent.mkdir()
+    bindings.write_text(source)
+    import subprocess
+    import sys
+    result = subprocess.run(
+        [sys.executable, "-c",
+         f"import sys; sys.path.insert(0, {str(tmp_path / 'app')!r}); "
+         "import bindings_rating; "
+         "print(bindings_rating.VendorRating.tag)"],
+        capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "vendor-rating"
+
+
+def test_bind_npm_refuses_hostile_tarballs(tmp_path):
+    from virel.bind import bind_npm
+
+    fetch = _fake_npm({"../escape.txt": "outside"})
+    with pytest.raises(VirelCompileError, match="escapes the package"):
+        bind_npm("@vendor/rating", tmp_path, fetcher=fetch)
+
+    fetch = _fake_npm({"package.json": "{}"})
+    with pytest.raises(VirelCompileError, match="custom elements manifest"):
+        bind_npm("@vendor/rating", tmp_path, fetcher=fetch)
+
+    with pytest.raises(VirelCompileError, match="Invalid npm package"):
+        bind_npm("../evil", tmp_path, fetcher=fetch)
+
+
+def test_declared_events_are_validated():
+    Rating = ui.web_component(tag="vendor-rating",
+                              module="/vendor/rating/dist/rating.js",
+                              props={"value": float},
+                              events=["rating-changed"])
+    score = None
+
+    @ui.page("/rated")
+    def rated():
+        current = ui.state(3)
+        return ui.Page(Rating(
+            value=current,
+            on_rating_changed=ui.set_from_event(current, "detail.value")))
+
+    from virel.compiler import compile_page
+    from virel.registry import active_registry
+    compile_page(active_registry().pages["/rated"])
+
+    @ui.page("/rated-bad")
+    def rated_bad():
+        current = ui.state(0)
+        return ui.Page(Rating(
+            on_exploded=ui.set_from_event(current, "detail.x")))
+
+    with pytest.raises(VirelCompileError, match="declares no event"):
+        compile_page(active_registry().pages["/rated-bad"])

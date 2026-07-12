@@ -97,6 +97,8 @@ virel routes           list routes and rendering modes
 virel inspect <route>  print the intermediate representation as JSON
 virel schema <name>    print a component schema as JSON
 virel bind <manifest>  generate typed bindings from custom-elements.json
+virel bind npm <pkg>   fetch a package from npm, vendor it, and bind it
+virel element <fn>     export a component as a standard custom element
 virel messages         extract ui.t keys and audit catalogs per locale
 ```
 
