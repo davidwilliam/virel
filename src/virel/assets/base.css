@@ -771,7 +771,14 @@ html[data-theme="dark"] .v-brand-logo-dark { display: block; }
 .v-hero-copy { display: flex; flex-direction: column; gap: calc(var(--v-space) * 5); }
 .v-hero-center .v-hero-copy { align-items: center; text-align: center; }
 .v-hero-start .v-hero-copy { align-items: flex-start; }
-.v-hero-eyebrow { display: inline-flex; }
+.v-hero-eyebrow {
+  display: inline-flex;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--v-accent);
+}
 .v-hero-title {
   font-size: clamp(2.2rem, 1.5rem + 3.2vw, 3.4rem);
   max-width: 21ch;
