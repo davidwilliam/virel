@@ -1,0 +1,75 @@
+name: Release
+
+# Publishes to PyPI on a signed tag using trusted publishing (OIDC, no
+# stored API token) and attaches build provenance plus an SBOM. See
+# SECURITY.md for the supply-chain guarantees this workflow upholds.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Verify the tag is signed
+        run: git verify-tag "${GITHUB_REF_NAME}"
+
+      - name: Build the distribution
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+
+      - name: Generate the SBOM
+        run: |
+          python -m pip install -e .
+          virel sbom -o dist/sbom.json || python -c "import json,pathlib; from virel.sbom import generate_sbom; pathlib.Path('dist/sbom.json').write_text(json.dumps(generate_sbom(pathlib.Path('.')), indent=2))"
+
+      - name: Record artifact hashes for provenance
+        id: hash
+        run: |
+          cd dist
+          echo "hashes=$(sha256sum *.whl *.tar.gz | base64 -w0)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  provenance:
+    needs: [build]
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
+    with:
+      base64-subjects: ${{ needs.build.outputs.hashes }}
+
+  publish:
+    needs: [build, provenance]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Remove non-distribution files before publishing
+        run: rm -f dist/sbom.json
+
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1

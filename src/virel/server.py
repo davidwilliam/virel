@@ -595,8 +595,10 @@ class VirelASGIApp:
 
     async def _run_guards(self, scope: Scope, specific: Any) -> Any:
         """Evaluate the default guard then the route guard. Returns None
-        to allow, or a Redirect/Deny decision."""
+        to allow, or a Redirect/Deny decision. Set-Cookie headers a guard
+        queued are stored on ``self._pending_cookies`` for the caller."""
         from .registry import Deny, Redirect
+        self._pending_cookies = []
         guards = [g for g in (self.registry.default_guard, specific) if g]
         if not guards:
             return None
@@ -605,6 +607,7 @@ class VirelASGIApp:
             decision = guard(request)
             if inspect.isawaitable(decision):
                 decision = await decision
+            self._pending_cookies = list(request.response_cookies)
             if decision is None:
                 continue
             if isinstance(decision, (Redirect, Deny)):
@@ -614,6 +617,10 @@ class VirelASGIApp:
                 "must return None, ui.redirect(path), or ui.deny()."
             )
         return None
+
+    def _cookie_headers(self) -> list:
+        return [(b"set-cookie", c.encode("latin-1"))
+                for c in getattr(self, "_pending_cookies", [])]
 
     def _negotiate_locale(self, scope: Scope) -> str | None:
         """Pick the locale for a request: ?lang= override, then
@@ -698,12 +705,14 @@ class VirelASGIApp:
         page, params = matched
         from .registry import Deny, Redirect
         decision = await self._run_guards(scope, page.guard)
+        cookies = self._cookie_headers()
         if isinstance(decision, Redirect):
             await send({"type": "http.response.start", "status": 303,
-                        "headers": _headers("text/plain; charset=utf-8",
-                                            length=0,
-                                            extra=[(b"location",
-                                                    decision.to.encode("latin-1"))])})
+                        "headers": _headers(
+                            "text/plain; charset=utf-8", length=0,
+                            extra=[(b"location",
+                                    decision.to.encode("latin-1"))]
+                            + cookies)})
             await send({"type": "http.response.body", "body": b""})
             return
         if isinstance(decision, Deny):
@@ -733,6 +742,7 @@ class VirelASGIApp:
             connect_src=self.registry.policy.get("csp_connect_src", "'self'"),
             google_fonts=bool(google_fonts(self.registry.theme)))
         headers = [(b"content-security-policy", csp.encode("latin-1"))]
+        headers.extend(cookies)
         if locale is not None:
             headers.append((b"vary", b"accept-language"))
         if result.streamed_resources:
@@ -837,6 +847,7 @@ class VirelASGIApp:
 
         from .registry import Deny, Redirect
         decision = await self._run_guards(scope, action.guard)
+        cookies = self._cookie_headers()
         if isinstance(decision, Redirect):
             # Redirects are meaningless for JSON calls; treat as
             # authentication required.
@@ -897,7 +908,7 @@ class VirelASGIApp:
             if replay is not None:
                 await self._send_text(send, 200, replay,
                                       content_type="application/json; charset=utf-8",
-                                      extra=_action_headers(0.0, replayed=True))
+                                      extra=_action_headers(0.0, replayed=True) + cookies)
                 return
 
         import time
@@ -916,7 +927,7 @@ class VirelASGIApp:
             _idempotency_store(action.name, idempotency_key, payload)
         await self._send_text(send, 200, payload,
                               content_type="application/json; charset=utf-8",
-                              extra=_action_headers(duration))
+                              extra=_action_headers(duration) + cookies)
 
     async def _serve_upload(self, action: Any, body: bytes,
                             content_type: str, send: Send) -> None:

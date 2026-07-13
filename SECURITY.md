@@ -38,9 +38,25 @@ maintained release branches yet.
   `Cross-Origin-Resource-Policy` headers by default.
 - Static file serving resolves paths and refuses anything outside the
   public directory.
+- Cookies set from a guard are `HttpOnly`, `Secure`, and `SameSite=Lax` by
+  default; `SameSite=None` is refused without `Secure`, and cookie names
+  and values are validated so a value cannot inject additional attributes.
 
 Escape hatches (`ui.unsafe_html`, raw JavaScript integrations) are explicit
 and auditable; grepping for `unsafe` finds every use.
+
+## Supply chain
+
+- Official releases are published to PyPI with trusted publishing (OIDC,
+  no long-lived token), from a signed source tag, with a SLSA provenance
+  attestation over the built artifacts.
+- Every build emits a CycloneDX SBOM (`virel sbom`, and `dist/sbom.json`
+  during `virel build`) and reproducible build metadata
+  (`dist/build.json`: component versions plus content digests, no
+  timestamps) so a build can be attested and reproduced.
+- Pull requests run automated dependency review; a change that adds a
+  dependency with a known vulnerability or an incompatible license fails
+  the gate. The framework itself ships zero runtime dependencies.
 
 ## Out of scope
 

@@ -212,8 +212,21 @@ def cmd_build(args: argparse.Namespace) -> None:
     }
     (ir_dir.parent / "actions.json").write_text(json.dumps(manifest, indent=2))
     run_post_build(dist)
+
+    from .sbom import build_metadata, digest_directory, generate_sbom
+    app_conf = config.get("app", {})
+    app_name = app_conf.get("name", "virel-app")
+    app_version = str(app_conf.get("version", "0.0.0"))
+    sbom_doc = generate_sbom(root, app_name=app_name, app_version=app_version)
+    (dist / "sbom.json").write_text(json.dumps(sbom_doc, indent=2))
+    meta = build_metadata(root, dist_digest=digest_directory(dist))
+    (dist / "build.json").write_text(json.dumps(meta, indent=2))
+
     print(f"UI IR written to {ir_dir}")
     print(f"Server action manifest written to {ir_dir.parent / 'actions.json'}")
+    print(f"SBOM ({len(sbom_doc['components'])} components) written to "
+          f"{dist / 'sbom.json'}")
+    print(f"Build metadata written to {dist / 'build.json'}")
 
 
 def _check_dependency_allowlist(root: Path, allowlist) -> list[str]:
@@ -472,6 +485,24 @@ def cmd_deploy(args: argparse.Namespace) -> None:
           "to deploy.")
 
 
+def cmd_sbom(args: argparse.Namespace) -> None:
+    """Emit a CycloneDX SBOM of the application and its dependencies
+    (SPEC 18.2)."""
+    root = Path.cwd()
+    config = _load_app(root)
+    app_conf = config.get("app", {})
+    from .sbom import generate_sbom
+    doc = generate_sbom(root, app_name=app_conf.get("name", "virel-app"),
+                        app_version=str(app_conf.get("version", "0.0.0")))
+    text = json.dumps(doc, indent=2)
+    if args.output:
+        Path(args.output).write_text(text)
+        print(f"SBOM ({len(doc['components'])} components) written to "
+              f"{args.output}")
+    else:
+        print(text)
+
+
 def cmd_inspect(args: argparse.Namespace) -> None:
     _load_app(Path.cwd())
     registry = active_registry()
@@ -710,6 +741,11 @@ def main(argv: list[str] | None = None) -> None:
     p_deploy.add_argument("--target", choices=["asgi", "static"],
                           default="asgi")
     p_deploy.set_defaults(fn=cmd_deploy)
+
+    p_sbom = sub.add_parser(
+        "sbom", help="emit a CycloneDX SBOM of the app and its dependencies")
+    p_sbom.add_argument("-o", "--output", help="write to a file instead of stdout")
+    p_sbom.set_defaults(fn=cmd_sbom)
 
     p_inspect = sub.add_parser("inspect", help="print the UI IR for a route")
     p_inspect.add_argument("route")

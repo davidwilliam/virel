@@ -35,6 +35,42 @@ class Request:
     headers: dict[str, str] = dataclass_field(default_factory=dict)
     query: dict[str, str] = dataclass_field(default_factory=dict)
     cookies: dict[str, str] = dataclass_field(default_factory=dict)
+    # Set-Cookie headers a guard queued for the response.
+    response_cookies: list[str] = dataclass_field(default_factory=list)
+
+    def set_cookie(self, name: str, value: str, *, max_age: int | None = None,
+                   path: str = "/", http_only: bool = True,
+                   secure: bool = True, same_site: str = "Lax") -> None:
+        """Queue a Set-Cookie on the response with secure defaults
+        (SPEC 18.2: secure cookies, same-site defaults). HttpOnly and
+        Secure are on by default and SameSite is Lax; a session cookie
+        omits max_age."""
+        import re as _re
+        if not _re.fullmatch(r"[A-Za-z0-9_\-]+", name):
+            raise VirelCompileError(f"Invalid cookie name {name!r}.")
+        if same_site not in ("Lax", "Strict", "None"):
+            raise VirelCompileError(
+                "cookie same_site must be 'Lax', 'Strict', or 'None'.")
+        if same_site == "None" and not secure:
+            raise VirelCompileError(
+                "SameSite=None cookies must be Secure.")
+        # Values are percent-safe: reject control and separator chars.
+        if _re.search(r'[;,\s"\\]', value):
+            raise VirelCompileError(
+                "Cookie value contains characters that need encoding; "
+                "encode it first.")
+        parts = [f"{name}={value}", f"Path={path}", f"SameSite={same_site}"]
+        if max_age is not None:
+            parts.append(f"Max-Age={int(max_age)}")
+        if http_only:
+            parts.append("HttpOnly")
+        if secure:
+            parts.append("Secure")
+        self.response_cookies.append("; ".join(parts))
+
+    def clear_cookie(self, name: str, *, path: str = "/") -> None:
+        """Queue a cookie deletion on the response."""
+        self.set_cookie(name, "", max_age=0, path=path)
 
 
 class Redirect:
