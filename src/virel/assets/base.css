@@ -219,8 +219,14 @@ p { margin: 0; }
 .v-example {
   border: 1px solid var(--v-border);
   border-radius: var(--v-radius-lg);
-  overflow: hidden;
   background: var(--v-surface-1);
+}
+/* The result pane must not clip, so overlays (menus, popovers, tooltips)
+   can escape the example; only the code pane clips, to keep its corners
+   rounded. The first and last children carry the container's rounding. */
+.v-example > :first-child {
+  border-top-left-radius: var(--v-radius-lg);
+  border-top-right-radius: var(--v-radius-lg);
 }
 .v-example-bar {
   padding: calc(var(--v-space) * 2.5) calc(var(--v-space) * 4);
@@ -230,7 +236,12 @@ p { margin: 0; }
   border-bottom: 1px solid var(--v-border);
 }
 .v-example-result { padding: calc(var(--v-space) * 6) calc(var(--v-space) * 5); }
-.v-example-code { border-top: 1px solid var(--v-border); }
+.v-example-code {
+  border-top: 1px solid var(--v-border);
+  border-bottom-left-radius: var(--v-radius-lg);
+  border-bottom-right-radius: var(--v-radius-lg);
+  overflow: hidden;
+}
 .v-example-code .v-code {
   border: 0;
   border-radius: 0;
