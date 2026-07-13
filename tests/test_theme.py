@@ -15,6 +15,29 @@ def test_stylesheet_covers_all_three_modes():
     assert ':root:not([data-theme="light"])' in css
 
 
+def test_warning_color_tokens_emitted_in_both_modes():
+    css = build_stylesheet(Theme())
+    # Base and soft warning tokens exist alongside the strong variant.
+    assert "--v-warning:" in css
+    assert "--v-warning-soft:" in css
+    assert "--v-warning-strong:" in css
+    # And a success-strong token now backs the success badge.
+    assert "--v-success-strong:" in css
+
+
+def test_warning_color_role_is_themeable():
+    from virel.theme import Color
+    theme = Theme(color={"warning": Color.scale("#eab308")})
+    css = build_stylesheet(theme)
+    assert "--v-warning:" in css
+
+
+def test_unknown_color_role_still_rejected():
+    import pytest
+    with pytest.raises(ValueError):
+        Theme(color={"bogus": "#fff"})
+
+
 def test_pages_apply_stored_preference_before_first_paint():
     @ui.page("/")
     def home():

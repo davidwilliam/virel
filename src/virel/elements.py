@@ -1336,14 +1336,23 @@ def Checkbox(state: Any, *, label: str) -> Element:
     return Element("label", children, attrs={"class": "v-field-inline"})
 
 
+_STATUS_INTENTS = ("neutral", "primary", "success", "warning", "danger")
+
+
 def Alert(content: Any, *, intent: str = "neutral") -> Element:
-    if intent not in _INTENTS + ("success",):
-        raise VirelCompileError(f"Alert intent {intent!r} is not valid.")
+    if intent not in _STATUS_INTENTS:
+        raise VirelCompileError(
+            f"Alert intent {intent!r} is not valid; expected one of "
+            f"{', '.join(_STATUS_INTENTS)}.")
     return Element("div", normalize_children((content,)),
                    attrs={"class": f"v-alert v-alert-{intent}", "role": "status"})
 
 
 def Badge(content: Any, *, intent: str = "neutral") -> Element:
+    if intent not in _STATUS_INTENTS:
+        raise VirelCompileError(
+            f"Badge intent {intent!r} is not valid; expected one of "
+            f"{', '.join(_STATUS_INTENTS)}.")
     return Element("span", normalize_children((content,)),
                    attrs={"class": f"v-badge v-badge-{intent}"})
 

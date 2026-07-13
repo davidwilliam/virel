@@ -195,6 +195,7 @@ class Theme:
     danger: str = "#dc2626"
     danger_strong: str = "#b91c1c"
     success: str = "#16a34a"
+    warning: str = "#d97706"
     space_base: int = 4  # px
     radius: dict[str, int] = field(default_factory=lambda: {"sm": 4, "md": 8, "lg": 14})
     font_body: str = (
@@ -234,10 +235,12 @@ class Theme:
                 setattr(self, f"font_{role}", font)
 
         color = self.color or {}
-        unknown = set(color) - {"accent", "danger", "success", "surface"}
+        unknown = set(color) - {"accent", "danger", "success", "warning",
+                                "surface"}
         if unknown:
             raise ValueError(f"Unknown color roles {sorted(unknown)!r}; "
-                             "expected accent, danger, success, surface.")
+                             "expected accent, danger, success, warning, "
+                             "surface.")
 
         def resolve(role: str, base: str, **derived: str | None) -> ColorScale:
             value = color.get(role)
@@ -252,12 +255,14 @@ class Theme:
         self._danger = resolve("danger", self.danger,
                                strong=self.danger_strong)
         self._success = resolve("success", self.success)
+        self._warning = resolve("warning", self.warning)
         self.accent = self._accent.base
         self.accent_strong = self._accent.strong
         self.accent_fg = self._accent.fg
         self.danger = self._danger.base
         self.danger_strong = self._danger.strong
         self.success = self._success.base
+        self.warning = self._warning.base
         surface = color.get("surface")
         self._surface = surface if isinstance(surface, (str, type(None))) \
             else surface.base
@@ -333,6 +338,7 @@ class Theme:
             "--v-accent-soft": self._accent.soft,
             "--v-danger-soft": self._danger.soft,
             "--v-success-soft": self._success.soft,
+            "--v-warning-soft": self._warning.soft,
             "--v-ring": self._accent.ring,
             "--v-shadow-sm": "0 1px 2px rgba(22, 24, 29, 0.05)",
             "--v-shadow-md": ("0 2px 4px rgba(22, 24, 29, 0.05), "
@@ -364,6 +370,7 @@ class Theme:
             "--v-accent-soft": self._accent.soft_dark,
             "--v-danger-soft": self._danger.soft_dark,
             "--v-success-soft": self._success.soft_dark,
+            "--v-warning-soft": self._warning.soft_dark,
             "--v-ring": self._accent.ring_dark,
             "--v-shadow-sm": "0 1px 2px rgba(0, 0, 0, 0.3)",
             "--v-shadow-md": ("0 2px 4px rgba(0, 0, 0, 0.3), "
@@ -392,6 +399,9 @@ class Theme:
             "--v-danger": self._danger.base,
             "--v-danger-strong": self._danger.strong,
             "--v-success": self._success.base,
+            "--v-success-strong": self._success.strong,
+            "--v-warning": self._warning.base,
+            "--v-warning-strong": self._warning.strong,
         }
         dark |= {
             "--v-accent": self._accent.base_dark,
@@ -400,6 +410,9 @@ class Theme:
             "--v-danger": self._danger.base_dark,
             "--v-danger-strong": self._danger.strong_dark,
             "--v-success": self._success.base_dark,
+            "--v-success-strong": self._success.strong_dark,
+            "--v-warning": self._warning.base_dark,
+            "--v-warning-strong": self._warning.strong_dark,
         }
         shared = {
             "--v-space": f"{self.space_base}px",

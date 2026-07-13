@@ -68,6 +68,29 @@ def test_example_without_source_is_an_error():
         ui.Example(node)
 
 
+def test_badge_success_and_warning_intents():
+    def page():
+        return ui.Page(
+            ui.Badge("Healthy", intent="success"),
+            ui.Badge("Degraded", intent="warning"))
+
+    html = _compile(page).html
+    assert 'class="v-badge v-badge-success"' in html
+    assert 'class="v-badge v-badge-warning"' in html
+
+
+def test_alert_warning_intent():
+    def page():
+        return ui.Page(ui.Alert("Heads up", intent="warning"))
+
+    assert 'class="v-alert v-alert-warning"' in _compile(page).html
+
+
+def test_badge_rejects_unknown_intent():
+    with pytest.raises(VirelCompileError):
+        ui.Badge("x", intent="bogus")
+
+
 def test_tabs_switch_locally():
     def page():
         return ui.Page(ui.Tabs({

@@ -284,6 +284,7 @@ a.v-btn { text-decoration: none; }
   font-size: 0.925rem;
 }
 .v-alert-success { border-color: var(--v-success); background: var(--v-success-soft); }
+.v-alert-warning { border-color: var(--v-warning); background: var(--v-warning-soft); }
 .v-alert-danger { border-color: var(--v-danger); background: var(--v-danger-soft); }
 .v-alert-primary { border-color: var(--v-accent); background: var(--v-accent-soft); }
 
@@ -308,6 +309,16 @@ a.v-btn { text-decoration: none; }
   background: var(--v-danger-soft);
   color: var(--v-danger-strong);
   border-color: color-mix(in srgb, var(--v-danger) 30%, transparent);
+}
+.v-badge-success {
+  background: var(--v-success-soft);
+  color: var(--v-success-strong);
+  border-color: color-mix(in srgb, var(--v-success) 30%, transparent);
+}
+.v-badge-warning {
+  background: var(--v-warning-soft);
+  color: var(--v-warning-strong);
+  border-color: color-mix(in srgb, var(--v-warning) 30%, transparent);
 }
 
 .v-empty {
