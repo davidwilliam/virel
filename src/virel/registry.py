@@ -446,6 +446,8 @@ class AppRegistry:
         self.custom_css: list[str] = []
         # Strict accessibility: audit warnings become compile errors.
         self.strict_accessibility = False
+        # Observability enabled via ui.use_telemetry (SPEC 19).
+        self.telemetry = False
         # Policy switches (SPEC 13.3, 18): escape hatches and plugin
         # capabilities that a deployment may prohibit.
         self.policy: dict[str, Any] = {}
@@ -479,6 +481,8 @@ def fresh_registry() -> AppRegistry:
     """Replace the global registry (test isolation, multi-app tooling)."""
     global _registry
     _registry = AppRegistry()
+    from . import telemetry
+    telemetry.reset()
     return _registry
 
 
@@ -601,6 +605,20 @@ def use_policy(**flags: Any) -> None:
     # accessibility_strict is also the audit's strict switch.
     if "accessibility_strict" in flags:
         registry.strict_accessibility = bool(flags["accessibility_strict"])
+
+
+def use_telemetry(*, service_name: str = "virel-app", propagate: bool = True,
+                  exporter: Any = None) -> None:
+    """Turn on observability (SPEC 19): distributed tracing for page
+    renders, server actions, resources, and streams, with W3C trace
+    context propagated to and from the browser. When the OpenTelemetry
+    API is installed, spans are also emitted to it; ``exporter`` is an
+    optional OpenTelemetry SpanExporter to wire up a backend. With
+    OpenTelemetry absent, tracing still runs and feeds the dev tools."""
+    from . import telemetry
+    telemetry.configure(enabled=True, service_name=service_name,
+                        propagate=propagate, exporter=exporter)
+    active_registry().telemetry = True
 
 
 def use_accessibility(*, strict: bool = True) -> None:

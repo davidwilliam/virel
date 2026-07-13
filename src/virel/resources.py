@@ -155,18 +155,22 @@ class Resource:
     # -- execution (server rendering and tests) -----------------------------------
 
     def _run_action(self, env: dict[str, Any]) -> tuple[Any, Any]:
+        from . import telemetry
         from .expr import _collect_stream
         from .registry import to_jsonable
         args = {k: v.evaluate(env) for k, v in self.params.items()}
         try:
-            kwargs = self.action.prepare(args)
-            if self.streaming:
-                chunks = _collect_stream(self.action.fn(**kwargs))
-                return "".join(str(c) for c in chunks), None
-            result = self.action.fn(**kwargs)
-            if inspect_isawaitable(result):
-                result = _run_coroutine(result)
-            return to_jsonable(result), None
+            with telemetry.span(f"resource {self.action.name}", kind="server",
+                                **{"virel.action": self.action.name,
+                                   "virel.streaming": self.streaming}):
+                kwargs = self.action.prepare(args)
+                if self.streaming:
+                    chunks = _collect_stream(self.action.fn(**kwargs))
+                    return "".join(str(c) for c in chunks), None
+                result = self.action.fn(**kwargs)
+                if inspect_isawaitable(result):
+                    result = _run_coroutine(result)
+                return to_jsonable(result), None
         except Exception as error:
             return None, f"{type(error).__name__}: {error}"
 

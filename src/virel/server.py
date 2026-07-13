@@ -422,9 +422,22 @@ class VirelASGIApp:
         path = scope["path"]
         method = scope["method"]
         from .context import request_context
+        from . import telemetry
+        traceparent = None
+        for key, value in scope.get("headers", []):
+            if key == b"traceparent":
+                traceparent = value.decode("latin-1")
+                break
+        _ctx, _trace_token = telemetry.start_trace(traceparent)
         try:
             with request_context():
-                await self._dispatch(path, method, scope, receive, send)
+                if telemetry.is_enabled() or self.dev:
+                    with telemetry.span(f"{method} {path}", kind="server",
+                                        **{"http.method": method,
+                                           "http.route": path}):
+                        await self._dispatch(path, method, scope, receive, send)
+                else:
+                    await self._dispatch(path, method, scope, receive, send)
         except (ConnectionResetError, BrokenPipeError):
             # The client went away mid-response (closed a live stream,
             # navigated off). Nothing to send to.
@@ -442,6 +455,8 @@ class VirelASGIApp:
                     _error_html(500, "Something went wrong",
                                 "The error has been logged."),
                     content_type="text/html; charset=utf-8")
+        finally:
+            telemetry.end_trace(_trace_token)
 
     async def _lifespan(self, receive: Receive, send: Send) -> None:
         while True:
@@ -719,22 +734,26 @@ class VirelASGIApp:
             await self._send_text(send, decision.status, decision.message)
             return
         locale = self._negotiate_locale(scope)
-        if page.is_dynamic or page.query_params:
-            query = _parse_query(scope.get("query_string", b""))
-            for name, default in page.query_params.items():
-                params[name] = _convert_query(query.get(name),
-                                              page.query_types.get(name, str),
-                                              default)
-            result = compile_page(page, params=params, dev=self.dev,
-                                  inline_js=True, locale=locale,
-                                  hashed=not self.dev)
-        else:
-            result = self._compiled(path, locale)
-            if result.needs_request_render:
-                # Server-rendered resources embed data fetched at render
-                # time; compile fresh for every request.
-                result = compile_page(page, dev=self.dev, inline_js=True,
-                                      locale=locale, hashed=not self.dev)
+        from . import telemetry
+        with telemetry.span("server.render", kind="server",
+                            **{"http.route": page.path}) as _render:
+            if page.is_dynamic or page.query_params:
+                query = _parse_query(scope.get("query_string", b""))
+                for name, default in page.query_params.items():
+                    params[name] = _convert_query(query.get(name),
+                                                  page.query_types.get(name, str),
+                                                  default)
+                result = compile_page(page, params=params, dev=self.dev,
+                                      inline_js=True, locale=locale,
+                                      hashed=not self.dev)
+            else:
+                result = self._compiled(path, locale)
+                if result.needs_request_render:
+                    # Server-rendered resources embed data fetched at render
+                    # time; compile fresh for every request.
+                    result = compile_page(page, dev=self.dev, inline_js=True,
+                                          locale=locale, hashed=not self.dev)
+            _render.set_attribute("virel.render_mode", result.render_mode)
         from .security import content_security_policy
         from .theme import google_fonts
         csp = content_security_policy(
@@ -912,13 +931,24 @@ class VirelASGIApp:
                 return
 
         import time
-        import uuid
+
+        from . import telemetry
         started = time.perf_counter()
+        serialize_ms = 0.0
         try:
-            result = action.fn(**kwargs)
-            if inspect.isawaitable(result):
-                result = await result
-            payload = json.dumps({"result": to_jsonable(result)})
+            with telemetry.span(f"action {action.name}", kind="server",
+                                **{"virel.action": action.name,
+                                   "virel.request_bytes": len(body)}) as sp:
+                result = action.fn(**kwargs)
+                if inspect.isawaitable(result):
+                    result = await result
+                execute_ms = (time.perf_counter() - started) * 1000.0
+                serialize_started = time.perf_counter()
+                payload = json.dumps({"result": to_jsonable(result)})
+                serialize_ms = (time.perf_counter() - serialize_started) * 1000.0
+                sp.set_attribute("virel.execute_ms", execute_ms)
+                sp.set_attribute("virel.serialize_ms", serialize_ms)
+                sp.set_attribute("virel.response_bytes", len(payload))
         except Exception as error:
             await self._send_json(send, 500, {"error": _safe_message(error, self.dev)})
             return
@@ -927,7 +957,8 @@ class VirelASGIApp:
             _idempotency_store(action.name, idempotency_key, payload)
         await self._send_text(send, 200, payload,
                               content_type="application/json; charset=utf-8",
-                              extra=_action_headers(duration) + cookies)
+                              extra=_action_headers(duration, serialize_ms=serialize_ms)
+                              + cookies)
 
     async def _serve_upload(self, action: Any, body: bytes,
                             content_type: str, send: Send) -> None:
@@ -1115,7 +1146,12 @@ class VirelASGIApp:
                 (b"x-accel-buffering", b"no"),
             ]),
         })
+        from . import telemetry
         iterator = _iterate_chunks(action.fn(**kwargs))
+        events = 0
+        sse_span = telemetry.span(f"sse {action.name}", kind="server",
+                                  **{"virel.action": action.name})
+        sse_record = sse_span.__enter__()
         try:
             async for chunk in iterator:
                 if isinstance(chunk, (dict, list)):
@@ -1124,6 +1160,7 @@ class VirelASGIApp:
                     payload = str(chunk)
                 lines = "".join(f"data: {line}\n"
                                 for line in payload.split("\n"))
+                events += 1
                 await send({"type": "http.response.body",
                             "body": (lines + "\n").encode("utf-8"),
                             "more_body": True})
@@ -1133,13 +1170,18 @@ class VirelASGIApp:
                         "body": b"event: done\ndata: \n\n",
                         "more_body": True})
         except (ConnectionResetError, BrokenPipeError):
+            sse_record.set_attribute("virel.events", events)
+            sse_span.__exit__(None, None, None)
             await iterator.aclose()
             return
         except Exception as error:
+            sse_record.status = "error"
             message = _safe_message(error, self.dev).replace("\n", " ")
             await send({"type": "http.response.body",
                         "body": f"event: error\ndata: {message}\n\n".encode("utf-8"),
                         "more_body": True})
+        sse_record.set_attribute("virel.events", events)
+        sse_span.__exit__(None, None, None)
         await send({"type": "http.response.body", "body": b"", "more_body": False})
 
     async def _stream_action(self, action: Any, args: dict[str, Any], send: Send) -> None:
@@ -1151,18 +1193,24 @@ class VirelASGIApp:
                 (b"cache-control", b"no-store"),
             ]),
         })
+        from . import telemetry
+        chunks = 0
         try:
-            async for chunk in _iterate_chunks(action.fn(**args)):
-                if isinstance(chunk, (dict, list)):
-                    from .registry import to_jsonable
-                    encoded = json.dumps(to_jsonable(chunk)) + "\n"
-                else:
-                    encoded = str(chunk)
-                await send({
-                    "type": "http.response.body",
-                    "body": encoded.encode("utf-8"),
-                    "more_body": True,
-                })
+            with telemetry.span(f"stream {action.name}", kind="server",
+                                **{"virel.action": action.name}) as sp:
+                async for chunk in _iterate_chunks(action.fn(**args)):
+                    if isinstance(chunk, (dict, list)):
+                        from .registry import to_jsonable
+                        encoded = json.dumps(to_jsonable(chunk)) + "\n"
+                    else:
+                        encoded = str(chunk)
+                    chunks += 1
+                    await send({
+                        "type": "http.response.body",
+                        "body": encoded.encode("utf-8"),
+                        "more_body": True,
+                    })
+                sp.set_attribute("virel.chunks", chunks)
         except Exception as error:
             message = f"\n[stream error] {_safe_message(error, self.dev)}"
             await send({"type": "http.response.body",
@@ -1288,14 +1336,25 @@ def _idempotency_store(action: str, key: str, payload: str) -> None:
     _idempotency_cache[(action, key)] = payload
 
 
-def _action_headers(duration: float,
-                    replayed: bool = False) -> list[tuple[bytes, bytes]]:
+def _action_headers(duration: float, replayed: bool = False,
+                    serialize_ms: float | None = None
+                    ) -> list[tuple[bytes, bytes]]:
     import uuid
+
+    from . import telemetry
+    ctx = telemetry.current_trace()
+    # The request id is the trace id when a trace is active, so a browser
+    # event and its server span share one identifier (SPEC 19 correlation).
+    request_id = ctx.trace_id if ctx else uuid.uuid4().hex
+    timing = f"action;dur={duration * 1000:.1f}"
+    if serialize_ms is not None:
+        timing += f", serialize;dur={serialize_ms:.1f}"
     headers = [
-        (b"x-request-id", uuid.uuid4().hex.encode("latin-1")),
-        (b"server-timing",
-         f"action;dur={duration * 1000:.1f}".encode("latin-1")),
+        (b"x-request-id", request_id.encode("latin-1")),
+        (b"server-timing", timing.encode("latin-1")),
     ]
+    if ctx is not None:
+        headers.append((b"traceparent", ctx.traceparent().encode("latin-1")))
     if replayed:
         headers.append((b"idempotency-replayed", b"true"))
     return headers
