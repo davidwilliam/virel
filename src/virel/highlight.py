@@ -11,6 +11,7 @@ from __future__ import annotations
 import builtins
 import io
 import keyword
+import re
 import tokenize
 
 TokenSpan = tuple[str, str]  # (css class suffix, text)
@@ -27,6 +28,9 @@ def highlight(code: str, language: str) -> list[TokenSpan] | None:
             return _python(code)
         except (tokenize.TokenError, IndentationError, SyntaxError, ValueError):
             return None
+    rules = _REGEX_LANGUAGES.get(language)
+    if rules is not None:
+        return _scan(code, rules)
     return None
 
 
@@ -120,3 +124,76 @@ def _merge(spans: list[TokenSpan]) -> list[TokenSpan]:
         else:
             merged.append((cls, text))
     return merged
+
+
+# --- regex-based highlighters for non-Python languages --------------------
+#
+# Each language is an ordered list of (compiled pattern, css class). The
+# scanner tries each rule at the current position and takes the first
+# match; any character no rule matches becomes plain text, so the spans
+# always tile the whole input exactly.
+
+def _scan(code: str, rules: list[tuple]) -> list[TokenSpan]:
+    spans: list[TokenSpan] = []
+    index, length = 0, len(code)
+    while index < length:
+        for pattern, cls in rules:
+            match = pattern.match(code, index)
+            if match and match.end() > index:
+                spans.append((cls, match.group(0)))
+                index = match.end()
+                break
+        else:
+            spans.append(("txt", code[index]))
+            index += 1
+    return _merge(spans)
+
+
+def _rules(*pairs: tuple[str, str]) -> list[tuple]:
+    return [(re.compile(pattern), cls) for pattern, cls in pairs]
+
+
+_WS = (r"\s+", "ws")
+_DQ_STRING = (r'"(?:[^"\\]|\\.)*"', "str")
+_SQ_STRING = (r"'(?:[^'\\]|\\.)*'", "str")
+
+_BASH_RULES = _rules(
+    (r"#.*", "com"),
+    _DQ_STRING,
+    _SQ_STRING,
+    (r"\$\{[^}]*\}|\$\w+", "blt"),                 # variables
+    (r"(?<![\w-])--?[A-Za-z][\w-]*", "dec"),        # flags
+    (r"\b(?:if|then|else|elif|fi|for|while|until|do|done|case|esac|in|"
+     r"function|return|export|local)\b", "kw"),
+    (r"\b\d+\b", "num"),
+    (r"[|&><;]+", "op"),
+    _WS,
+)
+
+_JSON_RULES = _rules(
+    (r'"(?:[^"\\]|\\.)*"(?=\s*:)', "blt"),           # property names
+    _DQ_STRING,
+    (r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", "num"),
+    (r"\b(?:true|false|null)\b", "kw"),
+    (r"[{}\[\],:]", "pun"),
+    _WS,
+)
+
+_TOML_RULES = _rules(
+    (r"#.*", "com"),
+    (r"\[\[?[A-Za-z0-9_.\s-]+\]\]?", "dec"),         # table headers
+    _DQ_STRING,
+    _SQ_STRING,
+    (r"\b(?:true|false)\b", "kw"),
+    (r"[A-Za-z0-9_.-]+(?=\s*=)", "blt"),             # keys
+    (r"[+-]?\d[\d:_.T+-]*", "num"),                  # numbers and dates
+    (r"=", "op"),
+    _WS,
+)
+
+_REGEX_LANGUAGES: dict[str, list[tuple]] = {
+    "bash": _BASH_RULES, "sh": _BASH_RULES, "shell": _BASH_RULES,
+    "console": _BASH_RULES,
+    "json": _JSON_RULES,
+    "toml": _TOML_RULES,
+}

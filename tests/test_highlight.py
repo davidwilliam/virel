@@ -33,6 +33,40 @@ def test_unsupported_language_and_broken_code_fall_back():
     assert highlight("def broken(:", "python") is None
 
 
+def _classes(code, language):
+    spans = highlight(code, language)
+    assert spans is not None
+    # Spans must tile the whole input exactly (no dropped characters).
+    assert "".join(text for _, text in spans) == code
+    return {cls for cls, _ in spans}
+
+
+def test_bash_highlighting():
+    classes = _classes('pip install virel --upgrade  # setup', "bash")
+    assert "dec" in classes   # the --upgrade flag
+    assert "com" in classes   # the comment
+
+
+def test_json_highlighting():
+    classes = _classes('{"name": "virel", "n": 2, "ok": true}', "json")
+    assert "blt" in classes   # property names
+    assert "str" in classes   # string values
+    assert "num" in classes and "kw" in classes  # 2 and true
+
+
+def test_toml_highlighting():
+    classes = _classes('[app]\nname = "demo"\nport = 8000\n', "toml")
+    assert "dec" in classes   # the [app] table header
+    assert "blt" in classes   # keys
+    assert "str" in classes and "num" in classes
+
+
+def test_toml_array_value_is_not_a_table_header():
+    spans = highlight('deps = ["a", "b"]\n', "toml")
+    # The bracketed array is not miscolored as a table header.
+    assert not any(cls == "dec" for cls, _ in spans)
+
+
 def test_code_component_emits_token_spans():
     @ui.page("/")
     def page():
