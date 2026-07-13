@@ -31,6 +31,34 @@ h4, .v-h4 { font-size: 1rem; }
 h5, .v-h5 { font-size: 0.925rem; }
 h6, .v-h6 { font-size: 0.85rem; }
 
+/* Linked headings: a hover anchor and a scroll margin so a deep link
+   doesn't land under a sticky header. */
+.v-heading-linked { scroll-margin-top: 5rem; }
+.v-heading-anchor {
+  margin-inline-start: 0.4em;
+  color: var(--v-fg-muted);
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.v-heading-linked:hover .v-heading-anchor,
+.v-heading-anchor:focus-visible { opacity: 1; }
+
+/* In-page table of contents */
+.v-toc { font-size: 0.875rem; }
+.v-toc-title {
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--v-fg-muted);
+  margin-bottom: calc(var(--v-space) * 2);
+}
+.v-toc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: calc(var(--v-space) * 1.5); }
+.v-toc-l3 { padding-inline-start: calc(var(--v-space) * 3); }
+.v-toc-link { color: var(--v-fg-muted); text-decoration: none; transition: color 120ms ease; }
+.v-toc-link:hover { color: var(--v-accent); }
+
 p { margin: 0; }
 
 /* Safe areas (SPEC 10.7): chrome respects notches and rounded corners.

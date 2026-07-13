@@ -91,6 +91,64 @@ def test_badge_rejects_unknown_intent():
         ui.Badge("x", intent="bogus")
 
 
+def test_heading_anchor_slugifies_and_links():
+    def page():
+        return ui.Page(ui.Heading("Getting Started!", level=2, anchor=True))
+
+    html = _compile(page).html
+    assert 'id="getting-started"' in html
+    assert 'class="v-heading-anchor" href="#getting-started"' in html
+
+
+def test_heading_explicit_id():
+    def page():
+        return ui.Page(ui.Heading("Install", level=2, id="setup"))
+
+    html = _compile(page).html
+    assert 'id="setup"' in html
+
+
+def test_heading_without_anchor_has_no_id():
+    def page():
+        return ui.Page(ui.Heading("Plain", level=2))
+
+    html = _compile(page).html
+    assert "<h2" in html and "id=" not in html.split("<h2")[1].split(">")[0]
+
+
+def test_table_of_contents_derives_from_content():
+    content = ui.Stack(
+        ui.Heading("Overview", level=2, anchor=True),
+        ui.Text("intro"),
+        ui.Heading("Details", level=3, anchor=True),
+        ui.Heading("Deep note", level=4, anchor=True),  # excluded by levels
+    )
+
+    def page():
+        return ui.Page(ui.TableOfContents(content), content)
+
+    html = _compile(page).html
+    # Links to the h2 and h3 anchors, labeled by their text.
+    assert '<a href="#overview" class="v-toc-link">Overview</a>' in html
+    assert '<a href="#details" class="v-toc-link">Details</a>' in html
+    # h4 is outside the default (2, 3) levels, so it is not in the TOC
+    # (though the heading itself still carries its own anchor).
+    assert 'v-toc-link">Deep note' not in html
+    # The anchor '#' glyph is not pulled into the TOC label.
+    assert ">Overview#<" not in html
+
+
+def test_table_of_contents_empty_when_no_anchored_headings():
+    content = ui.Stack(ui.Heading("No anchor", level=2), ui.Text("body"))
+
+    def page():
+        return ui.Page(ui.TableOfContents(content), content)
+
+    html = _compile(page).html
+    assert 'class="v-toc"' in html
+    assert "v-toc-link" not in html
+
+
 def test_tabs_switch_locally():
     def page():
         return ui.Page(ui.Tabs({

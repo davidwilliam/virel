@@ -77,6 +77,7 @@ from .elements import (
     Stat,
     Switch,
     Table,
+    TableOfContents,
     Tabs,
     Text,
     Tree,
@@ -184,7 +185,7 @@ __all__ = [
     "Divider", "Spacer", "AppShell", "Footer", "Hero",
     # semantic elements
     "Heading", "Text", "Code", "Example", "Link", "LinkButton", "Image",
-    "List", "Nav", "Article", "Video", "Audio",
+    "List", "Nav", "Article", "Video", "Audio", "TableOfContents",
     "unsafe_html", "When",
     # data loading
     "resource", "Resource", "invalidate", "subscribe", "Each",

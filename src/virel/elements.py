@@ -710,10 +710,22 @@ def Spacer() -> Element:
 # Semantic elements
 # --------------------------------------------------------------------------
 
-def Heading(text: Any, level: int = 2, size: int | None = None) -> Element:
+def _slugify(text: str) -> str:
+    """A URL-fragment slug from heading text."""
+    import re
+    slug = re.sub(r"[^\w\s-]", "", str(text).lower()).strip()
+    slug = re.sub(r"[\s_]+", "-", slug)
+    return slug or "section"
+
+
+def Heading(text: Any, level: int = 2, size: int | None = None, *,
+            id: str | None = None, anchor: bool = False) -> Element:
     """A heading. ``level`` is the document-outline semantics; ``size``
     optionally decouples the visual size, so a card title can stay an h2
-    in the outline while looking like an h3."""
+    in the outline while looking like an h3. Give an ``id`` (or
+    ``anchor=True`` to derive one from the text) to make the heading a
+    deep-link target with a hover anchor — the basis of the in-page table
+    of contents (``ui.TableOfContents``)."""
     if level not in (1, 2, 3, 4, 5, 6):
         raise VirelCompileError(f"Heading level must be 1-6, got {level!r}.")
     classes = "v-heading"
@@ -721,8 +733,80 @@ def Heading(text: Any, level: int = 2, size: int | None = None) -> Element:
         if size not in (1, 2, 3, 4, 5, 6):
             raise VirelCompileError(f"Heading size must be 1-6, got {size!r}.")
         classes += f" v-h{size}"
-    return Element(f"h{level}", normalize_children((text,)),
-                   attrs={"class": classes})
+    children = list(normalize_children((text,)))
+    attrs: dict[str, Any] = {"class": classes}
+    heading_id = id
+    if anchor and heading_id is None and isinstance(text, str):
+        heading_id = _slugify(text)
+    if heading_id is not None:
+        attrs["id"] = heading_id
+        classes += " v-heading-linked"
+        attrs["class"] = classes
+        label = (f"Permalink to {text}" if isinstance(text, str)
+                 else "Permalink to this section")
+        children.append(Element(
+            "a", [TextNode("#")],
+            attrs={"class": "v-heading-anchor", "href": f"#{heading_id}",
+                   "aria-label": label}))
+    return Element(f"h{level}", children, attrs=attrs)
+
+
+def _heading_text(element: Element) -> str:
+    parts: list[str] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, TextNode):
+            parts.append(node.text)
+        elif isinstance(node, Element):
+            if "v-heading-anchor" in str(node.attrs.get("class", "")):
+                return
+            for child in node.children:
+                walk(child)
+
+    for child in element.children:
+        walk(child)
+    return "".join(parts).strip()
+
+
+def _collect_headings(content: Any, levels: tuple) -> list[tuple]:
+    tags = tuple(f"h{level}" for level in levels)
+    found: list[tuple] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, Element):
+            if node.tag in tags and "id" in node.attrs:
+                found.append((node.attrs["id"], _heading_text(node),
+                              int(node.tag[1])))
+            for child in node.children:
+                walk(child)
+
+    for node in normalize_children((content,)):
+        walk(node)
+    return found
+
+
+def TableOfContents(content: Any, *, levels: tuple = (2, 3),
+                    title: str | None = "On this page") -> Element:
+    """An in-page table of contents derived from ``content``: it collects
+    the anchored headings (those with an ``id``) at the given ``levels``
+    and links to them. Pass the same node tree you render on the page — it
+    is only read, never consumed — so the contents can never fall out of
+    sync with the page."""
+    headings = _collect_headings(content, levels)
+    items = [
+        Element("li", [Element(
+            "a", [TextNode(text)],
+            attrs={"href": f"#{hid}", "class": "v-toc-link"})],
+            attrs={"class": f"v-toc-item v-toc-l{lvl}"})
+        for hid, text, lvl in headings
+    ]
+    children: list[Node] = []
+    if title:
+        children.append(Element("div", [TextNode(title)],
+                                attrs={"class": "v-toc-title"}))
+    children.append(Element("ol", items, attrs={"class": "v-toc-list"}))
+    return Element("nav", children,
+                   attrs={"class": "v-toc", "aria-label": title or "Contents"})
 
 
 def Text(content: Any, *, muted: bool = False, size: str = "md") -> Element:
