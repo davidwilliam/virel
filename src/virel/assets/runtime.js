@@ -2509,7 +2509,8 @@ async function navigate(url, push) {
   showProgress();
   let doc;
   try {
-    const response = await fetch(url);
+    // Carry the trace so a client navigation's server render joins it.
+    const response = await fetch(url, { headers: { traceparent: traceparent() } });
     if (!response.ok) {
       hideProgress();
       location.href = url;

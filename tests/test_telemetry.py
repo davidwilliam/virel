@@ -123,8 +123,10 @@ def test_custom_sink_receives_finished_spans():
 # --- OpenTelemetry bridge (via a stub module) -----------------------------
 
 def _install_fake_otel(monkeypatch):
-    """A minimal fake opentelemetry.trace so the bridge can be exercised
-    without the real package installed."""
+    """A minimal fake opentelemetry.trace so the inline bridge can be
+    exercised without the real package installed. Spans are context
+    managers (start_as_current_span), which is what lets library spans
+    nest under Virel spans."""
     recorded = []
 
     class FakeSpan:
@@ -134,7 +136,7 @@ def _install_fake_otel(monkeypatch):
             self.attributes = {}
             self.events = []
             self.status = None
-            self.ended = False
+            self.exited = False
 
         def set_attribute(self, key, value):
             self.attributes[key] = value
@@ -145,14 +147,22 @@ def _install_fake_otel(monkeypatch):
         def set_status(self, status):
             self.status = status
 
-        def end(self):
-            self.ended = True
+    class FakeSpanCM:
+        def __init__(self, span):
+            self.span = span
+
+        def __enter__(self):
+            return self.span
+
+        def __exit__(self, *exc):
+            self.span.exited = True
+            return False
 
     class FakeTracer:
-        def start_span(self, name, kind=None):
+        def start_as_current_span(self, name, kind=None):
             s = FakeSpan(name, kind)
             recorded.append(s)
-            return s
+            return FakeSpanCM(s)
 
     trace_mod = types.ModuleType("opentelemetry.trace")
     trace_mod.SpanKind = types.SimpleNamespace(
@@ -171,24 +181,25 @@ def _install_fake_otel(monkeypatch):
     return recorded
 
 
-def test_otel_bridge_mirrors_spans(monkeypatch):
+def test_otel_span_runs_inline_for_nesting(monkeypatch):
     recorded = _install_fake_otel(monkeypatch)
     telemetry.reset()
     telemetry.configure(enabled=True, service_name="svc")
-    assert len(telemetry._config.sinks) == 1, "OTel sink should be installed"
+    assert telemetry._config.otel_tracer is not None
     with span("action echo", kind="server", **{"virel.action": "echo"}):
-        pass
-    assert recorded, "a real OTel span should have been created"
+        # Inside the block the OTel span is open (current context), so a
+        # library span created here would nest under it.
+        assert recorded and recorded[-1].exited is False
     otel_span = recorded[-1]
     assert otel_span.name == "action echo"
     assert otel_span.kind == "server"
     assert otel_span.attributes["virel.action"] == "echo"
     assert "virel.duration_ms" in otel_span.attributes
-    assert otel_span.ended
+    assert otel_span.exited, "the OTel span must be closed after the block"
     telemetry.reset()
 
 
-def test_otel_bridge_marks_errors(monkeypatch):
+def test_otel_span_marks_errors(monkeypatch):
     recorded = _install_fake_otel(monkeypatch)
     telemetry.reset()
     telemetry.configure(enabled=True)
@@ -196,6 +207,7 @@ def test_otel_bridge_marks_errors(monkeypatch):
         with span("boom", kind="server"):
             raise RuntimeError("x")
     assert recorded[-1].status is not None
+    assert recorded[-1].exited
     telemetry.reset()
 
 

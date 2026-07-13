@@ -33,9 +33,14 @@ class _Config:
     enabled: bool = False
     service_name: str = "virel-app"
     propagate: bool = True
-    # Extra sinks a host installs (e.g. the OpenTelemetry bridge). Each is
-    # called with a finished Span.
+    # Extra sinks a host installs. Each is called with a finished Span.
     sinks: list[Callable[["Span"], None]] = field(default_factory=list)
+    # OpenTelemetry, when installed and enabled. Spans run *inline* as the
+    # OTel current span so third-party library spans (e.g. database spans)
+    # nest under them (SPEC 19).
+    otel_mod: Any = None
+    otel_tracer: Any = None
+    otel_propagator: Any = None
 
 
 _config = _Config()
@@ -44,19 +49,52 @@ _config = _Config()
 def configure(*, enabled: bool = True, service_name: str = "virel-app",
               propagate: bool = True,
               exporter: Any = None) -> None:
-    """Enable telemetry (SPEC 19). If the OpenTelemetry API is importable,
-    an OTel bridge sink is installed so spans reach a configured OTel
-    backend; otherwise tracing still runs, feeding the in-memory buffer and
-    the dev tools. ``exporter`` is an optional OTel SpanExporter to install
-    on a fresh tracer provider."""
+    """Enable telemetry (SPEC 19). When the OpenTelemetry API is importable,
+    spans are also emitted to OpenTelemetry as real spans that become the
+    current context for their block, so spans from OTel-instrumented
+    libraries nest under them; otherwise tracing still runs, feeding the
+    in-memory buffer and the dev tools. ``exporter`` is an optional OTel
+    SpanExporter to install on a fresh tracer provider."""
     _config.enabled = enabled
     _config.service_name = service_name
     _config.propagate = propagate
     _config.sinks = []
+    _config.otel_mod = None
+    _config.otel_tracer = None
+    _config.otel_propagator = None
     if enabled:
-        bridge = _otel_bridge(service_name, exporter)
-        if bridge is not None:
-            _config.sinks.append(bridge)
+        _install_otel(service_name, exporter)
+
+
+def _install_otel(service_name: str, exporter: Any) -> None:
+    """Wire up OpenTelemetry if present. Each capability is guarded
+    independently so a partial or older install still degrades cleanly."""
+    try:
+        from opentelemetry import trace as otel_trace
+    except Exception:
+        return
+    _config.otel_mod = otel_trace
+    if exporter is not None:
+        try:
+            from opentelemetry.sdk.resources import Resource
+            from opentelemetry.sdk.trace import TracerProvider
+            from opentelemetry.sdk.trace.export import BatchSpanProcessor
+            provider = TracerProvider(
+                resource=Resource.create({"service.name": service_name}))
+            provider.add_span_processor(BatchSpanProcessor(exporter))
+            otel_trace.set_tracer_provider(provider)
+        except Exception:
+            pass
+    try:
+        _config.otel_tracer = otel_trace.get_tracer("virel", "1")
+    except Exception:
+        _config.otel_tracer = None
+    try:
+        from opentelemetry.trace.propagation.tracecontext import (
+            TraceContextTextMapPropagator)
+        _config.otel_propagator = TraceContextTextMapPropagator()
+    except Exception:
+        _config.otel_propagator = None
 
 
 def is_enabled() -> bool:
@@ -69,6 +107,9 @@ def reset() -> None:
     _config.service_name = "virel-app"
     _config.propagate = True
     _config.sinks = []
+    _config.otel_mod = None
+    _config.otel_tracer = None
+    _config.otel_propagator = None
     _recent.clear()
 
 
@@ -150,18 +191,36 @@ def current_traceparent() -> str | None:
 
 def start_trace(traceparent: str | None) -> tuple[TraceContext, Any]:
     """Continue an incoming trace or start a new one. Returns the context
-    and a token to pass to :func:`end_trace`."""
+    and an opaque token to pass to :func:`end_trace`. When OpenTelemetry is
+    active, the incoming trace is also seeded into the OTel context so OTel
+    spans continue the browser's trace and share its id."""
     incoming = parse_traceparent(traceparent)
     if incoming is not None:
         ctx = incoming
     else:
         ctx = TraceContext(new_trace_id(), new_span_id(), True)
     token = _current.set(ctx)
-    return ctx, token
+    otel_token = None
+    if _config.otel_propagator is not None and traceparent:
+        try:
+            from opentelemetry.context import attach
+            otel_ctx = _config.otel_propagator.extract(
+                {"traceparent": traceparent})
+            otel_token = attach(otel_ctx)
+        except Exception:
+            otel_token = None
+    return ctx, (token, otel_token)
 
 
 def end_trace(token: Any) -> None:
-    _current.reset(token)
+    my_token, otel_token = token if isinstance(token, tuple) else (token, None)
+    _current.reset(my_token)
+    if otel_token is not None:
+        try:
+            from opentelemetry.context import detach
+            detach(otel_token)
+        except Exception:
+            pass
 
 
 # --- spans ----------------------------------------------------------------
@@ -236,8 +295,10 @@ def span(name: str, *, kind: str = "internal",
          **attributes: Any) -> Iterator[Span]:
     """Record a span around a block. Cheap and always safe to call: when
     telemetry is disabled it still measures duration and buffers the span
-    for the dev tools, but installs no sinks and adds negligible overhead.
-    Parent/trace ids come from the current trace context."""
+    for the dev tools. When OpenTelemetry is active the block also runs as
+    the OTel current span, so spans from OTel-instrumented libraries (for
+    example database spans) nest under it. Parent/trace ids come from the
+    current trace context."""
     parent = _current.get()
     span_id = new_span_id()
     record = Span(
@@ -253,14 +314,18 @@ def span(name: str, *, kind: str = "internal",
     child_ctx = (parent.child(span_id) if parent
                  else TraceContext(record.trace_id, span_id, True))
     token = _current.set(child_ctx)
+    otel_cm, otel_span = _otel_span_begin(name, kind)
+    exc_info: tuple[Any, Any, Any] = (None, None, None)
     try:
         yield record
     except BaseException as exc:  # noqa: BLE001 - re-raised below
         record.record_exception(exc)
+        exc_info = (type(exc), exc, exc.__traceback__)
         raise
     finally:
         record.duration_ms = (time.perf_counter() - record._start) * 1000.0
         _current.reset(token)
+        _otel_span_end(otel_cm, otel_span, record, exc_info)
         _emit(record)
 
 
@@ -274,55 +339,48 @@ def _emit(record: Span) -> None:
             pass
 
 
-# --- OpenTelemetry bridge -------------------------------------------------
+# --- OpenTelemetry inline bridge ------------------------------------------
 
-def _otel_bridge(service_name: str,
-                 exporter: Any) -> Callable[[Span], None] | None:
-    """Build a sink that mirrors each Virel span onto an OpenTelemetry
-    tracer, or ``None`` when OpenTelemetry is not installed."""
+def _otel_span_begin(name: str, kind: str) -> tuple[Any, Any]:
+    """Start an OTel span as the current context, or ``(None, None)``."""
+    tracer = _config.otel_tracer
+    if tracer is None:
+        return None, None
     try:
-        from opentelemetry import trace as otel_trace
-        from opentelemetry.trace import SpanKind
+        otel_cm = tracer.start_as_current_span(name, kind=_otel_kind(kind))
+        return otel_cm, otel_cm.__enter__()
     except Exception:
-        return None
+        return None, None
 
-    provider = None
-    if exporter is not None:
+
+def _otel_span_end(otel_cm: Any, otel_span: Any, record: "Span",
+                   exc_info: tuple[Any, Any, Any]) -> None:
+    if otel_span is not None:
         try:
-            from opentelemetry.sdk.resources import Resource
-            from opentelemetry.sdk.trace import TracerProvider
-            from opentelemetry.sdk.trace.export import BatchSpanProcessor
-            provider = TracerProvider(
-                resource=Resource.create({"service.name": service_name}))
-            provider.add_span_processor(BatchSpanProcessor(exporter))
-            otel_trace.set_tracer_provider(provider)
+            for key, value in record.attributes.items():
+                otel_span.set_attribute(
+                    key if "." in key else f"virel.{key}", value)
+            otel_span.set_attribute("virel.duration_ms", record.duration_ms)
+            for event_name, event_attrs in record.events:
+                otel_span.add_event(event_name, attributes=event_attrs)
+            if record.status == "error":
+                from opentelemetry.trace import Status, StatusCode
+                otel_span.set_status(Status(StatusCode.ERROR))
         except Exception:
-            provider = None
+            pass
+    if otel_cm is not None:
+        try:
+            otel_cm.__exit__(*exc_info)
+        except Exception:
+            pass
 
-    tracer = otel_trace.get_tracer("virel", "1")
-    kinds = {
+
+def _otel_kind(kind: str) -> Any:
+    from opentelemetry.trace import SpanKind
+    return {
         "server": SpanKind.SERVER,
         "client": SpanKind.CLIENT,
         "producer": SpanKind.PRODUCER,
         "consumer": SpanKind.CONSUMER,
         "internal": SpanKind.INTERNAL,
-    }
-
-    def sink(record: Span) -> None:
-        otel_span = tracer.start_span(
-            record.name, kind=kinds.get(record.kind, SpanKind.INTERNAL))
-        for key, value in record.attributes.items():
-            otel_span.set_attribute(f"virel.{key}"
-                                    if "." not in key else key, value)
-        otel_span.set_attribute("virel.duration_ms", record.duration_ms)
-        for event_name, event_attrs in record.events:
-            otel_span.add_event(event_name, attributes=event_attrs)
-        if record.status == "error":
-            try:
-                from opentelemetry.trace import Status, StatusCode
-                otel_span.set_status(Status(StatusCode.ERROR))
-            except Exception:
-                pass
-        otel_span.end()
-
-    return sink
+    }.get(kind, SpanKind.INTERNAL)
