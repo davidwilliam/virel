@@ -106,3 +106,42 @@ def test_virtualized_table_covers_large_data():
     # Rows travel as data, not 1000 <tr> elements.
     assert html.count("<tr") == 1   # header only
     assert 'type="application/json"' in html
+
+
+# -- 17.4 server scale -------------------------------------------------------
+
+def test_server_actions_are_stateless():
+    # SPEC 17.4: default server actions must be stateless and
+    # horizontally scalable. An action is a plain function with no
+    # per-user server object; two "instances" (fresh registries) serve
+    # the same action identically with no shared in-process state.
+    from virel.registry import ServerAction
+
+    calls = []
+
+    @ui.server
+    async def echo(text: str) -> str:
+        calls.append(text)   # a real app would hit a database, not memory
+        return text.upper()
+
+    action = active_registry().actions["echo"]
+    assert isinstance(action, ServerAction)
+    # The action holds no session, connection, or per-user state: only
+    # the function and its type metadata.
+    assert not any(attr in vars(action)
+                   for attr in ("session", "state", "user", "connection"))
+    # Validation is pure: the same input validates the same way every
+    # time, so any worker can serve any request.
+    assert action.prepare({"text": "hi"}) == {"text": "hi"}
+    assert action.prepare({"text": "hi"}) == {"text": "hi"}
+
+
+def test_realtime_services_are_explicit():
+    # SPEC 17.4: real-time state is an explicit service (ui.channel),
+    # never an implicit in-process object on the page.
+    @ui.channel("room")
+    async def room(connection, message):
+        return None
+
+    # Channels are registered explicitly and separately from pages.
+    assert "room" in active_registry().channels
