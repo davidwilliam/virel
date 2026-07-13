@@ -41,6 +41,44 @@ def test_counter_page_compiles_end_to_end():
     assert result.render_mode == "client"
 
 
+def test_favicon_link_emitted_with_inferred_type():
+    ui.use_favicon("/public/favicon.png")
+
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("hi"), title="Home")
+
+    html = compile_page(_page("/")).html
+    assert ('<link rel="icon" href="/public/favicon.png" '
+            'type="image/png">') in html
+
+
+def test_favicon_apple_touch_icon_and_explicit_type():
+    ui.use_favicon("/public/icon.svg", type="image/svg+xml",
+                   apple_touch_icon="/public/apple.png")
+
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("hi"), title="Home")
+
+    html = compile_page(_page("/")).html
+    assert 'rel="icon" href="/public/icon.svg" type="image/svg+xml"' in html
+    assert ('<link rel="apple-touch-icon" href="/public/apple.png">') in html
+
+
+def test_no_favicon_link_by_default():
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("hi"), title="Home")
+
+    assert 'rel="icon"' not in compile_page(_page("/")).html
+
+
+def test_favicon_rejects_unsafe_url():
+    with pytest.raises(VirelCompileError):
+        ui.use_favicon("javascript:alert(1)")
+
+
 def test_static_page_emits_zero_javascript():
     @ui.page("/about", render="static")
     def about():

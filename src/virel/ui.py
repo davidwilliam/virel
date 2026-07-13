@@ -111,7 +111,7 @@ from .registry import (Request, build, client, component, deny, layout,
                        page,
                        redirect, server, shared, use_accessibility,
                        use_css, use_guard,
-                       use_middleware, use_policy, use_static,
+                       use_favicon, use_middleware, use_policy, use_static,
                        use_telemetry, web_component)
 from .embed import Fragment, as_custom_element, render_fragment
 from .notebook import Preview, preview
@@ -154,8 +154,8 @@ __all__ = [
     "page", "layout", "component", "server", "client", "worker", "shared", "build",
     "web_component",
     "use_guard", "use_middleware", "use_static", "use_css",
-    "use_accessibility", "use_policy", "use_telemetry", "unsafe",
-    "redirect", "deny",
+    "use_accessibility", "use_policy", "use_telemetry", "use_favicon",
+    "unsafe", "redirect", "deny",
     "Plugin", "use_plugin",
     "Request",
     "channel", "connect", "Channel", "ChannelClosed",

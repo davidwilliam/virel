@@ -348,6 +348,17 @@ def _emit_document(root: PageNode, body_html: str, js_module: str,
         for font in fonts:
             head.append(f'<link rel="stylesheet" href="{_escape(font.css_url())}">')
     head.append(f'<link rel="stylesheet" href="/_virel/app.css{suffix}">')
+    favicon = _reg().favicon
+    if favicon:
+        link = f'<link rel="icon" href="{_escape(favicon["href"])}"'
+        if favicon.get("type"):
+            link += f' type="{_escape(favicon["type"])}"'
+        if favicon.get("sizes"):
+            link += f' sizes="{_escape(favicon["sizes"])}"'
+        head.append(link + ">")
+        if favicon.get("apple_touch_icon"):
+            head.append('<link rel="apple-touch-icon" '
+                        f'href="{_escape(favicon["apple_touch_icon"])}">')
     for name, content in root.meta.items():
         head.append(f'<meta name="{_escape(name)}" content="{_escape(content)}">')
     if root.canonical:

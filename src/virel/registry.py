@@ -448,6 +448,8 @@ class AppRegistry:
         self.strict_accessibility = False
         # Observability enabled via ui.use_telemetry (SPEC 19).
         self.telemetry = False
+        # Site favicon / apple-touch-icon (ui.use_favicon).
+        self.favicon: dict[str, Any] | None = None
         # Policy switches (SPEC 13.3, 18): escape hatches and plugin
         # capabilities that a deployment may prohibit.
         self.policy: dict[str, Any] = {}
@@ -605,6 +607,35 @@ def use_policy(**flags: Any) -> None:
     # accessibility_strict is also the audit's strict switch.
     if "accessibility_strict" in flags:
         registry.strict_accessibility = bool(flags["accessibility_strict"])
+
+
+_ICON_TYPES = {
+    ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon",
+    ".gif": "image/gif", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+}
+
+
+def use_favicon(href: str, *, type: str | None = None,
+                sizes: str | None = None,
+                apple_touch_icon: str | None = None) -> None:
+    """Set the site favicon, emitted as ``<link rel="icon">`` in every
+    page's head. ``href`` is a URL, typically a file under the public
+    directory such as ``/public/favicon.png``. The MIME type is inferred
+    from the extension when not given. Pass ``apple_touch_icon`` to also
+    emit an ``apple-touch-icon`` link for iOS home-screen bookmarks."""
+    from .security import is_safe_url
+    for url in (href, apple_touch_icon):
+        if url is not None and not is_safe_url(url):
+            raise VirelCompileError(
+                f"Favicon URL {url!r} uses a blocked URL scheme.")
+    if type is None:
+        import os
+        type = _ICON_TYPES.get(os.path.splitext(href)[1].lower())
+    active_registry().favicon = {
+        "href": href, "type": type, "sizes": sizes,
+        "apple_touch_icon": apple_touch_icon,
+    }
 
 
 def use_telemetry(*, service_name: str = "virel-app", propagate: bool = True,
