@@ -199,7 +199,8 @@ class EachNode(Node):
     def __init__(self, items: Any, render: Any, tag: str = "div",
                  gap: int | None = None, key: Any = None,
                  animate: Any = None, reorderable: bool = False,
-                 on_reorder: Any = None) -> None:
+                 on_reorder: Any = None, virtual: bool = False,
+                 item_height: int = 40, height: str = "24rem") -> None:
         from .expr import ItemRef, LocalRef, lift
         from .motion import coerce_motion
         self.items = lift(items)
@@ -208,6 +209,9 @@ class EachNode(Node):
         self.motion = coerce_motion(animate)
         self.reorderable = reorderable
         self.on_reorder = on_reorder
+        self.virtual = virtual
+        self.item_height = item_height
+        self.height = height
         if reorderable and key is None:
             raise VirelCompileError(
                 "Each(reorderable=True) requires key= so items keep their "
@@ -550,6 +554,16 @@ class Emitter:
             js_item = "(item) => `" + _template_js(node.template) + "`"
             js_key = f"(item) => {node.key.js()}" if node.key is not None else "null"
             import json as _json
+            initial = node.items.evaluate(self.env) or []
+            if node.virtual:
+                # Virtual list: only the visible window exists in the DOM.
+                self.bindings.append(
+                    f'$.bindVirtualList("{vid}", () => {node.items.js()} '
+                    f"|| [], {js_item}, {js_key}, {node.handlers_js()}, "
+                    f"{{itemHeight: {node.item_height}}});")
+                return (f'<div data-v="{vid}" class="v-vlist" '
+                        f'style="height: {node.height}; overflow-y: auto">'
+                        "</div>")
             js_motion = (_json.dumps(node.motion.config()) if node.motion
                          else "null")
             js_reorder = "true" if node.reorderable else "false"

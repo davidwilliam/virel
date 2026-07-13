@@ -45,6 +45,16 @@ def test_html_responses_carry_csp_with_valid_script_hashes():
     assert script_hash(inline) in csp
 
 
+def test_csp_allows_same_origin_blob_workers_only():
+    # @ui.worker runs Web Workers from same-origin Blob URLs; the CSP
+    # must permit exactly that (worker-src 'self' blob:) and nothing
+    # broader, so a worker cannot be created from a foreign origin.
+    csp = content_security_policy([])
+    assert "worker-src 'self' blob:;" in csp
+    assert "worker-src *" not in csp
+    assert "https://" not in csp.split("worker-src")[1].split(";")[0]
+
+
 def test_csp_covers_inline_page_js_for_request_rendered_pages():
     @ui.server
     def numbers() -> list[int]:

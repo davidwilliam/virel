@@ -1547,7 +1547,8 @@ def Breadcrumbs(items: list[tuple[str, str | None]]) -> Element:
 def Each(items: Any, *, render: Callable[[Any], Any], tag: str = "div",
          gap: int | None = 3, key: Callable[[Any], Any] | None = None,
          animate: Any = None, reorderable: bool = False,
-         on_reorder: Any = None) -> Node:
+         on_reorder: Any = None, virtual: bool = False,
+         item_height: int = 40, height: str = "24rem") -> Node:
     """Reactive list rendering. ``render`` receives a symbolic item and is
     traced once into a template. Items may carry event handlers (delegated
     from the container). With ``key``, unchanged items keep their DOM nodes
@@ -1563,6 +1564,10 @@ def Each(items: Any, *, render: Callable[[Any], Any], tag: str = "div",
     ``ui.set_from_event(items, "detail.items")``."""
     from .expr import Handler, SetFromEventOp, State
     from .nodes import EachNode
+    if virtual and (reorderable or animate):
+        raise VirelCompileError(
+            "Each(virtual=True) cannot combine with reorderable= or "
+            "animate=: only the visible window exists in the DOM.")
     handler = None
     if reorderable:
         if on_reorder is not None:
@@ -1577,7 +1582,8 @@ def Each(items: Any, *, render: Callable[[Any], Any], tag: str = "div",
                 "\"detail.items\").")
     return EachNode(items, render, tag=tag, gap=gap, key=key,
                     animate=animate, reorderable=reorderable,
-                    on_reorder=handler)
+                    on_reorder=handler, virtual=virtual,
+                    item_height=item_height, height=height)
 
 
 def Suspense(resource: Any, *, content: Any, fallback: Any = None,

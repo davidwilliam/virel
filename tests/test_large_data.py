@@ -145,3 +145,49 @@ def test_realtime_services_are_explicit():
 
     # Channels are registered explicitly and separately from pages.
     assert "room" in active_registry().channels
+
+
+def test_virtualized_each_list():
+    @ui.page("/vlist")
+    def vlist():
+        items = ui.state([{"id": i, "name": f"Row {i}"}
+                          for i in range(5000)])
+        return ui.Page(ui.Each(items, render=lambda x: ui.Text(x["name"]),
+                               key=lambda x: x["id"], virtual=True,
+                               item_height=32, height="20rem"))
+
+    compiled = compile_page(active_registry().pages["/vlist"])
+    assert "$.bindVirtualList(" in compiled.js
+    # 5000 rows do not ship in the server-rendered HTML.
+    assert compiled.html.count("v-vrow") == 0
+    assert "v-vlist" in compiled.html and "overflow-y: auto" in compiled.html
+
+
+def test_virtual_each_rejects_incompatible_options():
+    @ui.page("/bad-vlist")
+    def bad_vlist():
+        items = ui.state([1, 2, 3])
+        return ui.Page(ui.Each(items, render=lambda x: ui.Text(x),
+                               key=lambda x: x, virtual=True,
+                               reorderable=True))
+
+    with pytest.raises(VirelCompileError, match="cannot combine"):
+        compile_page(active_registry().pages["/bad-vlist"])
+
+
+def test_stream_runtime_applies_backpressure():
+    # A slow consumer (an onChunk returning a promise) pauses the reader.
+    from virel.theme import runtime_js
+    source = runtime_js()
+    assert 'const result = onChunk(' in source
+    assert 'if (result && typeof result.then === "function") await result' \
+        in source
+
+
+def test_worker_runtime_transfers_typed_arrays():
+    # Typed arrays and ArrayBuffers move to the worker by transfer, not
+    # structured clone, so large numeric payloads are zero-copy.
+    from virel.theme import runtime_js
+    source = runtime_js()
+    assert "collectTransferables(args)" in source
+    assert "ArrayBuffer.isView" in source

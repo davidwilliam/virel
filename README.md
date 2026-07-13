@@ -555,9 +555,12 @@ ProjectCard(ui.Text("Atlas"), status="paused")
 ```
 
 For large-data and low-level work (SPEC 17.3): the data grid virtualizes
-large tables (`virtual=True`), stream render mode renders incrementally,
+large tables and `Each(virtual=True)` virtualizes long lists (only the
+visible window exists in the DOM), stream render mode renders
+incrementally with reader backpressure,
 `@ui.worker` runs a pure function off the main thread and posts its
-result into a state so heavy computation never blocks the UI, and
+result into a state (typed arrays and buffers transfer zero-copy) so
+heavy computation never blocks the UI, and
 `ui.Canvas` is the canvas/WebGL/WebGPU extension point (a raw draw body
 with device-pixel scaling and an optional animation loop). Server-side
 data adapters read pandas, Polars, and Arrow.

@@ -281,6 +281,65 @@ export function esc(value) {
   })[c]);
 }
 
+/* Virtualized list: only the rows in (and near) the viewport exist in
+ * the DOM. Fixed row height keeps the math cheap; top and bottom spacers
+ * hold the scroll extent. Handles very large lists without a virtual
+ * DOM. Item event handlers are delegated from the container. */
+export function bindVirtualList(id, items, renderItem, keyFn, handlers,
+                                opts) {
+  const node = el(id);
+  if (!node) return;
+  const rowHeight = (opts && opts.itemHeight) || 40;
+  let current = [];
+
+  if (handlers) {
+    const eventNames = new Set();
+    for (const hid in handlers) {
+      for (const eventName in handlers[hid]) eventNames.add(eventName);
+    }
+    for (const eventName of eventNames) {
+      node.addEventListener(eventName, (ev) => {
+        const target = ev.target.closest("[data-vh]");
+        if (!target || !node.contains(target)) return;
+        const wrap = target.closest("[data-vi]");
+        if (!wrap) return;
+        const item = current[Number(wrap.dataset.vi)];
+        const group = handlers[target.dataset.vh];
+        const fn = group && group[ev.type];
+        if (fn && item !== undefined) fn(ev, item);
+      });
+    }
+  }
+
+  const viewport = document.createElement("div");
+  viewport.style.position = "relative";
+  node.appendChild(viewport);
+
+  const paint = () => {
+    const list = current;
+    viewport.style.height = list.length * rowHeight + "px";
+    const scrollTop = node.scrollTop;
+    const visible = Math.ceil(node.clientHeight / rowHeight) + 1;
+    const start = Math.max(0, Math.floor(scrollTop / rowHeight) - 4);
+    const end = Math.min(list.length, start + visible + 8);
+    let html = "";
+    for (let i = start; i < end; i++) {
+      const key = keyFn ? String(keyFn(list[i])) : String(i);
+      html += '<div class="v-vrow" data-vi="' + i + '" data-key="' +
+        key.replace(/"/g, "&quot;") + '" style="position:absolute;top:' +
+        (i * rowHeight) + "px;left:0;right:0;height:" + rowHeight +
+        'px">' + renderItem(list[i]) + "</div>";
+    }
+    viewport.innerHTML = html;
+  };
+
+  node.addEventListener("scroll", paint, { passive: true });
+  effect(() => {
+    current = items() || [];
+    paint();
+  });
+}
+
 export function bindList(id, items, renderItem, keyFn, handlers, motion,
                           reorder) {
   const node = el(id);
@@ -2609,7 +2668,11 @@ export async function stream(name, args, onChunk, onDone, options) {
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    onChunk(decoder.decode(value, { stream: true }));
+    // Backpressure: if onChunk returns a promise (a slow consumer),
+    // await it before reading the next chunk, so the reader stops
+    // pulling from the network until the UI has caught up.
+    const result = onChunk(decoder.decode(value, { stream: true }));
+    if (result && typeof result.then === "function") await result;
   }
   const tail = decoder.decode();
   if (tail) onChunk(tail);
@@ -2780,7 +2843,25 @@ export function runWorker(name, args, target) {
     else console.warn(`virel: worker ${name} failed:`, e.data && e.data.error);
   };
   worker.addEventListener("message", handler);
-  worker.postMessage(args);
+  // Typed arrays and ArrayBuffers transfer by move (zero-copy) instead
+  // of structured-clone, so large numeric payloads reach the worker
+  // without duplication.
+  worker.postMessage(args, collectTransferables(args));
+}
+
+function collectTransferables(value, seen) {
+  seen = seen || new Set();
+  const out = [];
+  const walk = (v) => {
+    if (!v || typeof v !== "object" || seen.has(v)) return;
+    seen.add(v);
+    if (v instanceof ArrayBuffer) { out.push(v); return; }
+    if (ArrayBuffer.isView(v)) { out.push(v.buffer); return; }
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    for (const k in v) walk(v[k]);
+  };
+  walk(value);
+  return out;
 }
 
 /* ------------------------------------------------------------------ *

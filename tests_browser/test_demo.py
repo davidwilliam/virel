@@ -850,3 +850,50 @@ def test_worker_runs_rich_computation_off_thread(page, server_url):
     # sum of the evens in [1..6] = 2 + 4 + 6 = 12, computed off-thread
     # with the extended subset (sum over a filtered comprehension).
     page.get_by_text("Even sum: 12").wait_for()
+
+
+def test_virtual_list_windows_thousands_of_rows(page, server_url):
+    import subprocess
+    import sys
+    document = subprocess.run(
+        [sys.executable, "-c", (
+            "from virel import ui\n"
+            "def pg():\n"
+            "    items = ui.state([{'id': i, 'name': f'Row {i}'}\n"
+            "                      for i in range(5000)])\n"
+            "    return ui.Each(items,\n"
+            "                   render=lambda x: ui.Text(x['name']),\n"
+            "                   key=lambda x: x['id'], virtual=True,\n"
+            "                   item_height=32, height='16rem')\n"
+            "print(ui.preview(pg).document)\n")],
+        capture_output=True, text=True, check=True).stdout
+    page.set_content(document)
+    page.get_by_text("Row 0").wait_for()
+    # Only a window of the 5000 rows exists in the DOM.
+    rendered = page.evaluate(
+        "document.querySelectorAll('.v-vrow').length")
+    assert 0 < rendered < 60
+    # Scrolling reveals later rows without inflating the DOM.
+    page.evaluate("document.querySelector('.v-vlist').scrollTop = 3200")
+    page.get_by_text("Row 100").wait_for()
+    assert page.evaluate(
+        "document.querySelectorAll('.v-vrow').length") < 60
+
+
+
+def test_worker_receives_transferred_typed_array(page, server_url):
+    # A typed array transfers to the worker zero-copy: after posting, the
+    # source buffer is detached (byteLength 0), proving move not clone.
+    page.goto(f"{server_url}/counter")
+    detached = page.evaluate("""async () => {
+        const mod = await import('/_virel/runtime.js');
+        mod.registerWorkers({ sumArray:
+            "function sumArray(a){let s=0;for(let i=0;i<a.length;i++)s+=a[i];return s;}" });
+        const arr = new Float64Array([1, 2, 3, 4]);
+        const buf = arr.buffer;
+        const sig = mod.signal(0);
+        mod.runWorker("sumArray", arr, sig);
+        // Transferred buffers detach on the sending side immediately.
+        return buf.byteLength === 0;
+    }""")
+    assert detached is True

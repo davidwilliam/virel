@@ -65,6 +65,9 @@ def content_security_policy(inline_scripts: list[str],
         "img-src 'self' data:; "
         f"font-src {font_src}; "
         "connect-src 'self'; "
+        # @ui.worker builds Web Workers from same-origin Blob URLs; allow
+        # exactly that and nothing else for workers.
+        "worker-src 'self' blob:; "
         "object-src 'none'; "
         "base-uri 'self'; "
         "form-action 'self'; "
