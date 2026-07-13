@@ -21,6 +21,7 @@ from .elements import (
     Avatar,
     Badge,
     Box,
+    BrandLogo,
     Breadcrumbs,
     Canvas,
     Button,
@@ -178,7 +179,7 @@ __all__ = [
     # layout
     "Page", "Stack", "Row", "Grid", "Container", "Section", "Card",
     "Wrap", "Cluster", "Center", "Sidebar", "AspectRatio", "ScrollArea",
-    "Resizable", "Splitter", "Box", "Canvas",
+    "Resizable", "Splitter", "Box", "Canvas", "BrandLogo",
     "Divider", "Spacer", "AppShell", "Footer", "Hero",
     # semantic elements
     "Heading", "Text", "Code", "Link", "LinkButton", "Image", "List", "Nav",

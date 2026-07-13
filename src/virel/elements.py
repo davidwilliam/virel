@@ -807,6 +807,45 @@ def Image(src: str | Expr, alt: str, *, width: int | None = None) -> Element:
     return Element("img", attrs=attrs)
 
 
+def BrandLogo(*, light: str, dark: str | None = None, alt: str,
+              height: str = "1.5rem", to: str | None = "/") -> Element:
+    """A theme-aware brand logo. ``light`` is shown on light backgrounds
+    and ``dark`` on dark backgrounds; without ``dark`` the one image shows
+    in both. The active variant follows the same rule as the rest of the
+    theme (an explicit choice wins, otherwise the system preference). When
+    ``to`` is given the logo links there (the home page by default). Pass
+    ``alt=''`` only for a purely decorative mark.
+    """
+    from .security import is_safe_url
+    for url in (light, dark):
+        if url is not None and not is_safe_url(url, image=True):
+            raise VirelCompileError(
+                f"BrandLogo image {url!r} uses a blocked URL scheme.")
+    if alt is None:
+        raise VirelCompileError(
+            "BrandLogo requires alt text (use alt='' for a decorative mark).")
+    style = f"height: {height};"
+
+    def img(src: str, variant: str | None) -> Element:
+        cls = "v-brand-logo"
+        if variant:
+            cls += f" v-brand-logo-{variant}"
+        return Element("img", attrs={"src": src, "alt": alt, "class": cls,
+                                     "style": style})
+
+    if dark is None:
+        images: list[Node] = [img(light, None)]
+    else:
+        images = [img(light, "light"), img(dark, "dark")]
+    if to is None:
+        return Element("span", images, attrs={"class": "v-brand"})
+    if not is_safe_url(to):
+        raise VirelCompileError(f"BrandLogo link {to!r} uses a blocked scheme.")
+    return Element("a", images, attrs={"class": "v-brand v-brand-link",
+                                       "href": to,
+                                       "aria-label": alt or "Home"})
+
+
 def List(*items: Any, ordered: bool = False) -> Element:
     children = [Element("li", normalize_children((item,))) for item in items]
     return Element("ol" if ordered else "ul", children, attrs={"class": "v-list"})
@@ -1762,11 +1801,12 @@ def Footer(*children: Any) -> Element:
     ], attrs={"class": "v-footer"})
 
 
-def AppShell(*, navigation: Node, content: Any, brand: str = "Virel",
+def AppShell(*, navigation: Node, content: Any, brand: Any = "Virel",
              sidebar: Any = None, footer: Any = None) -> Element:
     """Application frame: sticky header, optional sidebar, main content,
     optional footer. With a sidebar, small screens get an off-canvas
-    drawer behind a header toggle."""
+    drawer behind a header toggle. ``brand`` is a text string, or any node
+    (for example a ``ui.BrandLogo``) rendered as the header brand."""
     from .expr import Lit, Ternary, not_
     header_children: list[Node] = []
     shell_attrs: dict[str, Any] = {"class": "v-shell"}
@@ -1783,8 +1823,11 @@ def AppShell(*, navigation: Node, content: Any, brand: str = "Virel",
             events={"click": Handler([SetOp(drawer_open.name,
                                             not_(drawer_open))])},
         ))
-    header_children.append(Element("span", [TextNode(brand)],
-                                   attrs={"class": "v-brand"}))
+    if isinstance(brand, str):
+        header_children.append(Element("span", [TextNode(brand)],
+                                       attrs={"class": "v-brand"}))
+    else:
+        header_children.extend(normalize_children((brand,)))
     header_children.append(navigation)
     header = Element("header", [
         Element("div", header_children,

@@ -136,6 +136,61 @@ def test_appshell_with_sidebar_and_footer():
     assert "$.bindAttr(" in result.js
 
 
+def test_brand_logo_swaps_light_and_dark():
+    def page():
+        return ui.Page(ui.AppShell(
+            navigation=ui.Nav(ui.Link("Home", to="/")),
+            content=ui.Text("body"),
+            brand=ui.BrandLogo(light="/public/logo-light.png",
+                               dark="/public/logo-dark.png",
+                               alt="Virel"),
+        ))
+
+    ui.page("/")(page)
+    html = compile_page(active_registry().pages["/"]).html
+    assert 'class="v-brand-logo v-brand-logo-light"' in html
+    assert 'class="v-brand-logo v-brand-logo-dark"' in html
+    assert 'src="/public/logo-light.png"' in html
+    # Links home by default and is not rendered as a text brand.
+    assert '<a class="v-brand v-brand-link" href="/"' in html
+    assert 'aria-label="Virel"' in html
+
+
+def test_brand_logo_single_image_no_swap():
+    def page():
+        return ui.Page(ui.AppShell(
+            navigation=ui.Nav(ui.Link("Home", to="/")),
+            content=ui.Text("body"),
+            brand=ui.BrandLogo(light="/public/logo.svg", alt="Virel",
+                               to=None)))
+
+    ui.page("/")(page)
+    html = compile_page(active_registry().pages["/"]).html
+    assert "v-brand-logo-light" not in html
+    assert html.count('class="v-brand-logo"') == 1
+
+
+def test_brand_logo_requires_alt():
+    with pytest.raises(VirelCompileError):
+        ui.BrandLogo(light="/x.png", alt=None)
+
+
+def test_brand_logo_rejects_unsafe_url():
+    with pytest.raises(VirelCompileError):
+        ui.BrandLogo(light="javascript:alert(1)", alt="x")
+
+
+def test_appshell_text_brand_still_works():
+    def page():
+        return ui.Page(ui.AppShell(
+            navigation=ui.Nav(ui.Link("Home", to="/")),
+            content=ui.Text("body"), brand="Acme"))
+
+    ui.page("/")(page)
+    html = compile_page(active_registry().pages["/"]).html
+    assert '<span class="v-brand">Acme</span>' in html
+
+
 def test_appshell_without_sidebar_has_no_toggle():
     def page():
         return ui.Page(ui.AppShell(

@@ -354,6 +354,19 @@ html:not([data-theme]) .v-theme-toggle svg[data-icon="system"] { display: inline
 html[data-theme="light"] .v-theme-toggle svg[data-icon="light"] { display: inline; }
 html[data-theme="dark"] .v-theme-toggle svg[data-icon="dark"] { display: inline; }
 
+/* Brand logo: show the variant matching the active background. Matches the
+   theme's own light/dark resolution — an explicit choice wins, otherwise
+   the system preference decides. */
+.v-brand-link { display: inline-flex; align-items: center; }
+.v-brand-logo { display: block; width: auto; }
+.v-brand-logo-dark { display: none; }
+html[data-theme="dark"] .v-brand-logo-light { display: none; }
+html[data-theme="dark"] .v-brand-logo-dark { display: block; }
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .v-brand-logo-light { display: none; }
+  html:not([data-theme="light"]) .v-brand-logo-dark { display: block; }
+}
+
 /* Additional form controls */
 .v-fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: calc(var(--v-space) * 2); }
 .v-fieldset legend { padding: 0; margin-bottom: calc(var(--v-space) * 1.5); }
