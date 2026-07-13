@@ -519,20 +519,52 @@ def use_guard(fn: Callable[..., Any]) -> None:
     active_registry().default_guard = fn
 
 
-def use_policy(**flags: Any) -> None:
-    """Set deployment policy switches (SPEC 13.3): currently
-    raw_javascript and raw_html (both default True) and
-    plugin_capabilities (a set restricting what plugins may do).
+_POLICY_FLAGS = {
+    # Escape hatches (SPEC 13.3).
+    "raw_javascript", "raw_html",
+    # Plugin restrictions (SPEC 13.5).
+    "plugin_capabilities",
+    # Enterprise policy mode (SPEC 18.5).
+    "approved_components",   # allowlist of component names
+    "approved_plugins",      # allowlist of plugin names
+    "dependency_allowlist",  # allowlist of importable top-level packages
+    "max_bundle_gzip",       # per-page JS gzip ceiling (int bytes)
+    "accessibility_strict",  # audit warnings become errors
+    "deployment_targets",    # allowlist of deploy targets
+    "csp_connect_src",       # tighten connect-src beyond 'self'
+}
 
-        ui.use_policy(raw_javascript=False)
+
+def use_policy(**flags: Any) -> None:
+    """Set deployment and enterprise policy (SPEC 13.3, 18.5).
+
+    Escape hatches: raw_javascript, raw_html (default True).
+    Plugins: plugin_capabilities (allowed capability set), and
+    approved_plugins (an allowlist of plugin names).
+    Components: approved_components (an allowlist; other components fail
+    to compile).
+    Supply chain: dependency_allowlist (importable top-level packages an
+    app may use).
+    Budgets: max_bundle_gzip (a per-page JS gzip ceiling enforced by
+    virel check).
+    Accessibility: accessibility_strict (audit warnings become errors).
+    Deployment: deployment_targets (allowed virel deploy targets).
+    CSP: csp_connect_src (tighten connect-src for outbound requests).
+
+        ui.use_policy(raw_javascript=False,
+                      approved_components={"Button", "Text", "Card"},
+                      max_bundle_gzip=20000)
     """
-    known = {"raw_javascript", "raw_html", "plugin_capabilities"}
-    unknown = set(flags) - known
+    unknown = set(flags) - _POLICY_FLAGS
     if unknown:
         raise VirelCompileError(
             f"Unknown policy flag(s) {sorted(unknown)}; known: "
-            f"{', '.join(sorted(known))}.")
-    active_registry().policy.update(flags)
+            f"{', '.join(sorted(_POLICY_FLAGS))}.")
+    registry = active_registry()
+    registry.policy.update(flags)
+    # accessibility_strict is also the audit's strict switch.
+    if "accessibility_strict" in flags:
+        registry.strict_accessibility = bool(flags["accessibility_strict"])
 
 
 def use_accessibility(*, strict: bool = True) -> None:

@@ -730,6 +730,7 @@ class VirelASGIApp:
         from .theme import google_fonts
         csp = content_security_policy(
             result.inline_scripts,
+            connect_src=self.registry.policy.get("csp_connect_src", "'self'"),
             google_fonts=bool(google_fonts(self.registry.theme)))
         headers = [(b"content-security-policy", csp.encode("latin-1"))]
         if locale is not None:

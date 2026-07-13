@@ -667,6 +667,13 @@ mounting goes through `virel.integrations` (PathMount, ASGI).
 
 ## Plugins
 
+Organizations can enforce policy with `ui.use_policy(...)`: prohibit raw
+JavaScript or HTML, restrict which components and plugins an app may use
+(`approved_components`, `approved_plugins`), require a dependency
+allowlist, cap the per-page bundle size, make accessibility strict,
+limit deployment targets, and tighten the CSP. `virel check` enforces
+the compile-time and bundle policies, so a violation fails CI.
+
 Plugins extend the toolchain under a capability contract (SPEC 13.5):
 subclass `ui.Plugin`, declare capabilities, implement the matching
 hooks, and register with `ui.use_plugin`. Capabilities cover compiler

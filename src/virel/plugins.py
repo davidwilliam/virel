@@ -101,6 +101,11 @@ def use_plugin(plugin: Plugin) -> None:
         raise VirelCompileError(
             f"Plugin {plugin.name!r} declares unknown capabilities "
             f"{sorted(unknown)}; known: {', '.join(sorted(CAPABILITIES))}.")
+    approved = registry.policy.get("approved_plugins")
+    if approved is not None and plugin.name not in approved:
+        raise VirelCompileError(
+            f"Plugin {plugin.name!r} is not in the approved-plugins "
+            "allowlist (policy).")
     allowed = registry.policy.get("plugin_capabilities")
     if allowed is not None:
         excess = declared - set(allowed)

@@ -216,9 +216,43 @@ def cmd_build(args: argparse.Namespace) -> None:
     print(f"Server action manifest written to {ir_dir.parent / 'actions.json'}")
 
 
+def _check_dependency_allowlist(root: Path, allowlist) -> list[str]:
+    """Third-party top-level imports in the app not on the allowlist
+    (SPEC 18.5). Standard-library modules and virel are always allowed."""
+    import ast as _ast
+    permitted = set(allowlist) | {"virel"} | set(sys.stdlib_module_names)
+    app_dir = root / "app" if (root / "app").is_dir() else root
+    violations: dict[str, str] = {}
+    for path in sorted(app_dir.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        try:
+            tree = _ast.parse(path.read_text("utf-8"))
+        except SyntaxError:
+            continue
+        for node in _ast.walk(tree):
+            names = []
+            if isinstance(node, _ast.Import):
+                names = [alias.name.split(".")[0] for alias in node.names]
+            elif isinstance(node, _ast.ImportFrom) and node.level == 0 \
+                    and node.module:
+                names = [node.module.split(".")[0]]
+            for name in names:
+                if name and name not in permitted and name not in violations:
+                    violations[name] = str(path.relative_to(root))
+    return [f"{name} (in {loc})" for name, loc in sorted(violations.items())]
+
+
 def cmd_check(args: argparse.Namespace) -> None:
     _load_app(Path.cwd())
     registry = active_registry()
+    allowlist = registry.policy.get("dependency_allowlist")
+    if allowlist is not None:
+        offenders = _check_dependency_allowlist(Path.cwd(), allowlist)
+        if offenders:
+            for offender in offenders:
+                print(f"FAIL  policy dependency not allowlisted: {offender}")
+            raise SystemExit(1)
     failures = 0
     for page in registry.pages.values():
         try:
@@ -240,6 +274,19 @@ def cmd_check(args: argparse.Namespace) -> None:
     if failures:
         raise SystemExit(1)
     print(f"{len(registry.pages)} route(s) compile cleanly.")
+
+    # Enterprise policy budget: a per-page JS ceiling (SPEC 18.5).
+    max_bundle = registry.policy.get("max_bundle_gzip")
+    if max_bundle is not None:
+        from .budgets import measure
+        report = measure({"page_gzip": max_bundle})
+        over = [c for c in report["checks"]
+                if c["name"].startswith("page_gzip") and not c["ok"]]
+        if over:
+            for check in over:
+                print(f"FAIL  policy {check['name']}: "
+                      f"{check['actual']} > {check['budget']} bytes gzip")
+            raise SystemExit(1)
 
     # Performance-budget enforcement (SPEC 17.2): CI fails when the app
     # exceeds its configured budgets.
@@ -408,6 +455,10 @@ def cmd_deploy(args: argparse.Namespace) -> None:
     """Generate deployment artifacts for a target (SPEC 15.1)."""
     root = Path.cwd()
     config = _load_app(root)
+    allowed = active_registry().policy.get("deployment_targets")
+    if allowed is not None and args.target not in allowed:
+        _fail(f"deployment target {args.target!r} is not in the policy "
+              f"allowlist {sorted(allowed)}.")
     from .deploy import generate_artifacts
     try:
         written = generate_artifacts(root, config, target=args.target)

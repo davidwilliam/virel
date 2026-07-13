@@ -204,3 +204,43 @@ __all__ = [
     "Breadcrumbs", "Alert", "Badge", "EmptyState", "ErrorBoundary",
     "ErrorState", "Icon", "icon_names",
 ]
+
+
+# Enterprise policy: approved-components allowlist (SPEC 18.5). When set,
+# constructing a component not on the list is a build error. Wrapping the
+# public constructors is one chokepoint; functools.wraps keeps the
+# signature so schema introspection is unchanged.
+def _install_component_policy() -> None:
+    import functools
+
+    _COMPONENTS = {
+        name for name in __all__
+        if name[0].isupper() and callable(globals().get(name))
+        and name not in ("Theme", "Color", "ColorScale", "Space", "Font",
+                         "FontFace", "GoogleFont", "Motion", "Keyframes",
+                         "Easing", "Style", "Plugin", "Request", "Context",
+                         "Channel", "ChannelClosed", "Resource", "Node",
+                         "VirelCompileError", "Preview", "BrowserPage",
+                         "Fragment", "UploadFile", "FileDownload",
+                         "GridQuery", "Column", "Series", "Command",
+                         "TourStep", "ServerOnly", "MenuItem", "MenuDivider",
+                         "MenuDivider")
+    }
+
+    def wrap(name: str, fn: Any) -> Any:
+        @functools.wraps(fn)
+        def guarded(*args: Any, **kwargs: Any) -> Any:
+            from .registry import active_registry
+            approved = active_registry().policy.get("approved_components")
+            if approved is not None and name not in approved:
+                raise VirelCompileError(
+                    f"Component ui.{name} is not in the approved-components "
+                    "allowlist (policy).")
+            return fn(*args, **kwargs)
+        return guarded
+
+    for name in _COMPONENTS:
+        globals()[name] = wrap(name, globals()[name])
+
+
+_install_component_policy()

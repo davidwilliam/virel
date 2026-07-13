@@ -41,6 +41,7 @@ def script_hash(source: str) -> str:
 
 
 def content_security_policy(inline_scripts: list[str],
+                            connect_src: str = "'self'",
                             google_fonts: bool = False) -> str:
     """The default policy for HTML responses.
 
@@ -64,7 +65,7 @@ def content_security_policy(inline_scripts: list[str],
         f"style-src {style_src}; "
         "img-src 'self' data:; "
         f"font-src {font_src}; "
-        "connect-src 'self'; "
+        f"connect-src {connect_src}; "
         # @ui.worker builds Web Workers from same-origin Blob URLs; allow
         # exactly that and nothing else for workers.
         "worker-src 'self' blob:; "
