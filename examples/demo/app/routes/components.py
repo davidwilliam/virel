@@ -58,7 +58,7 @@ def _actions_tab() -> ui.Node:
         ui.Text("Links", muted=True, size="sm"),
         ui.Row(
             ui.Link("Inline link", to="/"),
-            ui.Link("External link", to="https://github.com/davidwilliam/virel",
+            ui.Link("External link", to="https://github.com/virelui/virel",
                     external=True),
             gap=5,
         ),

@@ -1,6 +1,6 @@
 # Virel
 
-[![CI](https://github.com/davidwilliam/virel/actions/workflows/ci.yml/badge.svg)](https://github.com/davidwilliam/virel/actions/workflows/ci.yml)
+[![CI](https://github.com/virelui/virel/actions/workflows/ci.yml/badge.svg)](https://github.com/virelui/virel/actions/workflows/ci.yml)
 
 Professional interfaces, written in Python.
 
@@ -45,7 +45,7 @@ DOM, no server round trip for local interaction, and no WebSocket.
 Virel has no dependencies beyond Python 3.11+. No Node.js is required.
 
 ```bash
-git clone git@github.com:davidwilliam/virel.git
+git clone git@github.com:virelui/virel.git
 cd virel
 python3 -m venv .venv
 source .venv/bin/activate

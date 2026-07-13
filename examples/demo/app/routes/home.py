@@ -82,5 +82,5 @@ def home() -> ui.Node:
         ),
         title="Virel Demo",
         meta={"description": "Virel demonstration application."},
-        canonical="https://github.com/davidwilliam/virel",
+        canonical="https://github.com/virelui/virel",
     )

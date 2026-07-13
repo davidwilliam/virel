@@ -48,7 +48,7 @@ def site_footer() -> ui.Node:
         ui.Row(
             ui.Icon("play", size=14),
             ui.Link("This site is built with Virel",
-                    to="https://github.com/davidwilliam/virel", external=True),
+                    to="https://github.com/virelui/virel", external=True),
             gap=2,
         ),
     )
