@@ -758,6 +758,48 @@ def Code(content: Any, block: bool = False,
     return inner
 
 
+def Example(render: Any, *, source: str | None = None,
+            title: str | None = None, language: str = "python") -> Element:
+    """A documentation example: a component's live rendered result shown
+    together with its source. Pass a zero-argument function that returns a
+    node — it is called to render the result, and its own source (read with
+    ``inspect.getsource``) becomes the code, so the two can never drift.
+    Pass a node directly with an explicit ``source`` string for cases the
+    source cannot be introspected. ``title`` adds a caption bar.
+
+    Because the result is the component actually running, an example is a
+    genuine proof that the code produces the output — the basis of a
+    documentation site built entirely with the framework it documents.
+    """
+    import inspect
+    import textwrap
+
+    if callable(render):
+        node = render()
+        if source is None:
+            try:
+                source = textwrap.dedent(inspect.getsource(render)).strip()
+            except (OSError, TypeError):
+                source = None
+    else:
+        node = render
+    if source is None:
+        raise VirelCompileError(
+            "ui.Example needs source code: pass a named function so it can "
+            "be read, or provide source=...")
+
+    children: list[Node] = []
+    if title is not None:
+        children.append(Element("div", [TextNode(title)],
+                                attrs={"class": "v-example-bar"}))
+    children.append(Element("div", normalize_children((node,)),
+                            attrs={"class": "v-example-result"}))
+    children.append(Element("div", [Code(source, block=True,
+                                         language=language)],
+                            attrs={"class": "v-example-code"}))
+    return Element("div", children, attrs={"class": "v-example"})
+
+
 def Link(text: Any, to: str | Expr, *, external: bool = False) -> Element:
     if isinstance(to, str):
         from .security import is_safe_url

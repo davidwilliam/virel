@@ -36,6 +36,7 @@ from .elements import (
     Divider,
     DownloadButton,
     EmptyState,
+    Example,
     ErrorBoundary,
     ErrorState,
     FileField,
@@ -182,8 +183,8 @@ __all__ = [
     "Resizable", "Splitter", "Box", "Canvas", "BrandLogo",
     "Divider", "Spacer", "AppShell", "Footer", "Hero",
     # semantic elements
-    "Heading", "Text", "Code", "Link", "LinkButton", "Image", "List", "Nav",
-    "Article", "Video", "Audio",
+    "Heading", "Text", "Code", "Example", "Link", "LinkButton", "Image",
+    "List", "Nav", "Article", "Video", "Audio",
     "unsafe_html", "When",
     # data loading
     "resource", "Resource", "invalidate", "subscribe", "Each",

@@ -13,6 +13,61 @@ def _compile(fn, path="/"):
     return compile_page(active_registry().pages[path])
 
 
+def test_example_shows_result_and_source():
+    def demo():
+        return ui.Button("Press me", intent="primary")
+
+    def page():
+        return ui.Page(ui.Example(demo))
+
+    result = _compile(page)
+    html = result.html
+    # The live result is the real rendered component.
+    assert '<div class="v-example-result">' in html
+    assert "Press me" in html
+    # The source is shown, highlighted, and is the function's own text.
+    # (Highlighting tokenizes identifiers into spans, so assert on the
+    # fragments rather than the contiguous source.)
+    assert '<div class="v-example-code">' in html
+    assert "demo" in html and "Button" in html
+    # Highlighting ran (Python keyword token present).
+    assert 'class="v-tok-kw"' in html
+
+
+def test_example_live_result_is_interactive():
+    def demo():
+        count = ui.state(0)
+        return ui.Button(f"Count: {count}",
+                         on_click=lambda: count.update(lambda c: c + 1))
+
+    def page():
+        return ui.Page(ui.Example(demo))
+
+    result = _compile(page)
+    # The example's component compiles to real client JS, so it runs live.
+    assert "$.signal(0)" in result.js
+    assert "Count: 0" in result.html
+
+
+def test_example_with_explicit_source_and_title():
+    node = ui.Text("hello")
+
+    def page():
+        return ui.Page(ui.Example(node, source="ui.Text('hello')",
+                                  title="greeting.py"))
+
+    html = _compile(page).html
+    assert '<div class="v-example-bar">greeting.py</div>' in html
+    # Source is highlighted; the string literal appears as a token.
+    assert 'v-tok-str' in html and "hello" in html
+
+
+def test_example_without_source_is_an_error():
+    node = ui.Text("hi")
+    with pytest.raises(VirelCompileError):
+        ui.Example(node)
+
+
 def test_tabs_switch_locally():
     def page():
         return ui.Page(ui.Tabs({
