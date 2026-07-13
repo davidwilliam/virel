@@ -119,7 +119,9 @@ def test_charts_compile_to_accessible_svg():
     html = template_html([line], {})
     assert 'role="img"' in html and "Line chart." in html
     assert "<title>Pass rate: 87</title>" in html
-    assert "var(--v-accent)" in html          # themed series colors
+    # Series colors come from a fixed, theme-independent palette.
+    assert "#6366f1" in html and "#10b981" in html
+    assert "var(--v-accent)" not in html
     assert "v-chart-legend" in html
 
     bars = ui.Chart("bar", [ui.Series("Runs", points=[12, 30, 22])],
@@ -128,9 +130,12 @@ def test_charts_compile_to_accessible_svg():
     assert "v-chart-bar" in bars_html and "v-chart-legend" not in bars_html
 
     donut = ui.Chart("donut", [ui.Series("Passed", value=42),
-                               ui.Series("Failed", value=3)])
+                               ui.Series("Failed", value=3)], height=170)
     donut_html = template_html([donut], {})
     assert "(93%)" in donut_html and ">45<" in donut_html
+    # The donut is capped at its height so it does not balloon to the
+    # full column width.
+    assert "max-width:170px" in donut_html
 
 
 def test_chart_values_are_validated():

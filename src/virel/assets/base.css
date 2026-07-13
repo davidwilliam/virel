@@ -1248,9 +1248,11 @@ audio.v-media { width: 100%; }
 /* Charts (SPEC 11.1) */
 .v-chart { margin: 0; display: flex; flex-direction: column; gap: calc(var(--v-space) * 2); }
 .v-chart-svg { width: 100%; height: auto; display: block; }
-.v-chart-grid { stroke: var(--v-border); stroke-width: 1; }
-.v-chart-tick { fill: var(--v-fg-muted); font-size: 11px; font-family: var(--v-font-body); }
-.v-chart-total { fill: var(--v-fg); font-size: 22px; font-weight: 650; font-family: var(--v-font-body); }
+/* Chart chrome uses fixed neutrals (legible on light and dark) so a
+   chart looks the same regardless of the active theme. */
+.v-chart-grid { stroke: rgba(148, 163, 184, 0.35); stroke-width: 1; }
+.v-chart-tick { fill: #6b7280; font-size: 11px; font-family: var(--v-font-body); }
+.v-chart-total { fill: #6b7280; font-size: 17px; font-weight: 650; font-family: var(--v-font-body); }
 .v-chart-point:hover { r: 5; }
 .v-chart-bar:hover { opacity: 0.85; }
 .v-chart-legend { display: flex; flex-wrap: wrap; gap: calc(var(--v-space) * 4); }

@@ -1,10 +1,14 @@
 """Charts (SPEC 11.1 advanced components).
 
 Charts compile to inline SVG at render time: no charting library ships
-to the browser, colors come from the theme tokens so charts follow
-brands and dark mode, every point carries a title for hover and
-assistive technology, and the whole figure gets a text summary. Line,
-area, bar, and donut cover the everyday cases.
+to the browser, every point carries a title for hover and assistive
+technology, and the whole figure gets a text summary. Line, area, bar,
+and donut cover the everyday cases.
+
+Series colors come from a fixed categorical palette, not the theme, so a
+chart looks the same under any brand or color scheme — a chart's colors
+encode its data, not the site's accent. The palette hues stay legible on
+both light and dark surfaces.
 """
 
 from __future__ import annotations
@@ -14,11 +18,17 @@ from typing import Any
 from .expr import VirelCompileError
 from .nodes import Element, RawHTML
 
+# A fixed, theme-independent categorical palette (readable on light and
+# dark backgrounds). Series and donut segments are colored by index.
 _SERIES_COLORS = (
-    "var(--v-accent)",
-    "var(--v-success)",
-    "var(--v-danger)",
-    "var(--v-fg-muted)",
+    "#6366f1",  # indigo
+    "#10b981",  # emerald
+    "#f59e0b",  # amber
+    "#ef4444",  # red
+    "#3b82f6",  # blue
+    "#a855f7",  # purple
+    "#ec4899",  # pink
+    "#14b8a6",  # teal
 )
 
 _KINDS = ("line", "area", "bar", "donut")
@@ -206,7 +216,11 @@ def _donut(series: list[Series], height: int) -> str:
     radius = size * 0.36
     center = size / 2
     circumference = 2 * math.pi * radius
+    # A donut has a square viewBox, so cap its width at its height and
+    # center it — otherwise width:100% would blow it up to the full
+    # column width instead of respecting the requested size.
     parts = [f'<svg viewBox="0 0 {size} {size}" class="v-chart-svg" '
+             f'style="max-width:{size}px;margin-inline:auto" '
              'preserveAspectRatio="xMidYMid meet">']
     offset = 0.0
     for index, entry in enumerate(series):
