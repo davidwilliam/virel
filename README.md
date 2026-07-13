@@ -554,6 +554,14 @@ ProjectCard = ui.recipe(
 ProjectCard(ui.Text("Atlas"), status="paused")
 ```
 
+For large-data and low-level work (SPEC 17.3): the data grid virtualizes
+large tables (`virtual=True`), stream render mode renders incrementally,
+`@ui.worker` runs a pure function off the main thread and posts its
+result into a state so heavy computation never blocks the UI, and
+`ui.Canvas` is the canvas/WebGL/WebGPU extension point (a raw draw body
+with device-pixel scaling and an optional animation loop). Server-side
+data adapters read pandas, Polars, and Arrow.
+
 When the typed API is not enough, `ui.Box` is the CSS escape hatch: raw
 declarations, including custom properties, validated and emitted as a
 normal inline style so they stay compatible with standard CSS concepts and

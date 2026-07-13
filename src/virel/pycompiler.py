@@ -321,6 +321,9 @@ class FnCompiler:
                 return OpStmt(self._compile_state_mutation(call, target, attr))
             if isinstance(target, ServerAction):
                 return OpStmt(self._compile_action_call(call, target, attr))
+            from .registry import WorkerFunction
+            if isinstance(target, WorkerFunction) and attr == "run":
+                return OpStmt(self._compile_worker_run(call, target))
             if isinstance(target, Resource):
                 if attr != "refresh" or call.args or call.keywords:
                     raise self.error(call, "Resources support .refresh() with "
@@ -356,6 +359,23 @@ class FnCompiler:
             "calls (action.call/action.stream), and resource.refresh() may "
             "be used as statements.",
         )
+
+    def _compile_worker_run(self, call: ast.Call, worker: Any) -> Any:
+        from .expr import State, WorkerOp
+        if len(call.args) != 1:
+            raise self.error(call, "worker .run(args, into=state) takes the "
+                                   "arguments and into=.")
+        into = None
+        for keyword in call.keywords:
+            if keyword.arg == "into":
+                into = self._try_resolve_node(keyword.value)
+        if not isinstance(into, State):
+            raise self.error(call, "worker .run(...) needs into= a ui.state.")
+        worker.ensure_compiled()
+        from .expr import current_context, in_trace
+        if in_trace():
+            current_context().workers[worker.name] = worker
+        return WorkerOp(worker.name, self.expr(call.args[0]), into)
 
     def _compile_notify(self, call: ast.Call) -> Any:
         from .notifications import _INTENTS, NotifyOp

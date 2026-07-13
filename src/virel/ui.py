@@ -22,6 +22,7 @@ from .elements import (
     Badge,
     Box,
     Breadcrumbs,
+    Canvas,
     Button,
     Card,
     Checkbox,
@@ -106,6 +107,7 @@ from .uploads import FileDownload, UploadFile
 from .resources import Resource, invalidate, resource, subscribe
 from .nodes import Node, When
 from .registry import (Request, build, client, component, deny, layout,
+                       worker,
                        page,
                        redirect, server, shared, use_accessibility,
                        use_css, use_guard,
@@ -147,7 +149,7 @@ def use_theme(theme: Theme) -> None:
 
 __all__ = [
     # programming model
-    "page", "layout", "component", "server", "client", "shared", "build",
+    "page", "layout", "component", "server", "client", "worker", "shared", "build",
     "web_component",
     "use_guard", "use_middleware", "use_static", "use_css",
     "use_accessibility", "use_policy", "unsafe", "redirect", "deny",
@@ -172,7 +174,7 @@ __all__ = [
     # layout
     "Page", "Stack", "Row", "Grid", "Container", "Section", "Card",
     "Wrap", "Cluster", "Center", "Sidebar", "AspectRatio", "ScrollArea",
-    "Resizable", "Splitter", "Box",
+    "Resizable", "Splitter", "Box", "Canvas",
     "Divider", "Spacer", "AppShell", "Footer", "Hero",
     # semantic elements
     "Heading", "Text", "Code", "Link", "LinkButton", "Image", "List", "Nav",

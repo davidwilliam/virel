@@ -115,6 +115,7 @@ class Element(Node):
         bound_props: dict[str, Expr] | None = None,
         component: str | None = None,
         runtime_binding: str | None = None,
+        runtime_binding_args: str | None = None,
     ) -> None:
         self.tag = tag
         self.children = children or []
@@ -124,8 +125,10 @@ class Element(Node):
         self.component = component  # originating @ui.component, for inspection
         self.source: str | None = None  # file:line of the component function
         # Name of a runtime function to bind this element to (e.g. a theme
-        # toggle). Compiles to $.name("<id>").
+        # toggle). Compiles to $.name("<id>"), or $.name("<id>", <args>)
+        # when runtime_binding_args carries extra JS arguments.
         self.runtime_binding = runtime_binding
+        self.runtime_binding_args = runtime_binding_args
 
     def to_ir(self) -> dict[str, Any]:
         ir: dict[str, Any] = {"kind": "element", "tag": self.tag}
@@ -583,7 +586,10 @@ class Emitter:
         needs_id = bool(node.events or node.bound_props or node.runtime_binding)
         vid = self.assign_id() if needs_id else None
         if node.runtime_binding:
-            self.bindings.append(f'$.{node.runtime_binding}("{vid}");')
+            extra = (", " + node.runtime_binding_args
+                     if node.runtime_binding_args else "")
+            self.bindings.append(
+                f'$.{node.runtime_binding}("{vid}"{extra});')
 
         parts = [f"<{node.tag}"]
         if vid:

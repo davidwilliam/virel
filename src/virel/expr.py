@@ -44,6 +44,7 @@ class TraceContext:
         self.derived: dict[str, "Derived"] = {}
         self.expr_registry: dict[int, "Expr"] = {}
         self.client_fns: dict[str, Any] = {}  # name -> ClientFunction used by page
+        self.workers: dict[str, Any] = {}     # name -> WorkerFunction used by page
         self.resources: dict[str, Any] = {}   # id -> Resource
         self.locale: str | None = None         # active locale for ui.t
         self.uses_request_context = False      # page read a per-request value
@@ -677,6 +678,31 @@ class SetOp:
 
     def to_ir(self) -> dict[str, Any]:
         return {"op": "set", "state": self.state, "value": self.value.js()}
+
+
+class WorkerOp:
+    """Run a @ui.worker function off the main thread and set its result
+    into a state (SPEC 17.3)."""
+
+    def __init__(self, name: str, args: "Expr", into: Any) -> None:
+        self.name = name
+        self.args = args
+        self.into = into
+
+    def js(self) -> str:
+        return (f'$.runWorker("{self.name}", {self.args.js()}, '
+                f"S.{self.into.name});")
+
+    def execute(self, env: dict[str, Any], ev: Any = None) -> None:
+        # Test-mode: run the function synchronously (no real worker).
+        from .registry import active_registry, to_jsonable
+        fn = active_registry().workers[self.name].fn
+        result = fn(self.args.evaluate(env))
+        env[self.into.name] = to_jsonable(result)
+
+    def to_ir(self) -> dict[str, Any]:
+        return {"op": "worker", "name": self.name,
+                "args": self.args.js(), "into": self.into.name}
 
 
 class SetFromEventOp:

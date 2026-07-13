@@ -289,6 +289,51 @@ def Splitter(first: Any, second: Any, *, direction: str = "row",
                    runtime_binding="splitter")
 
 
+def Canvas(*, draw: str, context: str = "2d", animate: bool = False,
+           label: str, height: str = "16rem",
+           class_name: str | None = None) -> Element:
+    """A canvas rendering surface (SPEC 17.3 canvas/WebGL/WebGPU
+    extension point). Graphics code is inherently imperative and outside
+    the typed subset, so ``draw`` is a raw JavaScript body run as
+    ``(ctx, frame) => { <draw> }`` where ``ctx`` is the rendering context
+    and ``frame`` is ``{width, height, time, node}``. ``context`` is
+    '2d', 'webgl', or 'webgl2'; ``animate=True`` runs the loop.
+    Device-pixel scaling is automatic. Like other raw-code escape
+    hatches, this is subject to the raw_javascript policy.
+
+        ui.Canvas(draw='''
+            ctx.clearRect(0, 0, frame.width, frame.height);
+            ctx.fillStyle = "#4f46e5";
+            ctx.fillRect(0, 0, frame.width * 0.5, frame.height);
+        ''', label="Spectrum")
+    """
+    if context not in ("2d", "webgl", "webgl2"):
+        raise VirelCompileError(
+            "Canvas context must be '2d', 'webgl', or 'webgl2'.")
+    if not isinstance(draw, str) or not draw.strip():
+        raise VirelCompileError(
+            "Canvas draw= is a JavaScript function body string.")
+    from .registry import active_registry
+    if not active_registry().policy.get("raw_javascript", True):
+        raise VirelCompileError(
+            "Canvas needs raw JavaScript, prohibited by policy "
+            "(ui.use_policy(raw_javascript=False)).")
+    if "</" in draw or "<script" in draw.lower():
+        raise VirelCompileError(
+            "Canvas draw body may not contain markup-closing sequences.")
+    opts = "{animate: true}" if animate else "{}"
+    draw_fn = "(ctx, frame) => { " + draw + " }"
+    return Element("canvas", attrs={
+        "class": _classes("v-canvas", class_name),
+        "data-context": context,
+        "aria-label": label,
+        "role": "img",
+        "style": f"width: 100%; height: {_css_length(height)}; "
+                 "display: block",
+    }, runtime_binding="canvas",
+        runtime_binding_args=f"{draw_fn}, {opts}")
+
+
 def Box(*children: Any, css: dict[str, Any] | None = None,
         class_name: str | None = None) -> Element:
     """The CSS escape hatch (SPEC 10.5): a neutral container taking raw

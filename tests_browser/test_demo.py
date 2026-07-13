@@ -791,3 +791,36 @@ def test_browserpage_role_and_link_helpers(page, server_url):
     bp.button("Increment").click()
     bp.expect_text("Count: 2")
     bp.expect_no_text("Count: 5")
+
+
+def test_worker_and_canvas_run_in_the_browser(page, server_url):
+    # A standalone page compiled inline: a worker computes off-thread and
+    # a canvas paints, proving both extension points in a real browser.
+    import subprocess
+    import sys
+    document = subprocess.run(
+        [sys.executable, "-c", (
+            "from virel import ui\n"
+            "@ui.worker\n"
+            "def weighted(v):\n"
+            "    return v[0] * 3 + v[1] * 5\n"
+            "def pg():\n"
+            "    data = ui.state([2, 4])\n"
+            "    out = ui.state(0)\n"
+            "    return ui.Stack(\n"
+            "        ui.Button('Compute',\n"
+            "                  on_click=lambda: weighted.run(data, into=out)),\n"
+            "        ui.Text(f'Result: {out}'),\n"
+            "        ui.Canvas(draw='ctx.fillStyle=\"#4f46e5\";"
+            "ctx.fillRect(0,0,frame.width,frame.height);', label='Fill'),\n"
+            "    )\n"
+            "print(ui.preview(pg).document)\n")],
+        capture_output=True, text=True, check=True).stdout
+    page.set_content(document)
+    page.get_by_role("button", name="Compute").click()
+    page.get_by_text("Result: 26").wait_for()   # 2*3 + 4*5, off-thread
+    # The canvas painted: its backing store has non-zero dimensions.
+    painted = page.evaluate(
+        "(() => { const c = document.querySelector('canvas'); "
+        "return c.width > 0 && c.height > 0; })()")
+    assert painted

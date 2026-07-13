@@ -378,6 +378,8 @@ class AppRegistry:
         self.actions: dict[str, ServerAction] = {}
         self.components: dict[str, Callable[..., Any]] = {}
         self.client_functions: dict[str, ClientFunction] = {}
+        # @ui.worker functions (SPEC 17.3), a subset of client functions.
+        self.workers: dict[str, Any] = {}
         self.theme: Any = None  # set via ui.use_theme; None -> default theme
         # Soft navigation between pages (fetch, swap, mount). Configurable
         # via [app] client_nav in virel.toml.
@@ -587,6 +589,45 @@ def client(fn: Callable[..., Any]) -> ClientFunction:
     """Mark a pure function for ahead-of-time compilation to JavaScript."""
     wrapped = ClientFunction(fn)
     active_registry().client_functions[wrapped.name] = wrapped
+    return wrapped
+
+
+class WorkerFunction(ClientFunction):
+    """A pure function compiled to JavaScript that runs in a Web Worker,
+    off the main thread (SPEC 17.3 worker execution). Call ``.run(args,
+    into=state)`` inside a handler; the result posts back and lands in
+    the state. Callable as ordinary Python on the server and in tests."""
+
+    def run(self, args: Any, *, into: State) -> None:
+        from .expr import WorkerOp, current_recorder, lift
+        if not isinstance(into, State):
+            raise VirelCompileError(
+                "worker .run(...) needs into= a ui.state to receive the "
+                "result.")
+        self.ensure_compiled()
+        from .expr import current_context, in_trace
+        if in_trace():
+            current_context().workers[self.name] = self
+        current_recorder().ops.append(
+            WorkerOp(self.name, lift(args), into))
+
+
+def worker(fn: Callable[..., Any]) -> WorkerFunction:
+    """A pure function that runs in a Web Worker (SPEC 17.3):
+
+        @ui.worker
+        def summarize(rows: list) -> dict:
+            return {"total": sum(r["n"] for r in rows)}
+
+        # in a handler:
+        summarize.run(data, into=result)
+
+    The function compiles to JavaScript, runs off the main thread, and
+    posts its return value into the result state; the UI stays
+    responsive during heavy computation."""
+    wrapped = WorkerFunction(fn)
+    active_registry().client_functions[wrapped.name] = wrapped
+    active_registry().workers[wrapped.name] = wrapped
     return wrapped
 
 

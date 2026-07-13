@@ -2737,3 +2737,85 @@ export function lightbox(id) {
     dialog.showModal();
   });
 }
+
+/* ------------------------------------------------------------------ *
+ * Worker execution (SPEC 17.3): a @ui.worker function runs off the
+ * main thread. Each function gets a lazily created, reused Worker built
+ * from a Blob of its compiled source, so heavy work never blocks the
+ * UI. The result posts back and lands in the target signal.
+ * ------------------------------------------------------------------ */
+
+const workerSources = {};
+const workerPool = {};
+
+export function registerWorkers(sources) {
+  Object.assign(workerSources, sources);
+}
+
+function ensureWorker(name) {
+  if (workerPool[name]) return workerPool[name];
+  const src = workerSources[name];
+  if (!src) return null;
+  const blob = new Blob([
+    src + "\nself.onmessage = (e) => {" +
+    "  try { self.postMessage({ ok: true, value: " + name + "(e.data) }); }" +
+    "  catch (err) { self.postMessage({ ok: false, error: String(err) }); }" +
+    "};",
+  ], { type: "application/javascript" });
+  const worker = new Worker(URL.createObjectURL(blob));
+  workerPool[name] = worker;
+  onDispose(() => { worker.terminate(); delete workerPool[name]; });
+  return worker;
+}
+
+export function runWorker(name, args, target) {
+  const worker = ensureWorker(name);
+  if (!worker) {
+    console.warn(`virel: no worker source for ${name}`);
+    return;
+  }
+  const handler = (e) => {
+    worker.removeEventListener("message", handler);
+    if (e.data && e.data.ok) target.set(e.data.value);
+    else console.warn(`virel: worker ${name} failed:`, e.data && e.data.error);
+  };
+  worker.addEventListener("message", handler);
+  worker.postMessage(args);
+}
+
+/* ------------------------------------------------------------------ *
+ * Canvas extension point (SPEC 17.3): hands a canvas rendering context
+ * (2d, webgl, or webgl2) to a client draw function, with device-pixel
+ * scaling and an optional animation loop. This is the escape hatch for
+ * canvas, WebGL, and WebGPU-style rendering.
+ * ------------------------------------------------------------------ */
+
+export function canvas(id, draw, opts = {}) {
+  const node = el(id);
+  if (!node) return;
+  const kind = node.dataset.context || "2d";
+  const ctx = node.getContext(kind);
+  if (!ctx) return;
+  const resize = () => {
+    const ratio = window.devicePixelRatio || 1;
+    const rect = node.getBoundingClientRect();
+    node.width = Math.max(1, Math.round(rect.width * ratio));
+    node.height = Math.max(1, Math.round(rect.height * ratio));
+    if (kind === "2d") ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  };
+  resize();
+  const observer = new ResizeObserver(() => { resize(); paint(0); });
+  observer.observe(node);
+
+  let raf = null;
+  const paint = (t) => {
+    draw(ctx, { width: node.clientWidth, height: node.clientHeight,
+                time: t, node });
+    if (opts.animate) raf = requestAnimationFrame(paint);
+  };
+  paint(0);
+  onDispose(() => {
+    observer.disconnect();
+    if (raf) cancelAnimationFrame(raf);
+  });
+}

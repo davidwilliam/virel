@@ -236,6 +236,12 @@ def _emit_page_js(ctx: TraceContext, emitter: Emitter, dev: bool = False,
     lines = [f'import * as $ from "{runtime_url}";']
     for definition in _client_fn_definitions(ctx):
         lines.append(definition)
+    # Worker function sources ship as strings so each Web Worker gets its
+    # own copy off the main thread (SPEC 17.3).
+    if ctx.workers:
+        sources = {name: fn.js_definition()
+                   for name, fn in ctx.workers.items()}
+        lines.append("$.registerWorkers(" + _js_json(sources) + ");")
     # Bindings live inside mount() so client navigation can re-run them
     # against a freshly swapped document; fresh modules mount themselves.
     body = ["const S = {};"]
