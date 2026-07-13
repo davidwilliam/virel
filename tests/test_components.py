@@ -91,6 +91,18 @@ def test_badge_rejects_unknown_intent():
         ui.Badge("x", intent="bogus")
 
 
+def test_link_current_marks_active_nav():
+    def page():
+        return ui.Page(
+            ui.Link("Home", to="/", current=True),
+            ui.Link("Docs", to="/docs", class_name="nav-item"))
+
+    html = _compile(page).html
+    assert 'aria-current="page"' in html
+    assert "v-link-current" in html
+    assert "nav-item" in html
+
+
 def test_heading_anchor_slugifies_and_links():
     def page():
         return ui.Page(ui.Heading("Getting Started!", level=2, anchor=True))

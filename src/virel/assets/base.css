@@ -168,6 +168,7 @@ p { margin: 0; }
 .v-text-sm { font-size: 0.875rem; }
 .v-text-lg { font-size: 1.125rem; }
 
+.v-link-current { color: var(--v-accent); font-weight: 640; }
 .v-link {
   color: var(--v-accent);
   text-decoration: none;

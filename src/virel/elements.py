@@ -884,7 +884,8 @@ def Example(render: Any, *, source: str | None = None,
     return Element("div", children, attrs={"class": "v-example"})
 
 
-def Link(text: Any, to: str | Expr, *, external: bool = False) -> Element:
+def Link(text: Any, to: str | Expr, *, external: bool = False,
+         current: bool = False, class_name: str | None = None) -> Element:
     if isinstance(to, str):
         from .security import is_safe_url
         if not is_safe_url(to):
@@ -892,7 +893,14 @@ def Link(text: Any, to: str | Expr, *, external: bool = False) -> Element:
                 f"Link target {to!r} uses a blocked URL scheme. Allowed: "
                 "relative URLs, http(s), mailto, and tel."
             )
-    attrs: dict[str, Any] = {"href": to, "class": "v-link"}
+    classes = _classes("v-link", class_name)
+    if current:
+        classes += " v-link-current"
+    attrs: dict[str, Any] = {"href": to, "class": classes}
+    if current:
+        # Marks the link for the current page (navigation highlighting and
+        # assistive technology).
+        attrs["aria-current"] = "page"
     if external:
         attrs["rel"] = "noopener noreferrer"
         attrs["target"] = "_blank"
