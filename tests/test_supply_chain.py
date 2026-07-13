@@ -6,6 +6,8 @@ import pytest
 
 from virel import ui
 from virel.registry import Request, active_registry
+from virel.lockfile import (LOCK_NAME, installed_lock, verify_lock,
+                            write_lock)
 from virel.sbom import (build_metadata, digest_directory, generate_sbom,
                         source_digest)
 from virel.server import create_asgi_app
@@ -161,6 +163,48 @@ def test_digest_directory_order_independent(tmp_path):
     (tmp_path / "b.txt").write_text("two")
     assert digest_directory(tmp_path).startswith("sha256:")
     assert digest_directory(tmp_path) == digest_directory(tmp_path)
+
+
+# --- dependency lockfile and integrity ------------------------------------
+
+def test_installed_lock_pins_virel_with_digest():
+    lock = installed_lock()
+    assert lock["schema"] == "virel-lock/1"
+    names = {p["name"] for p in lock["packages"]}
+    assert "virel" in names
+    assert all(p["digest"].startswith("sha256:") for p in lock["packages"])
+
+
+def test_lockfile_write_then_verify_is_clean(tmp_path):
+    write_lock(tmp_path)
+    assert (tmp_path / LOCK_NAME).exists()
+    assert verify_lock(tmp_path) == []
+
+
+def test_lockfile_detects_version_drift(tmp_path):
+    import json
+    write_lock(tmp_path)
+    data = json.loads((tmp_path / LOCK_NAME).read_text())
+    data["packages"][0]["version"] = "999.0.0"
+    (tmp_path / LOCK_NAME).write_text(json.dumps(data))
+    issues = verify_lock(tmp_path)
+    assert any("999.0.0" in i for i in issues)
+
+
+def test_lockfile_detects_missing_package(tmp_path):
+    import json
+    write_lock(tmp_path)
+    data = json.loads((tmp_path / LOCK_NAME).read_text())
+    data["packages"].append(
+        {"name": "ghostpkg", "version": "1.0", "digest": "sha256:0"})
+    (tmp_path / LOCK_NAME).write_text(json.dumps(data))
+    issues = verify_lock(tmp_path)
+    assert any("ghostpkg" in i and "not installed" in i for i in issues)
+
+
+def test_verify_without_lockfile_raises(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        verify_lock(tmp_path)
 
 
 # --- serialization safety (SPEC 18.3) -------------------------------------

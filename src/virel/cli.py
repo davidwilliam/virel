@@ -266,6 +266,17 @@ def cmd_check(args: argparse.Namespace) -> None:
             for offender in offenders:
                 print(f"FAIL  policy dependency not allowlisted: {offender}")
             raise SystemExit(1)
+
+    # Dependency integrity: if a lockfile is present, the environment must
+    # match it (SPEC 18.2).
+    from .lockfile import LOCK_NAME, verify_lock
+    if (Path.cwd() / LOCK_NAME).exists():
+        issues = verify_lock(Path.cwd())
+        if issues:
+            for issue in issues:
+                print(f"FAIL  dependency integrity: {issue}")
+            raise SystemExit(1)
+        print(f"ok    {LOCK_NAME} matches the environment")
     failures = 0
     for page in registry.pages.values():
         try:
@@ -501,6 +512,28 @@ def cmd_sbom(args: argparse.Namespace) -> None:
               f"{args.output}")
     else:
         print(text)
+
+
+def cmd_lock(args: argparse.Namespace) -> None:
+    """Pin (or verify) the dependency lockfile (SPEC 18.2)."""
+    root = Path.cwd()
+    from .lockfile import LOCK_NAME, verify_lock, write_lock
+    if args.verify:
+        try:
+            issues = verify_lock(root)
+        except FileNotFoundError as error:
+            _fail(str(error))
+        if issues:
+            print(f"{LOCK_NAME} does not match the environment:")
+            for issue in issues:
+                print(f"  {issue}")
+            raise SystemExit(1)
+        print(f"{LOCK_NAME}: environment matches the lockfile.")
+        return
+    path = write_lock(root)
+    import json as _json
+    count = len(_json.loads(path.read_text())["packages"])
+    print(f"Wrote {path} pinning {count} package(s).")
 
 
 def cmd_inspect(args: argparse.Namespace) -> None:
@@ -746,6 +779,12 @@ def main(argv: list[str] | None = None) -> None:
         "sbom", help="emit a CycloneDX SBOM of the app and its dependencies")
     p_sbom.add_argument("-o", "--output", help="write to a file instead of stdout")
     p_sbom.set_defaults(fn=cmd_sbom)
+
+    p_lock = sub.add_parser(
+        "lock", help="pin dependencies to a lockfile, or verify integrity")
+    p_lock.add_argument("--verify", action="store_true",
+                        help="check the environment against virel.lock")
+    p_lock.set_defaults(fn=cmd_lock)
 
     p_inspect = sub.add_parser("inspect", help="print the UI IR for a route")
     p_inspect.add_argument("route")

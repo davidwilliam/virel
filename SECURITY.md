@@ -57,6 +57,10 @@ and auditable; grepping for `unsafe` finds every use.
 - Pull requests run automated dependency review; a change that adds a
   dependency with a known vulnerability or an incompatible license fails
   the gate. The framework itself ships zero runtime dependencies.
+- `virel lock` pins the environment to `virel.lock` (version and an
+  integrity digest per package, from the hashes pip records at install);
+  `virel lock --verify`, and `virel check` when a lockfile is present,
+  fail on any version or integrity drift.
 
 ## Out of scope
 
