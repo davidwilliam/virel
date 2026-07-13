@@ -614,14 +614,55 @@ class FnCompiler:
         if isinstance(node, (ast.List, ast.Tuple)):
             return ListExpr([self.expr(e) for e in node.elts])
 
+        if isinstance(node, ast.Dict):
+            from .expr import DictExpr
+            pairs: dict[str, Expr] = {}
+            for key, value in zip(node.keys, node.values):
+                if not isinstance(key, ast.Constant) or \
+                        not isinstance(key.value, str):
+                    raise self.error(
+                        node, "Dict keys in client code must be string "
+                              "literals.")
+                pairs[key.value] = self.expr(value)
+            return DictExpr(pairs)
+
+        if isinstance(node, ast.ListComp):
+            return self._comprehension(node)
+
         raise self.error(
             node,
             f"`{type(node).__name__}` expressions are not in the client "
             "subset. Supported: literals, arithmetic, comparisons, and/or/not, "
-            "conditional expressions, f-strings, list literals, indexing, "
-            "supported string methods, len/str/int/float/bool/abs/min/max/"
-            "round, and @ui.client function calls.",
+            "conditional expressions, f-strings, list/dict literals, list "
+            "comprehensions, indexing, supported string methods, "
+            "len/str/int/float/bool/abs/min/max/round/sum/range/enumerate/"
+            "sorted, and @ui.client function calls.",
         )
+
+    def _comprehension(self, node: ast.ListComp) -> Expr:
+        from .expr import Comprehension
+        if len(node.generators) != 1:
+            raise self.error(node, "Only a single-loop list comprehension "
+                                   "is supported in client code.")
+        gen = node.generators[0]
+        if not isinstance(gen.target, ast.Name) or gen.is_async:
+            raise self.error(node, "List comprehensions bind a single "
+                                   "name over one iterable.")
+        var = gen.target.id
+        iterable = self.expr(gen.iter)
+        previous = set(self.locals)
+        self.locals.add(var)
+        try:
+            element = self.expr(node.elt)
+            condition = None
+            if len(gen.ifs) == 1:
+                condition = self.expr(gen.ifs[0])
+            elif len(gen.ifs) > 1:
+                raise self.error(node, "At most one filter condition is "
+                                       "supported in a comprehension.")
+        finally:
+            self.locals = previous
+        return Comprehension(element, var, iterable, condition)
 
     def _name_expr(self, node: ast.Name) -> Expr:
         name = node.id
@@ -721,6 +762,21 @@ class FnCompiler:
                 return Cast(name, self.expr(node.args[0]))
             if name in ("min", "max"):
                 return MinMax(name, [self.expr(a) for a in node.args])
+            from .expr import Aggregate, Enumerate, RangeExpr
+            if name in ("sum", "any", "all", "sorted", "reversed", "list"):
+                if len(node.args) != 1:
+                    raise self.error(node, f"{name}() takes one iterable.")
+                if name == "list":
+                    return self.expr(node.args[0])
+                return Aggregate(name, self.expr(node.args[0]))
+            if name == "range":
+                if not 1 <= len(node.args) <= 3:
+                    raise self.error(node, "range() takes 1 to 3 arguments.")
+                return RangeExpr([self.expr(a) for a in node.args])
+            if name == "enumerate":
+                if len(node.args) != 1:
+                    raise self.error(node, "enumerate() takes one iterable.")
+                return Enumerate(self.expr(node.args[0]))
             resolved = self._resolve(name)
             from .registry import ClientFunction
             if isinstance(resolved, ClientFunction):

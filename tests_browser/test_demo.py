@@ -824,3 +824,29 @@ def test_worker_and_canvas_run_in_the_browser(page, server_url):
         "(() => { const c = document.querySelector('canvas'); "
         "return c.width > 0 && c.height > 0; })()")
     assert painted
+
+
+def test_worker_runs_rich_computation_off_thread(page, server_url):
+    import subprocess
+    import sys
+    document = subprocess.run(
+        [sys.executable, "-c", (
+            "from virel import ui\n"
+            "@ui.worker\n"
+            "def even_sum(nums):\n"
+            "    return sum([n for n in nums if n % 2 == 0])\n"
+            "def pg():\n"
+            "    data = ui.state([1, 2, 3, 4, 5, 6])\n"
+            "    out = ui.state(0)\n"
+            "    return ui.Stack(\n"
+            "        ui.Button('Compute',\n"
+            "                  on_click=lambda: even_sum.run(data, into=out)),\n"
+            "        ui.Text(f'Even sum: {out}'),\n"
+            "    )\n"
+            "print(ui.preview(pg).document)\n")],
+        capture_output=True, text=True, check=True).stdout
+    page.set_content(document)
+    page.get_by_role("button", name="Compute").click()
+    # sum of the evens in [1..6] = 2 + 4 + 6 = 12, computed off-thread
+    # with the extended subset (sum over a filtered comprehension).
+    page.get_by_text("Even sum: 12").wait_for()

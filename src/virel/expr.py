@@ -543,6 +543,110 @@ class MinMax(Expr):
         return min(values) if self.fn == "min" else max(values)
 
 
+class Aggregate(Expr):
+    """sum() and the other iterable aggregates, compiled to array
+    reductions so client and worker code can process lists."""
+
+    def __init__(self, fn: str, arg: Expr) -> None:
+        self.fn, self.arg = fn, arg
+
+    def js(self) -> str:
+        inner = self.arg.js()
+        if self.fn == "sum":
+            return f"({inner}).reduce((a, b) => a + b, 0)"
+        if self.fn == "any":
+            return f"({inner}).some(Boolean)"
+        if self.fn == "all":
+            return f"({inner}).every(Boolean)"
+        if self.fn == "sorted":
+            return f"[...({inner})].sort((a, b) => a < b ? -1 : a > b ? 1 : 0)"
+        if self.fn == "reversed":
+            return f"[...({inner})].reverse()"
+        return inner
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        value = self.arg.evaluate(env)
+        return {"sum": sum, "any": any, "all": all,
+                "sorted": sorted, "reversed": lambda v: list(reversed(v))
+                }[self.fn](value)
+
+    def is_list(self) -> bool:
+        return self.fn in ("sorted", "reversed")
+
+
+class RangeExpr(Expr):
+    """range() as an array, so loops and comprehensions over a count
+    work in client and worker code."""
+
+    def __init__(self, args: list[Expr]) -> None:
+        self.args = args
+
+    def js(self) -> str:
+        parts = [a.js() for a in self.args]
+        if len(parts) == 1:
+            start, stop, step = "0", parts[0], "1"
+        elif len(parts) == 2:
+            start, stop, step = parts[0], parts[1], "1"
+        else:
+            start, stop, step = parts
+        return (f"Array.from({{length: Math.max(0, Math.ceil((({stop}) - "
+                f"({start})) / ({step})))}}, (_, i) => ({start}) + i * "
+                f"({step}))")
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return list(range(*[int(a.evaluate(env)) for a in self.args]))
+
+    def is_list(self) -> bool:
+        return True
+
+
+class Enumerate(Expr):
+    """enumerate() as [index, value] pairs."""
+
+    def __init__(self, arg: Expr) -> None:
+        self.arg = arg
+
+    def js(self) -> str:
+        return f"({self.arg.js()}).map((v, i) => [i, v])"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        return [list(pair) for pair in enumerate(self.arg.evaluate(env))]
+
+    def is_list(self) -> bool:
+        return True
+
+
+class Comprehension(Expr):
+    """A list comprehension over a supported iterable, compiled to
+    map/filter so client and worker code can transform lists."""
+
+    def __init__(self, element: Expr, var: str, iterable: Expr,
+                 condition: Expr | None) -> None:
+        self.element = element
+        self.var = var
+        self.iterable = iterable
+        self.condition = condition
+
+    def js(self) -> str:
+        src = self.iterable.js()
+        if self.condition is not None:
+            src = (f"({src}).filter(({self.var}) => "
+                   f"{self.condition.js()})")
+        return f"({src}).map(({self.var}) => {self.element.js()})"
+
+    def evaluate(self, env: dict[str, Any]) -> Any:
+        out = []
+        for item in self.iterable.evaluate(env):
+            local = dict(env)
+            local[self.var] = item
+            if self.condition is None or self.condition.evaluate(local):
+                out.append(self.element.evaluate(local))
+        return out
+
+    def is_list(self) -> bool:
+        return True
+
+
 class CallClient(Expr):
     """Invocation of a @ui.client function from compiled client code."""
 
