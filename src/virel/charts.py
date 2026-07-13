@@ -157,7 +157,11 @@ def _cartesian(kind: str, series: list[Series], labels: list[str],
     def y_at(value: float) -> float:
         return pad_top + plot_h * (1 - (value - y_low) / (y_high - y_low))
 
+    # A fixed pixel height (not an aspect-driven one) so every chart in a
+    # row lines up regardless of kind; the content fits within, centered,
+    # with no distortion.
     parts = [f'<svg viewBox="0 0 {width} {height}" class="v-chart-svg" '
+             f'style="height:{height}px" '
              'preserveAspectRatio="xMidYMid meet">']
     for tick in ticks:
         y = y_at(tick)
@@ -216,11 +220,11 @@ def _donut(series: list[Series], height: int) -> str:
     radius = size * 0.36
     center = size / 2
     circumference = 2 * math.pi * radius
-    # A donut has a square viewBox, so cap its width at its height and
-    # center it — otherwise width:100% would blow it up to the full
-    # column width instead of respecting the requested size.
+    # Fixed pixel height like the cartesian charts, so a donut lines up
+    # with them in a row. Its square content fits by height and centers
+    # horizontally, rather than ballooning to the full column width.
     parts = [f'<svg viewBox="0 0 {size} {size}" class="v-chart-svg" '
-             f'style="max-width:{size}px;margin-inline:auto" '
+             f'style="height:{size}px" '
              'preserveAspectRatio="xMidYMid meet">']
     offset = 0.0
     for index, entry in enumerate(series):

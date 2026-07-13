@@ -133,9 +133,11 @@ def test_charts_compile_to_accessible_svg():
                                ui.Series("Failed", value=3)], height=170)
     donut_html = template_html([donut], {})
     assert "(93%)" in donut_html and ">45<" in donut_html
-    # The donut is capped at its height so it does not balloon to the
-    # full column width.
-    assert "max-width:170px" in donut_html
+    # Every chart renders at its requested pixel height so a row of mixed
+    # chart kinds lines up.
+    assert "height:170px" in donut_html
+    line170 = ui.Chart("line", [ui.Series("x", points=[1, 2, 3])], height=170)
+    assert "height:170px" in template_html([line170], {})
 
 
 def test_chart_values_are_validated():
