@@ -9,6 +9,8 @@ Run with:
     ./scripts/ci browser
 """
 
+import re
+
 VOLATILE = "12,18,9,21,7,19,11,23,8,20"
 
 
@@ -737,6 +739,82 @@ def test_dev_action_trace_records_calls(page, server_url):
             break
         page.wait_for_timeout(50)
     assert "invite_member" in page.evaluate("document.body.textContent")
+
+
+def _run_search_action(page):
+    # Typing on /search triggers the record_search server action through a
+    # reactive effect; it returns 200 and has no side effects, so it is
+    # safe to call repeatedly.
+    page.get_by_label("Query").fill("hello world")
+    for _ in range(60):
+        last = page.evaluate(
+            "window.__virelTelemetry?.last?.name === 'record_search' "
+            "? window.__virelTelemetry.last : null")
+        if last:
+            return last
+        page.wait_for_timeout(50)
+    raise AssertionError("no action telemetry recorded")
+
+
+def test_action_records_full_timing_breakdown(page, server_url):
+    # SPEC 19 dev tools: action duration, server execution, serialization,
+    # network, payload size, and a correlation id.
+    page.goto(f"{server_url}/search")
+    last = _run_search_action(page)
+    assert last["name"] == "record_search"
+    for key in ("duration", "server", "serialize", "network", "bytes"):
+        assert isinstance(last[key], (int, float)), key
+    assert last["network"] >= 0 and last["server"] >= 0
+    # x-request-id correlates the browser event with the server trace.
+    assert last["requestId"] and len(last["requestId"]) == 32
+
+
+def test_action_sends_traceparent_header(page, server_url):
+    page.goto(f"{server_url}/search")
+    seen = {}
+    page.on("request", lambda r: seen.update(
+        {"tp": r.headers.get("traceparent")})
+        if "/_virel/action/" in r.url else None)
+    _run_search_action(page)
+    assert seen.get("tp"), "action request carried no traceparent"
+    assert re.fullmatch(r"00-[0-9a-f]{32}-[0-9a-f]{16}-01", seen["tp"])
+
+
+def test_dev_panel_shows_timing_breakdown(page, server_url):
+    page.goto(f"{server_url}/search")
+    page.get_by_title("Toggle the server-action trace").click()
+    _run_search_action(page)
+    # The panel polls and renders the labelled breakdown after an action.
+    page.wait_for_timeout(600)
+    body = page.evaluate("document.body.textContent")
+    assert "server" in body and "network" in body and "serialize" in body
+
+
+def test_vitals_and_hydration_collected(page, server_url):
+    page.goto(f"{server_url}/counter")
+    for _ in range(40):
+        hydration = page.evaluate(
+            "window.__virelTelemetry?.vitals?.hydration ?? null")
+        if hydration is not None:
+            break
+        page.wait_for_timeout(50)
+    assert isinstance(hydration, (int, float)), "hydration time not recorded"
+
+
+def test_client_error_is_captured(page, server_url):
+    # A synthetic error event exercises the runtime's global error handler
+    # without an actual uncaught exception (which the fixture would flag).
+    page.goto(f"{server_url}/counter")
+    page.wait_for_timeout(100)
+    page.evaluate(
+        "window.dispatchEvent(new ErrorEvent('error', "
+        "{message: 'synthetic-telemetry-error'}))")
+    for _ in range(20):
+        errors = page.evaluate("window.__virelTelemetry?.errors || []")
+        if errors:
+            break
+        page.wait_for_timeout(50)
+    assert any("synthetic-telemetry-error" in e["message"] for e in errors)
 
 
 def test_state_preserving_hot_reload(page, server_url):

@@ -9,6 +9,147 @@
 let activeEffect = null;
 let mountScope = [];
 
+/* ------------------------------------------------------------------ *
+ * Observability (SPEC 19). The browser starts a trace on load; every
+ * server action carries a W3C traceparent so the server span joins the
+ * same trace. Server-Timing is read back for the dev tools. Nothing here
+ * records request or response payloads — only names, sizes, and times.
+ * ------------------------------------------------------------------ */
+function __hex(n) {
+  const bytes = new Uint8Array(n);
+  (globalThis.crypto && globalThis.crypto.getRandomValues)
+    ? globalThis.crypto.getRandomValues(bytes)
+    : bytes.forEach((_, i) => (bytes[i] = (i * 53 + 17) & 255));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+const __telemetry = {
+  traceId: __hex(16),
+  updates: 0,
+  actions: [],
+  vitals: {},
+  errors: [],
+};
+if (typeof window !== "undefined") window.__virelTelemetry = __telemetry;
+
+export function traceparent() {
+  return `00-${__telemetry.traceId}-${__hex(8)}-01`;
+}
+
+function __parseServerTiming(header) {
+  const out = {};
+  if (!header) return out;
+  for (const part of header.split(",")) {
+    const m = /([\w-]+);dur=([0-9.]+)/.exec(part.trim());
+    if (m) out[m[1]] = parseFloat(m[2]);
+  }
+  return out;
+}
+
+function __recordAction(name, startMs, response) {
+  const total = performance.now() - startMs;
+  const timing = __parseServerTiming(response.headers.get("server-timing"));
+  const server = timing.action || 0;
+  const entry = {
+    name,
+    status: response.status,
+    duration: Math.round(total),
+    server: Math.round(server),
+    serialize: Math.round((timing.serialize || 0) * 10) / 10,
+    network: Math.round(Math.max(0, total - server)),
+    bytes: parseInt(response.headers.get("content-length") || "0", 10),
+    updates: __telemetry.updates,
+    requestId: response.headers.get("x-request-id") || null,
+  };
+  __telemetry.actions.push(entry);
+  if (__telemetry.actions.length > 50) __telemetry.actions.shift();
+  __telemetry.last = entry;
+  __beacon("action", entry);
+  return entry;
+}
+
+// POST a collected event to the server beacon, correlated by traceparent,
+// when telemetry is active for this page (a virel-telemetry meta tag).
+function __beacon(kind, data) {
+  if (typeof document === "undefined") return;
+  if (!document.querySelector('meta[name="virel-telemetry"]')) return;
+  try {
+    fetch("/_virel/telemetry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", traceparent: traceparent() },
+      body: JSON.stringify({ kind, ...data }),
+      keepalive: true,
+    });
+  } catch (_) {
+    /* telemetry must never break the app */
+  }
+}
+
+// Mark hydration complete (called at the end of the compiled mount). Only
+// the first mount counts; client-navigation remounts are not hydration.
+export function markHydrated() {
+  __initTelemetry();
+  if (__telemetry.vitals.hydration == null
+      && typeof performance !== "undefined") {
+    __telemetry.vitals.hydration = Math.round(performance.now());
+    __beacon("hydration", { ms: __telemetry.vitals.hydration });
+  }
+}
+
+// Core Web Vitals, long tasks, navigation timing, and client errors,
+// activated only when telemetry is on for the page (SPEC 19). Each is
+// buffered on window.__virelTelemetry for the dev tools and beaconed to
+// the server so it can join the trace.
+function __initTelemetry() {
+  if (typeof window === "undefined" || __telemetry.started) return;
+  if (!document.querySelector('meta[name="virel-telemetry"]')) return;
+  __telemetry.started = true;
+  const observe = (type, cb) => {
+    try {
+      const po = new PerformanceObserver(
+        (list) => list.getEntries().forEach(cb));
+      po.observe({ type, buffered: true });
+    } catch (_) { /* unsupported entry type */ }
+  };
+  observe("largest-contentful-paint", (e) => {
+    __telemetry.vitals.lcp = Math.round(e.startTime);
+  });
+  let cls = 0;
+  observe("layout-shift", (e) => {
+    if (!e.hadRecentInput) {
+      cls += e.value;
+      __telemetry.vitals.cls = Math.round(cls * 1000) / 1000;
+    }
+  });
+  observe("event", (e) => {
+    const inp = Math.round(e.duration);
+    if (inp > (__telemetry.vitals.inp || 0)) __telemetry.vitals.inp = inp;
+  });
+  observe("longtask", (e) => {
+    __telemetry.vitals.longtasks = (__telemetry.vitals.longtasks || 0) + 1;
+    __beacon("longtask", { duration: Math.round(e.duration) });
+  });
+  window.addEventListener("load", () => {
+    const nav = performance.getEntriesByType("navigation")[0];
+    if (nav) {
+      __telemetry.vitals.ttfb = Math.round(nav.responseStart);
+      __telemetry.vitals.load = Math.round(nav.loadEventEnd);
+    }
+    setTimeout(() => __beacon("vitals", { ...__telemetry.vitals }), 0);
+  });
+  const onError = (message, source, line) => {
+    const err = { message: String(message).slice(0, 256),
+                  source: String(source || "").slice(0, 256), line: line || 0 };
+    __telemetry.errors.push(err);
+    if (__telemetry.errors.length > 50) __telemetry.errors.shift();
+    __beacon("error", err);
+  };
+  window.addEventListener("error", (e) =>
+    onError(e.message || "error", e.filename, e.lineno));
+  window.addEventListener("unhandledrejection", (e) =>
+    onError("unhandledrejection: "
+            + (e.reason && e.reason.message || e.reason || ""), "", 0));
+}
+
 export function signal(value) {
   const subscribers = new Set();
   return {
@@ -19,6 +160,7 @@ export function signal(value) {
     set(next) {
       if (next === value) return;
       value = next;
+      __telemetry.updates++;
       for (const fn of [...subscribers]) {
         if (fn.disposed) subscribers.delete(fn);
         else fn();
@@ -2494,21 +2636,33 @@ export function setTransport(fn) {
 }
 
 export async function action(name, args, options) {
-  const headers = { "Content-Type": "application/json" };
+  const headers = { "Content-Type": "application/json", traceparent: traceparent() };
   if (options?.idempotencyKey) {
     headers["Idempotency-Key"] = options.idempotencyKey;
   }
+  const started = performance.now();
   const response = await transport(`/_virel/action/${name}`, {
     method: "POST",
     headers,
     body: JSON.stringify(args || {}),
     signal: options?.signal,
   });
+  const entry = __recordAction(name, started, response);
   const payload = await response.json();
   if (!response.ok) {
     const error = new Error(payload.error || `action ${name} failed (${response.status})`);
     if (payload.field_errors) error.fieldErrors = payload.field_errors;
     throw error;
+  }
+  // Render time: how long the frame after the caller applies the result
+  // takes to paint (best effort, for the dev tools).
+  if (typeof requestAnimationFrame !== "undefined") {
+    const renderStart = performance.now();
+    const before = __telemetry.updates;
+    requestAnimationFrame(() => {
+      entry.render = Math.round(performance.now() - renderStart);
+      entry.updates = __telemetry.updates - before;
+    });
   }
   return payload.result;
 }
@@ -2652,7 +2806,7 @@ export async function streamEvents(name, args, listSignal, onDone) {
 export async function stream(name, args, onChunk, onDone, options) {
   const response = await transport(`/_virel/action/${name}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", traceparent: traceparent() },
     body: JSON.stringify(args || {}),
     signal: options?.signal,
   });

@@ -265,50 +265,54 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") closeInspector();
 });
 
-/* ---- Dev toolbar: viewport, theme, locale, and action tracing ---- */
+/* ---- Dev toolbar: viewport, theme, locale, and observability ---- */
 
-// Server-action trace panel (SPEC 15.2): wrap fetch and record every
-// call to a server action with its status and duration.
-const actionTrace = [];
-const nativeFetch = window.fetch.bind(window);
-window.fetch = async (input, init) => {
-  const url = typeof input === "string" ? input : input.url;
-  const isAction = url && url.includes("/_virel/action/");
-  const started = performance.now();
-  try {
-    const res = await nativeFetch(input, init);
-    if (isAction) {
-      actionTrace.unshift({
-        name: url.split("/_virel/action/")[1].split("?")[0],
-        status: res.status, ms: Math.round(performance.now() - started),
-      });
-      actionTrace.length = Math.min(actionTrace.length, 25);
-      renderTrace();
-    }
-    return res;
-  } catch (err) {
-    if (isAction) {
-      actionTrace.unshift({
-        name: url.split("/_virel/action/")[1].split("?")[0],
-        status: "error", ms: Math.round(performance.now() - started),
-      });
-      renderTrace();
-    }
-    throw err;
-  }
-};
-
+// Observability panel (SPEC 19): the browser runtime records each server
+// action's full timing breakdown, Core Web Vitals, and client errors on
+// window.__virelTelemetry; this panel visualizes them live.
 let tracePanel = null;
+let traceTimer = null;
+
+function fmt(value, unit) {
+  return value == null ? "-" : String(value) + (unit || "");
+}
+
 function renderTrace() {
   if (!tracePanel) return;
-  tracePanel.innerHTML = actionTrace.length
-    ? actionTrace.map((c) =>
-        "<div style='display:flex;gap:8px;padding:3px 0'>" +
-        "<span style='color:" + (c.status === 200 ? "#9ece6a" : "#f7768e") +
-        "'>" + escHtml(String(c.status)) + "</span>" +
-        "<span style='flex:1'>" + escHtml(c.name) + "</span>" +
-        "<span style='color:#565f89'>" + c.ms + "ms</span></div>").join("")
-    : "<div style='color:#565f89'>no server-action calls yet</div>";
+  const t = window.__virelTelemetry || { actions: [], vitals: {}, errors: [] };
+  const v = t.vitals || {};
+  const vitals = [
+    ["LCP", fmt(v.lcp, "ms")], ["CLS", fmt(v.cls)], ["INP", fmt(v.inp, "ms")],
+    ["TTFB", fmt(v.ttfb, "ms")], ["hydrate", fmt(v.hydration, "ms")],
+    ["long tasks", fmt(v.longtasks || 0)],
+  ].map(([k, val]) =>
+      "<span style='margin-right:10px;white-space:nowrap'>" +
+      "<b style='color:#7aa2f7'>" + k + "</b> " + escHtml(val) + "</span>"
+    ).join("");
+  const actions = (t.actions || []).slice().reverse().map((c) => {
+    const color = c.status === 200 ? "#9ece6a" : "#f7768e";
+    return "<div style='padding:5px 0;border-top:1px solid #2a2b3d'>" +
+      "<div style='display:flex;gap:8px'>" +
+      "<span style='color:" + color + "'>" + escHtml(String(c.status)) +
+      "</span><span style='flex:1'>" + escHtml(c.name) + "</span>" +
+      "<span style='color:#565f89'>" + fmt(c.duration, "ms") + "</span></div>" +
+      "<div style='color:#565f89;font-size:11px;display:flex;" +
+      "flex-wrap:wrap;gap:8px'>" +
+      "<span>server " + fmt(c.server, "ms") + "</span>" +
+      "<span>serialize " + fmt(c.serialize, "ms") + "</span>" +
+      "<span>network " + fmt(c.network, "ms") + "</span>" +
+      "<span>render " + fmt(c.render, "ms") + "</span>" +
+      "<span>updates " + fmt(c.updates) + "</span>" +
+      "<span>" + fmt(c.bytes, "B") + "</span></div></div>";
+  }).join("") ||
+    "<div style='color:#565f89'>no server-action calls yet</div>";
+  const errors = (t.errors || []).length
+    ? "<div style='margin-top:8px;color:#f7768e;font-size:11px'>" +
+      t.errors.slice(-5).map((e) => escHtml(e.message)).join("<br>") + "</div>"
+    : "";
+  tracePanel.innerHTML =
+    "<div style='margin-bottom:8px;font-size:11px;line-height:1.7'>" +
+    vitals + "</div>" + actions + errors;
 }
 
 function makeToolButton(label, title) {
@@ -367,15 +371,21 @@ localeBtn.addEventListener("click", async () => {
 
 const traceBtn = makeToolButton("actions", "Toggle the server-action trace");
 traceBtn.addEventListener("click", () => {
-  if (tracePanel) { tracePanel.remove(); tracePanel = null; return; }
+  if (tracePanel) {
+    tracePanel.remove(); tracePanel = null;
+    if (traceTimer) { clearInterval(traceTimer); traceTimer = null; }
+    return;
+  }
   tracePanel = document.createElement("div");
   tracePanel.style.cssText =
-    "position:fixed;bottom:58px;left:14px;z-index:99997;width:320px;" +
-    "max-height:40vh;overflow:auto;padding:12px;background:#16161e;" +
+    "position:fixed;bottom:58px;left:14px;z-index:99997;width:340px;" +
+    "max-height:44vh;overflow:auto;padding:12px;background:#16161e;" +
     "color:#c0caf5;border:1px solid #2a2b3d;border-radius:10px;" +
     "font:12px ui-monospace,monospace";
   document.body.appendChild(tracePanel);
   renderTrace();
+  // The runtime records asynchronously; poll while the panel is open.
+  traceTimer = setInterval(renderTrace, 400);
 });
 
 bar.append(viewBtn, themeBtn, localeBtn, traceBtn);
@@ -510,6 +520,9 @@ class VirelASGIApp:
             return
         if path == "/_virel/reload-token":
             await self._send_json(send, 200, {"token": self._watch_token()})
+            return
+        if path == "/_virel/telemetry":
+            await self._serve_telemetry_beacon(method, scope, receive, send)
             return
         if path == "/_virel/ir":
             if not self.dev:
@@ -764,6 +777,13 @@ class VirelASGIApp:
         headers.extend(cookies)
         if locale is not None:
             headers.append((b"vary", b"accept-language"))
+        # When observability is on, mark the page so the runtime activates
+        # its client collector (SPEC 19). A meta tag needs no inline script,
+        # so it does not affect the CSP hash set.
+        if (telemetry.is_enabled() or self.dev) and "</head>" in result.html:
+            result.html = result.html.replace(
+                "</head>",
+                '<meta name="virel-telemetry" content="on">\n</head>', 1)
         if result.streamed_resources:
             await self._serve_streamed_page(result, headers, send)
             return
@@ -830,6 +850,44 @@ class VirelASGIApp:
                                           extra=self._asset_cache_headers())
                     return
         await self._send_text(send, 404, f"No page module {name!r}.")
+
+    async def _serve_telemetry_beacon(self, method: str, scope: Scope,
+                                      receive: Receive, send: Send) -> None:
+        """Ingest a client observability event (SPEC 19): a vital, long
+        task, client error, navigation, hydration, or action timing. The
+        event joins the trace carried by the request's traceparent, so a
+        browser event and its server spans share one trace. Only scalar
+        metadata is recorded — never a payload."""
+        from . import telemetry
+        if method != "POST":
+            await self._send_json(send, 405, {"error": "POST only"})
+            return
+        async def _no_content() -> None:
+            # A 204 carries no body (RFC 9110), so beacons stay cheap.
+            await send({"type": "http.response.start", "status": 204,
+                        "headers": _headers("text/plain; charset=utf-8",
+                                            length=0)})
+            await send({"type": "http.response.body", "body": b""})
+
+        if not (telemetry.is_enabled() or self.dev):
+            # Accept and discard so clients need not branch on config.
+            await _no_content()
+            return
+        try:
+            body = await _read_body(receive, 64 * 1024)
+            event = json.loads(body or b"{}")
+            if not isinstance(event, dict):
+                raise ValueError
+        except (ValueError, _BodyTooLarge):
+            await self._send_json(send, 400, {"error": "invalid telemetry event"})
+            return
+        kind = str(event.get("kind", "event"))[:32]
+        attributes = {f"virel.{k}": v for k, v in event.items() if k != "kind"}
+        with telemetry.span(f"client.{kind}", kind="client",
+                            **attributes) as sp:
+            if kind == "error":
+                sp.status = "error"
+        await _no_content()
 
     # -- server actions ---------------------------------------------------------
 

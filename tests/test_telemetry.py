@@ -257,3 +257,66 @@ def test_no_traceparent_still_gets_request_id():
     app = _traced_app()
     r = _action(app, "echo", b'{"value":"z"}')
     assert len(r.headers["x-request-id"]) == 32
+
+
+def test_page_injects_telemetry_meta_when_enabled():
+    app = _traced_app()
+    r = asgi_request(app, "GET", "/")
+    assert '<meta name="virel-telemetry" content="on">' in r.text
+
+
+def test_page_omits_meta_when_disabled():
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("hi"))
+
+    app = create_asgi_app(dev=False)  # telemetry not enabled
+    r = asgi_request(app, "GET", "/")
+    assert "virel-telemetry" not in r.text
+
+
+# --- client beacon --------------------------------------------------------
+
+def _beacon(app, payload, tp=None):
+    headers = [(b"content-type", b"application/json")]
+    if tp:
+        headers.append((b"traceparent", tp.encode()))
+    return asgi_request(app, "POST", "/_virel/telemetry", body=payload,
+                        headers=headers)
+
+
+def test_beacon_records_client_span_and_correlates():
+    app = _traced_app()
+    tp = "00-" + "e" * 32 + "-" + "f" * 16 + "-01"
+    r = _beacon(app, b'{"kind":"vitals","lcp":1200,"cls":0.02}', tp=tp)
+    assert r.status == 204
+    spans = [s for s in recent_spans() if s.name == "client.vitals"]
+    assert spans
+    assert spans[-1].trace_id == "e" * 32
+    assert spans[-1].attributes["virel.lcp"] == 1200
+
+
+def test_beacon_scrubs_sensitive_fields():
+    app = _traced_app()
+    _beacon(app, b'{"kind":"error","message":"x","password":"secret"}')
+    spans = [s for s in recent_spans() if s.name == "client.error"]
+    assert spans and spans[-1].status == "error"
+    assert "virel.password" not in spans[-1].attributes
+
+
+def test_beacon_rejects_get():
+    app = _traced_app()
+    r = asgi_request(app, "GET", "/_virel/telemetry")
+    assert r.status == 405
+
+
+def test_beacon_accepts_and_discards_when_disabled():
+    @ui.page("/")
+    def home():
+        return ui.Page(ui.Text("hi"))
+
+    app = create_asgi_app(dev=False)
+    before = len(recent_spans())
+    r = _beacon(app, b'{"kind":"vitals","lcp":1}')
+    assert r.status == 204
+    assert len(recent_spans()) == before  # nothing recorded

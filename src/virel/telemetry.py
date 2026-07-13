@@ -180,7 +180,8 @@ def _scrub(attributes: dict[str, Any]) -> dict[str, Any]:
     for key, value in attributes.items():
         if value is None:
             continue
-        if key.lower() in _BLOCKED_KEYS:
+        # Match the last dotted segment so "virel.password" is blocked too.
+        if key.rsplit(".", 1)[-1].lower() in _BLOCKED_KEYS:
             continue
         if isinstance(value, bool) or isinstance(value, (int, float)):
             clean[key] = value

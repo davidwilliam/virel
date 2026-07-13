@@ -52,5 +52,5 @@ def test_dev_js_exposes_locales_and_toolbar():
     dev_js = asgi_request(app, "GET", "/_virel/dev.js").text
     assert "__virelLocales" in dev_js
     assert '"pt"' in dev_js
-    assert "actionTrace" in dev_js            # the server-action trace
+    assert "__virelTelemetry" in dev_js       # the observability panel
     assert "Cycle responsive viewport" in dev_js

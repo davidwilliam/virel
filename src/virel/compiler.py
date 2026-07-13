@@ -267,6 +267,7 @@ def _emit_page_js(ctx: TraceContext, emitter: Emitter, dev: bool = False,
                     f"{immediate});")
     if active_registry().client_nav:
         body.append("$.router();")
+    body.append("$.markHydrated();")
     if dev:
         body.append("window.__virel = { S };")
     lines.append("export function mount() {")
