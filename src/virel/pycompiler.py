@@ -680,6 +680,14 @@ class FnCompiler:
                 "shadows the outer one; use a different local name, or "
                 "state.set(...) to change reactive state.",
             )
+        from .trust import ServerOnly
+        if isinstance(resolved, ServerOnly):
+            raise self.error(
+                node,
+                f"{name!r} is server-only and cannot be used in client code "
+                "(SPEC 18.1). Read it on the server with .get() inside a "
+                "@ui.server action or guard, and send only the derived, "
+                "non-secret result to the browser.")
         if _is_reactive(resolved):
             return StateRead(resolved.name,
                              holds_list=isinstance(

@@ -112,6 +112,11 @@ def lift(value: Any) -> "Expr":
     """Wrap a plain Python value or pass through an existing expression."""
     if isinstance(value, Expr):
         return value
+    if type(value).__name__ == "ServerOnly":
+        raise VirelCompileError(
+            "A server-only value cannot be used in a reactive or "
+            "client expression (SPEC 18.1). Read it on the server with "
+            ".get() and send only the non-secret result to the browser.")
     if value is None or isinstance(value, (bool, int, float, str)):
         return Lit(value)
     if isinstance(value, (list, tuple)):

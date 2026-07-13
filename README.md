@@ -297,6 +297,13 @@ serialized except JSON.
 
 ## Theming
 
+Values that must never reach the browser are marked server-only:
+`ui.server_only(x)` or `ui.secret("ENV_KEY")`. Reading one on the server
+(`.get()` inside a server action or guard) is fine; referencing it from
+any client-compilable code -- an event handler, a reactive expression,
+`@ui.client`, or `@ui.worker` -- is a build error, so a secret cannot
+leak into the browser bundle by accident.
+
 Every application supports three color-scheme modes out of the box: system
 (follow the OS), light, and dark. Design tokens compile to CSS custom
 properties for each mode, a tiny inline snippet applies the stored
